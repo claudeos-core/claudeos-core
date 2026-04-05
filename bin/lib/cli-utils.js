@@ -110,7 +110,7 @@ function countFiles() {
     const scan = (dir) => {
       if (!fs.existsSync(dir)) return;
       let realDir;
-      try { realDir = fs.realpathSync(dir); } catch { realDir = dir; }
+      try { realDir = fs.realpathSync(dir); } catch (_e) { realDir = dir; }
       if (visited.has(realDir)) return;
       visited.add(realDir);
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

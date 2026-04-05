@@ -148,7 +148,12 @@ async function scanJavaDomains(stack, ROOT) {
       dtoGlob = `src/main/java/**/dto/${cap}*.java`;
       aggGlob = `src/main/java/**/aggregator/${cap}*.java`;
     }
-    const xmlGlob = `src/main/resources/{mapper,mybatis}/**/${dn}/*.xml`;
+    // Pattern C (flat): XML may be in flat directory without domain subdirectory (e.g., mapper/OrderMapper.xml)
+    // Other patterns: XML is in domain subdirectory (e.g., mapper/order/OrderMapper.xml)
+    const capDn = dn.charAt(0).toUpperCase() + dn.slice(1);
+    const xmlGlob = p === "C"
+      ? `src/main/resources/{mapper,mybatis}/**/{${dn}/${capDn}*.xml,${capDn}*.xml}`
+      : `src/main/resources/{mapper,mybatis}/**/${dn}/*.xml`;
 
     const svc = await glob(svcGlob, { cwd: ROOT });
     const mpr = await glob(mprGlob, { cwd: ROOT });

@@ -217,7 +217,7 @@ async function cmdInit(parsedArgs) {
           log(`    ⏭️  pass1-${i}.json already exists, skipping`);
           continue;
         }
-      } catch { /* malformed — re-run */ }
+      } catch (_e) { /* malformed — re-run */ }
       log(`    ⚠️  pass1-${i}.json exists but is malformed, re-running`);
     }
 

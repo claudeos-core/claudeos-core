@@ -48,7 +48,7 @@ function stat(f) {
 function frontmatter(f) {
   try {
     return matter(fs.readFileSync(f, "utf-8")).data || {};
-  } catch {
+  } catch (_e) {
     return {};
   }
 }
@@ -169,7 +169,7 @@ async function main() {
   const srPath = path.join(GEN, "stale-report.json");
   let sr = {};
   if (fs.existsSync(srPath)) {
-    try { sr = JSON.parse(fs.readFileSync(srPath, "utf-8")); } catch { sr = {}; }
+    try { sr = JSON.parse(fs.readFileSync(srPath, "utf-8")); } catch (_e) { sr = {}; }
   }
   sr.generatedAt = new Date().toISOString();
   if (!sr.summary) sr.summary = {};

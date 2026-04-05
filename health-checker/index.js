@@ -108,7 +108,7 @@ function main() {
     const rp = path.join(GEN, "stale-report.json");
     let ex = {};
     if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch { ex = {}; }
+      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
     }
     ex.generatedAt = new Date().toISOString();
     ex.healthCheck = { results, status: hasErr ? "fail" : "pass" };

@@ -197,7 +197,7 @@ async function main() {
           isBackend = !frontend || ["express", "nestjs", "django", "fastapi", "spring-boot"].includes(framework);
           isKotlin = language === "kotlin";
           isKotlinCqrs = isKotlin && (architecture === "cqrs" || paData.stack?.multiModule);
-        } catch { /* If project-analysis parsing fails, conservatively assume backend */ }
+        } catch (_e) { /* If project-analysis parsing fails, conservatively assume backend */ }
       }
 
       const sectionsToCheck = [
@@ -286,7 +286,7 @@ async function main() {
     const rp = path.join(GEN_DIR, "stale-report.json");
     let ex = {};
     if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch { ex = {}; }
+      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
     }
     ex.jsonValidation = { checkedAt: new Date().toISOString(), checked, errors: errors.length, warnings: warnings.length };
     ex.summary = { ...ex.summary, jsonErrors: errors.length, jsonWarnings: warnings.length };

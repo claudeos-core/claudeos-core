@@ -115,6 +115,8 @@ async function detectStack(ROOT) {
       if (jv) stack.languageVersion = jv[1];
 
       detectFirst(stack, "orm", g, GRADLE_ORM_RULES);
+      // Exclude "postgres" (substring of postgresql — false positive on r2dbc-postgres) and "sqlite" (rare in Gradle deps)
+      // "postgresql" is still matched via DB_KEYWORD_RULES; h2 uses word-boundary check separately
       detectDb(stack, g, DB_KEYWORD_RULES.filter(([kw]) => !["postgres", "sqlite"].includes(kw)));
 
       // Kotlin detection: override language if Kotlin plugin found

@@ -50,7 +50,7 @@ async function main() {
       const pa = JSON.parse(fs.readFileSync(paPath, "utf-8"));
       detectedLanguage = pa.stack?.language || null;
       outputLang = pa.lang || "en";
-    } catch { /* ignore */ }
+    } catch (_e) { /* ignore */ }
   }
 
   // Language-aware section keywords for CLAUDE.md validation
@@ -327,7 +327,7 @@ async function main() {
     const rp = path.join(GEN_DIR, "stale-report.json");
     let ex = {};
     if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch { ex = {}; }
+      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
     }
     ex.contentValidation = { checkedAt: new Date().toISOString(), checked, errors: errors.length, warnings: warnings.length, details: { errors, warnings } };
     ex.summary = { ...ex.summary, contentErrors: errors.length, contentWarnings: warnings.length };

@@ -56,11 +56,11 @@ async function scanFrontendDomains(stack, ROOT) {
       ...await glob("{app,src/app}/*/", { cwd: ROOT }),
       ...await glob("{pages,src/pages}/*/", { cwd: ROOT }),
     ];
-    const skipPages = ["api", "_app", "_document", "fonts"];
+    const skipPages = ["api", "_app", "_document", "fonts", "not-found", "error", "loading"];
     for (const dir of allDirs) {
       const name = path.basename(dir);
       if (skipPages.includes(name) || name.startsWith("(") || name.startsWith("[") || name.startsWith("_") || name.startsWith(".")) continue;
-      const files = await glob(`${dir}**/*.{tsx,jsx,ts,js,vue}`, { cwd: ROOT });
+      const files = await glob(`${dir.replace(/\\/g, "/")}**/*.{tsx,jsx,ts,js,vue}`, { cwd: ROOT });
       if (files.length > 0) {
         const pages = files.filter(f => /page\.|index\./.test(f)).length;
         const layouts = files.filter(f => /layout\./.test(f)).length;
@@ -81,7 +81,7 @@ async function scanFrontendDomains(stack, ROOT) {
       for (const dir of fsdDirs) {
         const name = path.basename(dir);
         if (["ui", "common", "shared", "lib", "config", "index"].includes(name)) continue;
-        const files = await glob(`${dir}**/*.{tsx,jsx,ts,js,vue}`, { cwd: ROOT, ignore: ["**/*.spec.*", "**/*.test.*", "**/*.stories.*"] });
+        const files = await glob(`${dir.replace(/\\/g, "/")}**/*.{tsx,jsx,ts,js,vue}`, { cwd: ROOT, ignore: ["**/*.spec.*", "**/*.test.*", "**/*.stories.*"] });
         if (files.length > 0) {
           const uiFiles = files.filter(f => /\bui\b/.test(f)).length;
           const modelFiles = files.filter(f => /model|store|hook/.test(f)).length;
@@ -95,7 +95,7 @@ async function scanFrontendDomains(stack, ROOT) {
     for (const dir of compDirs) {
       const name = path.basename(dir);
       if (["ui", "common", "shared", "layout", "icons"].includes(name)) continue;
-      const files = await glob(`${dir}**/*.{tsx,jsx,vue}`, { cwd: ROOT });
+      const files = await glob(`${dir.replace(/\\/g, "/")}**/*.{tsx,jsx,vue}`, { cwd: ROOT });
       if (files.length >= 2) {
         frontendDomains.push({ name: `comp-${name}`, type: "frontend", components: files.length, totalFiles: files.length });
       }

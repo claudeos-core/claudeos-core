@@ -1,0 +1,178 @@
+Read claudeos-core/generated/project-analysis.json and
+perform a deep analysis of the following domains only: {{DOMAIN_GROUP}}
+
+For each domain, select one representative file per layer, read its code, and analyze it.
+Prioritize files with the richest patterns.
+
+Analysis items (per domain):
+
+1. Controller Patterns
+   - Class annotations (@Controller vs @RestController, inheritance)
+   - Method mappings (@GetMapping, @PostMapping, @PutMapping, @DeleteMapping, @PatchMapping)
+   - URL patterns (RESTful conventions, naming conventions, versioning)
+   - Parameter binding (@RequestBody, @PathVariable, @RequestParam, @ModelAttribute, @RequestHeader)
+   - Response format (ResponseEntity, custom response wrappers, direct return)
+   - If a custom response wrapper class exists, record its EXACT class name, EXACT method signatures (e.g., `success()`, `error()`), and EXACT import path. Do NOT guess or invent method names — read the actual source.
+   - **Response wrapping layer (CRITICAL)**: Which layer ACTUALLY calls the response wrapper?
+     Read the Controller source code and determine: does Controller call makeResponse/response wrapper directly,
+     or does it receive an already-wrapped ResponseEntity from Aggregator/Service?
+     Record EXACTLY ONE of: "Controller wraps response" or "Aggregator wraps response" or "Service wraps response".
+     This is critical for cross-file consistency in Pass 3.
+   - Controller dependency injection targets: Does Controller inject Aggregator? Service? Both?
+     Record the EXACT injected class types (e.g., "injects {Domain}Aggregator + ExceptionHelper only").
+   - Error handling (try-catch patterns, @ExceptionHandler, @ControllerAdvice)
+   - Authentication/authorization (@AuthenticationPrincipal, @PreAuthorize, SecurityContext)
+   - API documentation (Swagger/SpringDoc annotations)
+   - Pagination (Pageable, custom paging parameters)
+
+2. Aggregator/Orchestrator Patterns (CRITICAL — analyze even if the layer has a different name)
+   Many Java projects have a dedicated orchestration layer between Controller and Service.
+   It may be called Aggregator, Facade, Orchestrator, UseCase, or similar.
+   If this layer exists, it MUST be analyzed thoroughly. If it does not exist, record "No Aggregator layer — Controller calls Service directly".
+
+   - **Existence and naming**: Does a dedicated orchestration class exist between Controller and Service?
+     Record the EXACT class name pattern (e.g., `{Domain}Aggregator`, `{Domain}Facade`).
+   - **Class annotation**: @Component, @Service, or other?
+   - **Responsibility scope** (record each as YES/NO with evidence):
+     * DTO → VO conversion (inbound: request DTO to condition/param VO)
+     * VO → DTO conversion (outbound: result VO to response DTO)
+     * Conversion tool (MapStruct, ModelMapper, manual)
+     * Response wrapping: Does Aggregator call makeResponse/response wrapper and return ResponseEntity?
+       Or does it return plain DTO/VO and let Controller wrap?
+       Record the EXACT return type of Aggregator methods (e.g., `ResponseEntity<ApiResponse<T>>` vs `OrderDetailResponseDTO`).
+     * Multi-service orchestration (calling 2+ services and composing results)
+     * Exception handling within Aggregator (try-catch, or let it propagate to Controller?)
+   - **Dependency rules**: What does Aggregator inject? (Service only? DAO allowed? Other Aggregators?)
+   - **Return type pattern**: For EACH Aggregator method you read, record:
+     the method signature, return type, and whether it calls any response wrapper utility.
+
+3. Service Patterns
+   - Class annotations (@Service, @Transactional)
+   - Transaction strategy (class-level vs method-level, readOnly separation, propagation)
+   - Dependency injection (constructor injection, @RequiredArgsConstructor, @Autowired)
+   - Business exception handling (custom Exception hierarchy, exception message management)
+   - Validation logic placement (within Service vs separate Validator)
+   - Event handling (ApplicationEventPublisher, @EventListener)
+
+4. Data Access Patterns
+   - ORM approach (MyBatis XML/Annotation, JPA/Hibernate, QueryDSL, JDBC Template)
+   - MyBatis XML mapper location: check ACTUAL path under src/main/resources/ (e.g., mapper/{domain}/, mybatis/mappers/, mybatis/mappers/{schema}/ — DO NOT assume default path)
+   - Repository/Mapper interface structure (inheritance, custom methods)
+   - Read/write separation
+   - Pagination approach (Pageable, PageHelper, RowBounds, custom)
+   - Audit columns (createdAt/updatedAt/createdBy/updatedBy, @CreatedDate, @LastModifiedDate)
+   - NULL handling strategy
+   - PK generation strategy (AUTO_INCREMENT, SEQUENCE, UUID, custom ID generation)
+   - N+1 problem handling (fetch join, @EntityGraph, BatchSize)
+   - Dynamic queries (Specification, QueryDSL, MyBatis <if>/<choose>)
+
+5. DTO/VO/Entity Patterns
+   - Class structure (inheritance, Base class, Record usage)
+   - Lombok usage scope (@Getter, @Setter, @Builder, @Data, @Value)
+   - Request/Response DTO separation rules
+   - DTO naming conventions
+   - **DTO vs VO distinction**: DTO (data transfer, mutable) vs VO (domain concept, immutable, equality by value)
+   - VO usage patterns (Java Record as VO, @Value with Lombok, custom equals/hashCode)
+   - VO location (domain layer vs shared module)
+   - Field type conventions (Boolean handling, date types, Enum management)
+   - Validation annotations (@NotNull, @NotBlank, @Size, @Pattern, custom)
+   - Conversion approach (MapStruct, ModelMapper, manual conversion)
+   - Import paths: record EXACT package paths for shared/utility classes
+   - Utility class locations: record EXACT package where shared utilities live
+
+6. Interceptor/Filter/AOP Patterns
+   - HandlerInterceptor usage
+   - Filter chain (SecurityFilterChain, custom Filters)
+   - AOP usage (@Aspect, logging, performance measurement, auditing)
+   - Middleware registration order
+
+7. Configuration/Environment Patterns
+   - Profile separation (local/dev/stg/prod)
+   - Configuration loading (@ConfigurationProperties, @Value, Environment)
+   - Multi-module structure
+   - External configuration (application.yml structure, environment variables)
+
+8. Logging Patterns
+   - Logger usage (SLF4J, Logback, Log4j2)
+   - Log level policy
+   - Structured logging (MDC, JSON format)
+   - Request/response logging approach
+
+9. Testing Patterns
+   - Test framework (JUnit 5, Mockito, AssertJ)
+   - Test classification (unit/integration/slice)
+   - @SpringBootTest vs @WebMvcTest vs @DataJpaTest
+   - Mocking strategy (@MockBean, @Mock, @InjectMocks)
+   - Test data management (TestFixture, Builder pattern)
+   - Test naming conventions
+
+10. Domain-Specific Patterns
+   - File upload/download (MultipartFile, S3)
+   - Excel import/export (Apache POI, EasyExcel)
+   - Bulk processing (Batch CUD, Spring Batch)
+   - State transition logic (state machine, Enum-based)
+   - Scheduling (@Scheduled, Quartz)
+   - External API integration (RestTemplate, WebClient, FeignClient, RestClient)
+   - Caching (@Cacheable, Redis, Caffeine)
+   - Messaging (Kafka, RabbitMQ)
+   - Internationalization (MessageSource, LocaleResolver)
+   - API versioning strategy
+
+11. Anti-patterns / Inconsistencies
+    - Code with differing styles within the domain
+    - Patterns inconsistent with other domains
+    - Legacy-looking patterns
+    - Performance issues (N+1, unnecessary queries, memory waste)
+    - Security issues (SQL Injection potential, missing authorization)
+    - Aggregator boundary violations (Aggregator accessing DAO directly, Controller bypassing Aggregator)
+
+Do not create or modify source files. Analysis only.
+Save results to claudeos-core/generated/pass1-{{PASS_NUM}}.json in the following format:
+
+{
+  "analyzedAt": "ISO timestamp",
+  "passNum": {{PASS_NUM}},
+  "domains": ["user", "order", "product", "system"],
+  "analysisPerDomain": {
+    "user": {
+      "representativeFiles": {
+        "controller": "UserController.java",
+        "aggregator": "UserAggregator.java (or null if no Aggregator layer)",
+        "service": "UserService.java",
+        "repository": "UserRepository.java or UserMapper.java",
+        "entity": "User.java",
+        "dto": "UserRequestDto.java"
+      },
+      "patterns": {
+        "controller": {
+          "responseWrappingLayer": "Controller wraps response | Aggregator wraps response",
+          "injectedDependencies": ["UserAggregator", "ExceptionHelper"],
+          "...": "..."
+        },
+        "aggregator": {
+          "exists": true,
+          "className": "UserAggregator",
+          "annotation": "@Component | @Service",
+          "returnType": "ResponseEntity<...> | plain DTO",
+          "callsMakeResponse": true,
+          "responsibilities": ["DTO↔VO conversion", "multi-service orchestration", "response wrapping"],
+          "injectedDependencies": ["UserService", "MemberService"]
+        },
+        "service": { ... },
+        "dataAccess": { ... },
+        "dto": { ... },
+        "interceptorAop": { ... },
+        "config": { ... },
+        "logging": { ... },
+        "testing": { ... }
+      },
+      "specialPatterns": [],
+      "antiPatterns": []
+    }
+  },
+  "crossDomainCommon": {
+    "description": "Patterns commonly used across domains in this group",
+    "responseFlowSummary": "Controller → Aggregator(DTO↔VO, orchestration) → Service → DAO. Response wrapping done by: Controller | Aggregator",
+    "patterns": []
+  }
+}

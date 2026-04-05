@@ -1,0 +1,87 @@
+{
+  "name": "claudeos-core",
+  "version": "1.5.0",
+  "description": "Auto-generate Claude Code documentation from your actual source code — Standards, Rules, Skills, and Guides tailored to your project",
+  "main": "bin/cli.js",
+  "bin": {
+    "claudeos-core": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "content-validator/",
+    "health-checker/",
+    "manifest-generator/",
+    "pass-json-validator/",
+    "pass-prompts/",
+    "plan-installer/",
+    "plan-validator/",
+    "sync-checker/",
+    "bootstrap.sh",
+    "README.md",
+    "README.ko.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "README.zh-CN.md",
+    "README.ja.md",
+    "README.es.md",
+    "README.vi.md",
+    "README.hi.md",
+    "README.ru.md",
+    "README.fr.md",
+    "README.de.md"
+  ],
+  "scripts": {
+    "init": "node bin/cli.js init",
+    "health": "node bin/cli.js health",
+    "validate": "node bin/cli.js validate",
+    "refresh": "node bin/cli.js refresh",
+    "restore": "node bin/cli.js restore",
+    "test": "node --test tests/*.test.js",
+    "test:health": "node health-checker/index.js"
+  },
+  "keywords": [
+    "claude-code",
+    "automation",
+    "code-analysis",
+    "CLAUDE.md",
+    "standards",
+    "rules",
+    "skills",
+    "scaffolding",
+    "i18n",
+    "multi-language",
+    "spring-boot",
+    "kotlin",
+    "exposed",
+    "jooq",
+    "cqrs",
+    "bff",
+    "multi-module",
+    "monorepo",
+    "nextjs",
+    "express",
+    "fastify",
+    "angular",
+    "django",
+    "fastapi"
+  ],
+  "author": "claudeos-core <claudeoscore@gmail.com> (https://github.com/claudeos-core)",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/claudeos-core/claudeos-core.git"
+  },
+  "homepage": "https://github.com/claudeos-core/claudeos-core#readme",
+  "bugs": {
+    "url": "https://github.com/claudeos-core/claudeos-core/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "glob": "^13.0.6",
+    "gray-matter": "^4.0.3"
+  }
+}

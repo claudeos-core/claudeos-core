@@ -151,7 +151,7 @@ async function main() {
 
 // Export for testing; run main() only when executed directly
 if (require.main === module) {
-  main().catch(console.error);
+  main().catch(e => { console.error(`\n  ❌ Unexpected error: ${e.message || e}`); process.exit(1); });
 }
 
 module.exports = { extractFileBlocks, extractCodeBlocks, replaceFileBlock, replaceCodeBlock };

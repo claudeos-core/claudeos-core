@@ -65,14 +65,16 @@ Sự khác biệt này tích lũy. 10 task/ngày × 20 phút tiết kiệm = **h
 |---|---|---|
 | **Java / Spring Boot** | `build.gradle`, `pom.xml`, 5 package patterns | 10 danh mục, 59 mục con |
 | **Kotlin / Spring Boot** | `build.gradle.kts`, kotlin plugin, `settings.gradle.kts`, CQRS/BFF auto-detect | 12 danh mục, 95 mục con |
-| **Node.js / Express / NestJS** | `package.json` | 9 danh mục, 57 mục con |
-| **Next.js / React / Vue** | `package.json`, `next.config.*`, hỗ trợ FSD | 9 danh mục, 55 mục con |
+| **Node.js / Express** | `package.json` | 9 danh mục, 57 mục con |
+| **Node.js / NestJS** | `package.json` (`@nestjs/core`) | 10 danh mục, 68 mục con |
+| **Next.js / React** | `package.json`, `next.config.*`, hỗ trợ FSD | 9 danh mục, 55 mục con |
+| **Vue / Nuxt** | `package.json`, `nuxt.config.*`, Composition API | 9 danh mục, 58 mục con |
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 danh mục, 55 mục con |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 danh mục, 58 mục con |
 | **Node.js / Fastify** | `package.json` | 10 danh mục, 62 mục con |
 | **Angular** | `package.json`, `angular.json` | 12 danh mục, 78 mục con |
 
-Tự động phát hiện: ngôn ngữ & phiên bản, framework & phiên bản, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, v.v.), database (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), package manager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), kiến trúc (CQRS, BFF — phát hiện từ tên module), cấu trúc multi-module (từ settings.gradle).
+Tự động phát hiện: ngôn ngữ & phiên bản, framework & phiên bản, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, v.v.), database (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), package manager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), kiến trúc (CQRS, BFF — phát hiện từ tên module), cấu trúc multi-module (từ settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **Bạn không cần chỉ định gì cả. Tất cả được phát hiện tự động.**
 
@@ -87,7 +89,7 @@ Tự động phát hiện: ngôn ngữ & phiên bản, framework & phiên bản,
 | E | DDD/Hexagonal | `{domain}/adapter/in/web/` | `user/adapter/in/web/UserController.java` |
 | C | Phẳng | `controller/*.java` | `controller/UserController.java` → trích `user` từ tên class |
 
-Các domain chỉ có service (không có controller) cũng được phát hiện qua thư mục `service/`, `dao/`, `aggregator/`, `mapper/`, `repository/`. Bỏ qua: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2`, v.v.
+Các domain chỉ có service (không có controller) cũng được phát hiện qua thư mục `service/`, `dao/`, `aggregator/`, `facade/`, `usecase/`, `orchestrator/`, `mapper/`, `repository/`. Bỏ qua: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2`, v.v.
 
 
 ### Phát Hiện Domain Kotlin Multi-Module
@@ -178,7 +180,7 @@ npx claudeos-core init --lang ko    # 한국어
 
 > **Lưu ý:** Chỉ thay đổi ngôn ngữ của file tài liệu được tạo. Phân tích mã (Pass 1–2) luôn chạy bằng tiếng Anh; chỉ kết quả tạo (Pass 3) được viết bằng ngôn ngữ đã chọn.
 
-Chỉ vậy thôi. Sau 5–18 phút, tất cả tài liệu được tạo và sẵn sàng sử dụng.
+Chỉ vậy thôi. Sau 5–18 phút, tất cả tài liệu được tạo và sẵn sàng sử dụng. CLI hiển thị thời gian mỗi Pass và tổng thời gian trong banner hoàn thành.
 
 ### Cài Đặt Thủ Công Từng Bước
 
@@ -530,6 +532,15 @@ Hỗ trợ hoàn toàn. ClaudeOS-Core tự phát hiện cả hai stack, gắn ta
 **H: Chạy lại thì sao?**
 Nếu kết quả Pass 1/2 trước đó tồn tại, prompt tương tác cho phép bạn chọn: **Continue** (tiếp tục từ nơi dừng lại) hoặc **Fresh** (xóa tất cả và bắt đầu lại). Dùng `--force` để bỏ qua prompt và luôn bắt đầu lại từ đầu. Pass 3 luôn chạy lại. Phiên bản trước có thể khôi phục từ Master Plans.
 
+**H: Có hoạt động với Turborepo / pnpm workspaces / Lerna monorepo không?**
+Có. ClaudeOS-Core phát hiện `turbo.json`, `pnpm-workspace.yaml`, `lerna.json`, hoặc `package.json#workspaces` và tự động quét file `package.json` của sub-package để tìm dependency framework/ORM/DB. Quét domain bao gồm pattern `apps/*/src/` và `packages/*/src/`. Chạy từ thư mục gốc monorepo.
+
+**H: NestJS có template riêng hay dùng chung với Express?**
+NestJS sử dụng template `node-nestjs` chuyên dụng với các danh mục phân tích riêng cho NestJS: decorator `@Module`, `@Injectable`, `@Controller`, Guards, Pipes, Interceptors, DI container, pattern CQRS, và `Test.createTestingModule`. Dự án Express sử dụng template `node-express` riêng biệt.
+
+**H: Dự án Vue / Nuxt thì sao?**
+Vue/Nuxt sử dụng template `vue-nuxt` chuyên dụng bao gồm Composition API, `<script setup>`, defineProps/defineEmits, Pinia stores, `useFetch`/`useAsyncData`, Nitro server routes, và `@nuxt/test-utils`. Dự án Next.js/React sử dụng template `node-nextjs`.
+
 **H: Có hỗ trợ Kotlin không?**
 Có. ClaudeOS-Core tự động phát hiện Kotlin từ `build.gradle.kts` hoặc kotlin plugin trong `build.gradle`. Sử dụng template chuyên dụng `kotlin-spring` để phân tích các pattern đặc thù của Kotlin (data class, sealed class, coroutine, extension function, MockK, v.v.).
 
@@ -548,49 +559,65 @@ pass-prompts/templates/
 ├── common/                  # Header/footer chung
 ├── java-spring/             # Java / Spring Boot
 ├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
-├── node-express/            # Node.js / Express / NestJS
-├── node-nextjs/             # Next.js / React / Vue
-├── python-django/           # Python / Django (DRF)
+├── node-express/            # Node.js / Express
+├── node-nestjs/             # Node.js / NestJS (Module, DI, Guard, Pipe, Interceptor)
 ├── node-fastify/            # Node.js / Fastify
+├── node-nextjs/             # Next.js / React
+├── vue-nuxt/                # Vue / Nuxt (Composition API, Pinia, Nitro)
 ├── angular/                 # Angular
+├── python-django/           # Python / Django (DRF)
 └── python-fastapi/          # Python / FastAPI
 ```
 
-`plan-installer` tự phát hiện stack của bạn, sau đó lắp ráp prompt theo loại. Với dự án multi-stack, `pass1-backend-prompt.md` và `pass1-frontend-prompt.md` được tạo riêng, trong khi `pass3-prompt.md` kết hợp mục tiêu tạo file của cả hai stack.
+`plan-installer` tự phát hiện stack của bạn, sau đó lắp ráp prompt theo loại. NestJS và Vue/Nuxt sử dụng template chuyên dụng với các danh mục phân tích riêng cho từng framework (ví dụ: `@Module`/`@Injectable`/Guards cho NestJS, `<script setup>`/Pinia/useFetch cho Vue). Với dự án multi-stack, `pass1-backend-prompt.md` và `pass1-frontend-prompt.md` được tạo riêng, trong khi `pass3-prompt.md` kết hợp mục tiêu tạo file của cả hai stack.
 
 ---
 
 ## Hỗ Trợ Monorepo
 
-ClaudeOS-Core đọc `package.json` trong **thư mục hiện tại**. Trong các thiết lập monorepo (Turborepo, Nx, Lerna, pnpm workspaces), `package.json` gốc thường không chứa các dependency framework như `next`, `express`, `react` — chúng nằm trong các thư mục app riêng lẻ.
+ClaudeOS-Core tự động phát hiện thiết lập monorepo JS/TS và quét các sub-package để tìm dependency.
 
-**Chạy ClaudeOS-Core từ thư mục app, không phải gốc monorepo:**
+**Monorepo marker được hỗ trợ** (tự động phát hiện):
+- `turbo.json` (Turborepo)
+- `pnpm-workspace.yaml` (pnpm workspaces)
+- `lerna.json` (Lerna)
+- `package.json#workspaces` (npm/yarn workspaces)
+
+**Chạy từ thư mục gốc monorepo** — ClaudeOS-Core đọc `apps/*/package.json` và `packages/*/package.json` để tìm dependency framework/ORM/DB trong các sub-package:
 
 ```bash
-# Ví dụ: Turborepo với apps/my-app
-cd apps/my-app
-npx claudeos-core init
-
-# Ví dụ: Nx workspace
-cd apps/frontend
+cd my-monorepo
 npx claudeos-core init
 ```
 
-Mỗi app nhận được bộ Standards, Rules, Skills và Guides độc lập, được tùy chỉnh cho stack và pattern của app cụ thể đó.
+**Những gì được phát hiện:**
+- Dependency từ `apps/web/package.json` (ví dụ: `next`, `react`) → frontend stack
+- Dependency từ `apps/api/package.json` (ví dụ: `express`, `prisma`) → backend stack
+- Dependency từ `packages/db/package.json` (ví dụ: `drizzle-orm`) → ORM/DB
+- Đường dẫn workspace tùy chỉnh từ `pnpm-workspace.yaml` (ví dụ: `services/*`)
 
-**Cấu trúc monorepo điển hình:**
+**Quét domain cũng bao gồm cấu trúc monorepo:**
+- `apps/api/src/modules/*/` và `apps/api/src/*/` cho domain backend
+- `apps/web/app/*/`, `apps/web/src/app/*/`, `apps/web/pages/*/` cho domain frontend
+- `packages/*/src/*/` cho domain package chia sẻ
 
 ```
-my-monorepo/                    ← Đừng chạy ở đây (gốc không có framework deps)
+my-monorepo/                    ← Chạy ở đây: npx claudeos-core init
+├── turbo.json                  ← Tự động phát hiện là Turborepo
 ├── apps/
-│   ├── web/                    ← Chạy ở đây: cd apps/web && npx claudeos-core init
-│   ├── api/                    ← Chạy ở đây: cd apps/api && npx claudeos-core init
-│   └── storybook/
+│   ├── web/                    ← Next.js phát hiện từ apps/web/package.json
+│   │   ├── app/dashboard/      ← Domain frontend được phát hiện
+│   │   └── package.json        ← { "dependencies": { "next": "^14" } }
+│   └── api/                    ← Express phát hiện từ apps/api/package.json
+│       ├── src/modules/users/  ← Domain backend được phát hiện
+│       └── package.json        ← { "dependencies": { "express": "^4" } }
 ├── packages/
-│   ├── ui/
-│   └── utils/
-└── package.json                ← Chỉ có devDependencies (turbo, eslint, v.v.)
+│   ├── db/                     ← Drizzle phát hiện từ packages/db/package.json
+│   └── ui/
+└── package.json                ← { "workspaces": ["apps/*", "packages/*"] }
 ```
+
+> **Lưu ý:** Với monorepo Kotlin/Java, phát hiện multi-module sử dụng `settings.gradle.kts` (xem [Phát Hiện Domain Kotlin Multi-Module](#phát-hiện-domain-kotlin-multi-module) ở trên) và không yêu cầu JS monorepo marker.
 
 ## Xử Lý Sự Cố
 
@@ -614,7 +641,7 @@ Chào đón mọi đóng góp! Các lĩnh vực cần hỗ trợ nhất:
 
 - **Template stack mới** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Hỗ trợ monorepo sâu** — Root sub-project riêng, phát hiện workspace
-- **Độ phủ test** — Mở rộng bộ test (hiện tại 87 test bao gồm phát hiện stack, nhóm domain, xác thực plan, quét cấu trúc và công cụ xác thực)
+- **Độ phủ test** — Mở rộng bộ test (hiện tại 256 test bao gồm tất cả scanner, phát hiện stack, nhóm domain, phân tích plan, tạo prompt, bộ chọn CLI, phát hiện monorepo và công cụ xác thực)
 
 ---
 

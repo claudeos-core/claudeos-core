@@ -112,8 +112,7 @@ function selectResumeMode(lang, status) {
         const num = parseInt(answer.trim());
         if (num === 1) { resolve("continue"); return; }
         if (num === 2) { resolve("fresh"); return; }
-        log("\n  Cancelled.\n");
-        process.exit(0);
+        resolve(null);
       });
       return;
     }
@@ -164,8 +163,7 @@ function selectResumeMode(lang, status) {
         const num = parseInt(answer.trim());
         if (num === 1) { resolve("continue"); return; }
         if (num === 2) { resolve("fresh"); return; }
-        log("\n  Cancelled.\n");
-        process.exit(0);
+        resolve(null);
       });
       return;
     }
@@ -183,15 +181,19 @@ function selectResumeMode(lang, status) {
       // Ctrl+C
       if (k === "\x03") {
         process.stdin.setRawMode(false);
-        log("\n  Cancelled.\n");
-        process.exit(0);
+        process.stdin.pause();
+        process.stdin.removeAllListeners("data");
+        resolve(null);
+        return;
       }
 
       // ESC
       if (k === "\x1b" && key.length === 1) {
         process.stdin.setRawMode(false);
-        log("\n  Cancelled.\n");
-        process.exit(0);
+        process.stdin.pause();
+        process.stdin.removeAllListeners("data");
+        resolve(null);
+        return;
       }
 
       // Up arrow

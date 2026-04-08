@@ -65,14 +65,16 @@ ClaudeOS-Core ऐसा डॉक्यूमेंटेशन बनाता 
 |---|---|---|
 | **Java / Spring Boot** | `build.gradle`, `pom.xml`, 5 पैकेज पैटर्न | 10 कैटेगरी, 59 सब-आइटम |
 | **Kotlin / Spring Boot** | `build.gradle.kts`, kotlin plugin, `settings.gradle.kts`, CQRS/BFF auto-detect | 12 कैटेगरी, 95 सब-आइटम |
-| **Node.js / Express / NestJS** | `package.json` | 9 कैटेगरी, 57 सब-आइटम |
-| **Next.js / React / Vue** | `package.json`, `next.config.*`, FSD सपोर्ट | 9 कैटेगरी, 55 सब-आइटम |
+| **Node.js / Express** | `package.json` | 9 कैटेगरी, 57 सब-आइटम |
+| **Node.js / NestJS** | `package.json` (`@nestjs/core`) | 10 श्रेणियाँ, 68 उप-आइटम |
+| **Next.js / React** | `package.json`, `next.config.*`, FSD सपोर्ट | 9 कैटेगरी, 55 सब-आइटम |
+| **Vue / Nuxt** | `package.json`, `nuxt.config.*`, Composition API | 9 श्रेणियाँ, 58 उप-आइटम |
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 कैटेगरी, 55 सब-आइटम |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 कैटेगरी, 58 सब-आइटम |
 | **Node.js / Fastify** | `package.json` | 10 कैटेगरी, 62 सब-आइटम |
 | **Angular** | `package.json`, `angular.json` | 12 कैटेगरी, 78 सब-आइटम |
 
-ऑटो-डिटेक्ट: भाषा और वर्शन, फ्रेमवर्क और वर्शन, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, आदि), डेटाबेस (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), पैकेज मैनेजर (Gradle, Maven, npm, yarn, pnpm, pip, poetry), आर्किटेक्चर (CQRS, BFF — मॉड्यूल नामों से पता लगाया), मल्टी-मॉड्यूल संरचना (settings.gradle से पता लगाया)।
+ऑटो-डिटेक्ट: भाषा और वर्शन, फ्रेमवर्क और वर्शन, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, आदि), डेटाबेस (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), पैकेज मैनेजर (Gradle, Maven, npm, yarn, pnpm, pip, poetry), आर्किटेक्चर (CQRS, BFF — मॉड्यूल नामों से पता लगाया), मल्टी-मॉड्यूल संरचना (settings.gradle से पता लगाया), मोनोरेपो (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces)।
 
 **आपको कुछ भी स्पेसिफाई करने की ज़रूरत नहीं। सब कुछ ऑटोमैटिकली डिटेक्ट होता है।**
 
@@ -87,7 +89,7 @@ ClaudeOS-Core ऐसा डॉक्यूमेंटेशन बनाता 
 | E | DDD/हेक्सागोनल | `{domain}/adapter/in/web/` | `user/adapter/in/web/UserController.java` |
 | C | फ्लैट | `controller/*.java` | `controller/UserController.java` → क्लास नाम से `user` एक्सट्रैक्ट |
 
-बिना Controller वाले सर्विस-ओनली डोमेन भी `service/`, `dao/`, `aggregator/`, `mapper/`, `repository/` डायरेक्टरी के ज़रिए डिटेक्ट होते हैं। स्किप: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2` आदि।
+बिना Controller वाले सर्विस-ओनली डोमेन भी `service/`, `dao/`, `aggregator/`, `facade/`, `usecase/`, `orchestrator/`, `mapper/`, `repository/` डायरेक्टरी के ज़रिए डिटेक्ट होते हैं। स्किप: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2` आदि।
 
 
 ### Kotlin मल्टी-मॉड्यूल डोमेन डिटेक्शन
@@ -178,7 +180,7 @@ npx claudeos-core init --lang ko    # 한국어
 
 > **नोट:** यह केवल जनरेट होने वाली डॉक्यूमेंट फ़ाइलों की भाषा बदलता है। कोड एनालिसिस (Pass 1–2) हमेशा अंग्रेज़ी में चलता है; केवल जनरेट रिज़ल्ट (Pass 3) चुनी गई भाषा में लिखा जाता है।
 
-बस इतना ही। 5–18 मिनट बाद, सारा डॉक्यूमेंटेशन जेनरेट होकर उपयोग के लिए तैयार है।
+बस इतना ही। 5–18 मिनट बाद, सारा डॉक्यूमेंटेशन जेनरेट होकर उपयोग के लिए तैयार है। CLI प्रत्येक Pass का बीता समय और कुल समय पूर्ण बैनर में दिखाता है।
 
 ### मैन्युअल स्टेप-बाय-स्टेप इंस्टॉलेशन
 
@@ -527,6 +529,15 @@ Use both together.
 **प्र: मिक्स्ड-स्टैक प्रोजेक्ट्स (जैसे: Java बैकएंड + React फ्रंटएंड) का क्या?**
 पूर्ण सपोर्ट। ClaudeOS-Core दोनों स्टैक्स ऑटो-डिटेक्ट करता है, डोमेन को `backend` या `frontend` टैग करता है, और प्रत्येक के लिए स्टैक-स्पेसिफिक विश्लेषण प्रॉम्प्ट्स उपयोग करता है। Pass 2 सब कुछ मर्ज करता है, और Pass 3 एक pass में बैकएंड और फ्रंटएंड दोनों स्टैंडर्ड्स जेनरेट करता है।
 
+**प्र: क्या यह Turborepo / pnpm workspaces / Lerna monorepo के साथ काम करता है?**
+हाँ। ClaudeOS-Core `turbo.json`, `pnpm-workspace.yaml`, `lerna.json`, या `package.json#workspaces` को डिटेक्ट करता है और फ्रेमवर्क/ORM/DB डिपेंडेंसी के लिए सब-पैकेज `package.json` फाइलें ऑटोमैटिकली स्कैन करता है। डोमेन स्कैनिंग `apps/*/src/` और `packages/*/src/` पैटर्न को कवर करती है। मोनोरेपो रूट से रन करें।
+
+**प्र: NestJS को अपना टेम्पलेट मिलता है या Express वाला उपयोग होता है?**
+NestJS एक समर्पित `node-nestjs` टेम्पलेट उपयोग करता है जिसमें NestJS-विशिष्ट विश्लेषण श्रेणियाँ हैं: `@Module`, `@Injectable`, `@Controller` डेकोरेटर, Guards, Pipes, Interceptors, DI container, CQRS पैटर्न, और `Test.createTestingModule`। Express प्रोजेक्ट अलग `node-express` टेम्पलेट उपयोग करते हैं।
+
+**प्र: Vue / Nuxt प्रोजेक्ट्स के बारे में क्या?**
+Vue/Nuxt एक समर्पित `vue-nuxt` टेम्पलेट उपयोग करता है जो Composition API, `<script setup>`, defineProps/defineEmits, Pinia stores, `useFetch`/`useAsyncData`, Nitro server routes, और `@nuxt/test-utils` को कवर करता है। Next.js/React प्रोजेक्ट `node-nextjs` टेम्पलेट उपयोग करते हैं।
+
 **प्र: दोबारा रन करने पर क्या होता है?**
 यदि पिछले Pass 1/2 के रिज़ल्ट मौजूद हैं, तो इंटरैक्टिव प्रॉम्प्ट आपको चुनने देता है: **Continue** (जहाँ रुका था वहाँ से जारी रखें) या **Fresh** (सब डिलीट करके नए सिरे से शुरू करें)। `--force` का उपयोग करें ताकि प्रॉम्प्ट स्किप हो और हमेशा नए सिरे से शुरू हो। Pass 3 हमेशा दोबारा रन होता है। पिछले वर्शन Master Plans से रीस्टोर किए जा सकते हैं।
 
@@ -548,49 +559,65 @@ pass-prompts/templates/
 ├── common/                  # शेयर्ड हेडर/फुटर
 ├── java-spring/             # Java / Spring Boot
 ├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
-├── node-express/            # Node.js / Express / NestJS
-├── node-nextjs/             # Next.js / React / Vue
-├── python-django/           # Python / Django (DRF)
+├── node-express/            # Node.js / Express
+├── node-nestjs/             # Node.js / NestJS (Module, DI, Guard, Pipe, Interceptor)
 ├── node-fastify/            # Node.js / Fastify
+├── node-nextjs/             # Next.js / React
+├── vue-nuxt/                # Vue / Nuxt (Composition API, Pinia, Nitro)
 ├── angular/                 # Angular
+├── python-django/           # Python / Django (DRF)
 └── python-fastapi/          # Python / FastAPI
 ```
 
-`plan-installer` ऑटोमैटिकली आपके स्टैक(स) डिटेक्ट करता है, फिर टाइप-स्पेसिफिक प्रॉम्प्ट्स असेंबल करता है। मल्टी-स्टैक प्रोजेक्ट्स के लिए, `pass1-backend-prompt.md` और `pass1-frontend-prompt.md` अलग-अलग जेनरेट होते हैं, जबकि `pass3-prompt.md` दोनों स्टैक्स के जेनरेशन टारगेट्स को कंबाइन करता है।
+`plan-installer` ऑटोमैटिकली आपके स्टैक(स) डिटेक्ट करता है, फिर टाइप-स्पेसिफिक प्रॉम्प्ट्स असेंबल करता है। NestJS और Vue/Nuxt फ्रेमवर्क-विशिष्ट विश्लेषण श्रेणियों के साथ समर्पित टेम्पलेट का उपयोग करते हैं। मल्टी-स्टैक प्रोजेक्ट्स के लिए, `pass1-backend-prompt.md` और `pass1-frontend-prompt.md` अलग-अलग जेनरेट होते हैं, जबकि `pass3-prompt.md` दोनों स्टैक्स के जेनरेशन टारगेट्स को कंबाइन करता है।
 
 ---
 
 ## Monorepo सपोर्ट
 
-ClaudeOS-Core **करंट डायरेक्टरी** का `package.json` पढ़ता है। Monorepo (Turborepo, Nx, Lerna, pnpm workspaces) सेटअप में, रूट `package.json` में आमतौर पर `next`, `express`, `react` जैसी फ्रेमवर्क डिपेंडेंसीज नहीं होतीं — वे अलग-अलग ऐप डायरेक्टरी में होती हैं।
+ClaudeOS-Core JS/TS मोनोरेपो सेटअप को ऑटोमैटिकली डिटेक्ट करता है और सब-पैकेज की डिपेंडेंसी स्कैन करता है।
 
-**Monorepo रूट से नहीं, ऐप डायरेक्टरी से ClaudeOS-Core रन करें:**
+**सपोर्टेड मोनोरेपो मार्कर** (ऑटो-डिटेक्टेड):
+- `turbo.json` (Turborepo)
+- `pnpm-workspace.yaml` (pnpm workspaces)
+- `lerna.json` (Lerna)
+- `package.json#workspaces` (npm/yarn workspaces)
+
+**मोनोरेपो रूट से रन करें** — ClaudeOS-Core सब-पैकेज में फ्रेमवर्क/ORM/DB डिपेंडेंसी खोजने के लिए `apps/*/package.json` और `packages/*/package.json` पढ़ता है:
 
 ```bash
-# उदाहरण: Turborepo का apps/my-app
-cd apps/my-app
-npx claudeos-core init
-
-# उदाहरण: Nx वर्कस्पेस
-cd apps/frontend
+cd my-monorepo
 npx claudeos-core init
 ```
 
-हर ऐप को उस ऐप के स्टैक और पैटर्न के अनुसार स्वतंत्र Standards, Rules, Skills और Guides मिलते हैं।
+**क्या डिटेक्ट होता है:**
+- `apps/web/package.json` से डिपेंडेंसी (जैसे `next`, `react`) → frontend stack
+- `apps/api/package.json` से डिपेंडेंसी (जैसे `express`, `prisma`) → backend stack
+- `packages/db/package.json` से डिपेंडेंसी (जैसे `drizzle-orm`) → ORM/DB
+- `pnpm-workspace.yaml` से कस्टम workspace paths (जैसे `services/*`)
 
-**सामान्य Monorepo स्ट्रक्चर:**
+**डोमेन स्कैनिंग मोनोरेपो लेआउट भी कवर करती है:**
+- बैकएंड डोमेन के लिए `apps/api/src/modules/*/` और `apps/api/src/*/`
+- फ्रंटएंड डोमेन के लिए `apps/web/app/*/`, `apps/web/src/app/*/`, `apps/web/pages/*/`
+- शेयर्ड पैकेज डोमेन के लिए `packages/*/src/*/`
 
 ```
-my-monorepo/                    ← यहाँ रन न करें (रूट में फ्रेमवर्क deps नहीं)
+my-monorepo/                    ← यहाँ रन करें: npx claudeos-core init
+├── turbo.json                  ← Turborepo ऑटो-डिटेक्ट
 ├── apps/
-│   ├── web/                    ← यहाँ रन करें: cd apps/web && npx claudeos-core init
-│   ├── api/                    ← यहाँ रन करें: cd apps/api && npx claudeos-core init
-│   └── storybook/
+│   ├── web/                    ← apps/web/package.json से Next.js डिटेक्ट
+│   │   ├── app/dashboard/      ← Frontend domain detected
+│   │   └── package.json        ← { "dependencies": { "next": "^14" } }
+│   └── api/                    ← apps/api/package.json से Express डिटेक्ट
+│       ├── src/modules/users/  ← Backend domain detected
+│       └── package.json        ← { "dependencies": { "express": "^4" } }
 ├── packages/
-│   ├── ui/
-│   └── utils/
-└── package.json                ← केवल devDependencies (turbo, eslint, आदि)
+│   ├── db/                     ← packages/db/package.json से Drizzle डिटेक्ट
+│   └── ui/
+└── package.json                ← { "workspaces": ["apps/*", "packages/*"] }
 ```
+
+> **नोट:** Kotlin/Java मोनोरेपो के लिए, मल्टी-मॉड्यूल डिटेक्शन `settings.gradle.kts` का उपयोग करती है (ऊपर [Kotlin मल्टी-मॉड्यूल डोमेन डिटेक्शन](#kotlin-मल्टी-मॉड्यूल-डोमेन-डिटेक्शन) देखें) और JS मोनोरेपो मार्कर की आवश्यकता नहीं है।
 
 ## ट्रबलशूटिंग
 
@@ -614,7 +641,7 @@ my-monorepo/                    ← यहाँ रन न करें (रू
 
 - **नए स्टैक टेम्पलेट्स** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Monorepo डीप सपोर्ट** — अलग सब-प्रोजेक्ट roots, वर्कस्पेस डिटेक्शन
-- **टेस्ट कवरेज** — टेस्ट सूट का विस्तार जारी (वर्तमान में 87 टेस्ट, स्टैक डिटेक्शन, डोमेन ग्रुपिंग, प्लान वैलिडेशन, स्ट्रक्चर स्कैनिंग और वेरिफिकेशन टूल्स कवर)
+- **टेस्ट कवरेज** — टेस्ट सूट का विस्तार जारी (वर्तमान में 256 टेस्ट, सभी स्कैनर, स्टैक डिटेक्शन, डोमेन ग्रुपिंग, प्लान पार्सिंग, प्रॉम्प्ट जेनरेशन, CLI सेलेक्टर, मोनोरेपो डिटेक्शन और वेरिफिकेशन टूल्स कवर)
 
 ---
 

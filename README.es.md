@@ -65,14 +65,16 @@ Esta diferencia se acumula. 10 tareas/día × 20 minutos ahorrados = **más de 3
 |---|---|---|
 | **Java / Spring Boot** | `build.gradle`, `pom.xml`, 5 patrones de paquete | 10 categorías, 59 sub-ítems |
 | **Kotlin / Spring Boot** | `build.gradle.kts`, kotlin plugin, `settings.gradle.kts`, CQRS/BFF auto-detect | 12 categorías, 95 sub-ítems |
-| **Node.js / Express / NestJS** | `package.json` | 9 categorías, 57 sub-ítems |
-| **Next.js / React / Vue** | `package.json`, `next.config.*`, soporte FSD | 9 categorías, 55 sub-ítems |
+| **Node.js / Express** | `package.json` | 9 categorías, 57 sub-ítems |
+| **Node.js / NestJS** | `package.json` (`@nestjs/core`) | 10 categorías, 68 sub-ítems |
+| **Next.js / React** | `package.json`, `next.config.*`, soporte FSD | 9 categorías, 55 sub-ítems |
+| **Vue / Nuxt** | `package.json`, `nuxt.config.*`, Composition API | 9 categorías, 58 sub-ítems |
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 categorías, 55 sub-ítems |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 categorías, 58 sub-ítems |
 | **Node.js / Fastify** | `package.json` | 10 categorías, 62 sub-ítems |
 | **Angular** | `package.json`, `angular.json` | 12 categorías, 78 sub-ítems |
 
-Detección automática: lenguaje y versión, framework y versión, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), base de datos (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), gestor de paquetes (Gradle, Maven, npm, yarn, pnpm, pip, poetry), arquitectura (CQRS, BFF — detectado de nombres de módulos), estructura multi-módulo (desde settings.gradle).
+Detección automática: lenguaje y versión, framework y versión, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), base de datos (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), gestor de paquetes (Gradle, Maven, npm, yarn, pnpm, pip, poetry), arquitectura (CQRS, BFF — detectado de nombres de módulos), estructura multi-módulo (desde settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **No necesitas especificar nada. Todo se detecta automáticamente.**
 
@@ -87,7 +89,7 @@ Detección automática: lenguaje y versión, framework y versión, ORM (MyBatis,
 | E | DDD/Hexagonal | `{domain}/adapter/in/web/` | `user/adapter/in/web/UserController.java` |
 | C | Plano | `controller/*.java` | `controller/UserController.java` → extrae `user` del nombre de clase |
 
-Los dominios solo con servicios (sin controladores) también se detectan mediante directorios `service/`, `dao/`, `aggregator/`, `mapper/`, `repository/`. Se omiten: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2`, etc.
+Los dominios solo con servicios (sin controladores) también se detectan mediante directorios `service/`, `dao/`, `aggregator/`, `facade/`, `usecase/`, `orchestrator/`, `mapper/`, `repository/`. Se omiten: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2`, etc.
 
 
 ### Detección de Dominios Kotlin Multi-Módulo
@@ -179,6 +181,7 @@ npx claudeos-core init --lang ko    # 한국어
 > **Nota:** Solo cambia el idioma de los archivos de documentación generados. El análisis de código (Pass 1–2) siempre se ejecuta en inglés; solo la salida generada (Pass 3) se escribe en el idioma elegido.
 
 Eso es todo. Después de 5–18 minutos, toda la documentación estará generada y lista para usar.
+El CLI muestra el tiempo transcurrido por cada Pass y el tiempo total en el banner de finalización.
 
 ### Instalación Manual Paso a Paso
 
@@ -527,8 +530,17 @@ Sí, recomendado. Tu equipo puede compartir los mismos estándares de Claude Cod
 **P: ¿Qué pasa con proyectos de stack mixto (ej: backend Java + frontend React)?**
 Totalmente soportado. ClaudeOS-Core auto-detecta ambos stacks, etiqueta dominios como `backend` o `frontend`, y usa prompts de análisis específicos para cada uno. Pass 2 fusiona todo, y Pass 3 genera los estándares de backend y frontend en una sola pasada.
 
+**P: ¿Funciona con Turborepo / pnpm workspaces / monorepos Lerna?**
+Sí. ClaudeOS-Core detecta `turbo.json`, `pnpm-workspace.yaml`, `lerna.json` o `package.json#workspaces` y escanea automáticamente los `package.json` de sub-paquetes en busca de dependencias de framework/ORM/BD. El escaneo de dominios cubre patrones `apps/*/src/` y `packages/*/src/`. Ejecuta desde la raíz del monorepo.
+
 **P: ¿Qué pasa al re-ejecutar?**
 Si existen resultados previos de Pass 1/2, un prompt interactivo te permite elegir: **Continue** (reanudar desde donde se detuvo) o **Fresh** (eliminar todo y empezar de nuevo). Usa `--force` para omitir el prompt y siempre empezar de nuevo. Pass 3 siempre se re-ejecuta. Las versiones anteriores pueden restaurarse desde los Master Plans.
+
+**P: ¿NestJS tiene su propia plantilla o usa la de Express?**
+NestJS usa una plantilla dedicada `node-nestjs` con categorías de análisis específicas de NestJS: decoradores `@Module`, `@Injectable`, `@Controller`, Guards, Pipes, Interceptors, contenedor DI, patrones CQRS y `Test.createTestingModule`. Los proyectos Express usan la plantilla separada `node-express`.
+
+**P: ¿Qué hay de los proyectos Vue / Nuxt?**
+Vue/Nuxt usa una plantilla dedicada `vue-nuxt` que cubre Composition API, `<script setup>`, defineProps/defineEmits, stores Pinia, `useFetch`/`useAsyncData`, rutas de servidor Nitro y `@nuxt/test-utils`. Los proyectos Next.js/React usan la plantilla `node-nextjs`.
 
 **P: ¿Soporta Kotlin?**
 Sí. ClaudeOS-Core detecta automáticamente Kotlin desde `build.gradle.kts` o el plugin kotlin en `build.gradle`. Utiliza una plantilla dedicada `kotlin-spring` con análisis específico de Kotlin (data classes, sealed classes, coroutines, extension functions, MockK, etc.).
@@ -548,49 +560,65 @@ pass-prompts/templates/
 ├── common/                  # Encabezado/pie compartido
 ├── java-spring/             # Java / Spring Boot
 ├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
-├── node-express/            # Node.js / Express / NestJS
-├── node-nextjs/             # Next.js / React / Vue
-├── python-django/           # Python / Django (DRF)
+├── node-express/            # Node.js / Express
+├── node-nestjs/             # Node.js / NestJS (Module, DI, Guard, Pipe, Interceptor)
 ├── node-fastify/            # Node.js / Fastify
+├── node-nextjs/             # Next.js / React
+├── vue-nuxt/                # Vue / Nuxt (Composition API, Pinia, Nitro)
 ├── angular/                 # Angular
+├── python-django/           # Python / Django (DRF)
 └── python-fastapi/          # Python / FastAPI
 ```
 
-`plan-installer` auto-detecta tu(s) stack(s) y ensambla prompts específicos por tipo. Para proyectos multi-stack, se generan `pass1-backend-prompt.md` y `pass1-frontend-prompt.md` por separado, mientras que `pass3-prompt.md` combina los objetivos de generación de ambos stacks.
+`plan-installer` auto-detecta tu(s) stack(s) y ensambla prompts específicos por tipo. NestJS y Vue/Nuxt usan plantillas dedicadas con categorías de análisis específicas del framework (ej: `@Module`/`@Injectable`/Guards para NestJS, `<script setup>`/Pinia/useFetch para Vue). Para proyectos multi-stack, se generan `pass1-backend-prompt.md` y `pass1-frontend-prompt.md` por separado, mientras que `pass3-prompt.md` combina los objetivos de generación de ambos stacks.
 
 ---
 
 ## Soporte Monorepo
 
-ClaudeOS-Core lee el `package.json` del **directorio actual**. En configuraciones monorepo (Turborepo, Nx, Lerna, pnpm workspaces), el `package.json` raíz generalmente no contiene dependencias de framework como `next`, `express` o `react` — están en los directorios individuales de cada app.
+ClaudeOS-Core detecta automáticamente configuraciones de monorepo JS/TS y escanea sub-paquetes en busca de dependencias.
 
-**Ejecuta ClaudeOS-Core desde el directorio de la app, no desde la raíz del monorepo:**
+**Marcadores de monorepo soportados** (auto-detectados):
+- `turbo.json` (Turborepo)
+- `pnpm-workspace.yaml` (pnpm workspaces)
+- `lerna.json` (Lerna)
+- `package.json#workspaces` (npm/yarn workspaces)
+
+**Ejecuta desde la raíz del monorepo** — ClaudeOS-Core lee `apps/*/package.json` y `packages/*/package.json` para descubrir dependencias de framework/ORM/BD en los sub-paquetes:
 
 ```bash
-# Ejemplo: Turborepo con apps/my-app
-cd apps/my-app
-npx claudeos-core init
-
-# Ejemplo: Workspace Nx
-cd apps/frontend
+cd my-monorepo
 npx claudeos-core init
 ```
 
-Cada app obtiene su propio conjunto independiente de Standards, Rules, Skills y Guides adaptados al stack y patrones de esa app específica.
+**Qué se detecta:**
+- Dependencias de `apps/web/package.json` (ej: `next`, `react`) → stack frontend
+- Dependencias de `apps/api/package.json` (ej: `express`, `prisma`) → stack backend
+- Dependencias de `packages/db/package.json` (ej: `drizzle-orm`) → ORM/BD
+- Rutas de workspace personalizadas desde `pnpm-workspace.yaml` (ej: `services/*`)
 
-**Estructura típica de monorepo:**
+**El escaneo de dominios también cubre layouts de monorepo:**
+- `apps/api/src/modules/*/` y `apps/api/src/*/` para dominios backend
+- `apps/web/app/*/`, `apps/web/src/app/*/`, `apps/web/pages/*/` para dominios frontend
+- `packages/*/src/*/` para dominios de paquetes compartidos
 
 ```
-my-monorepo/                    ← No ejecutes aquí (la raíz no tiene deps de framework)
+my-monorepo/                    ← Ejecuta aquí: npx claudeos-core init
+├── turbo.json                  ← Auto-detectado como Turborepo
 ├── apps/
-│   ├── web/                    ← Ejecuta aquí: cd apps/web && npx claudeos-core init
-│   ├── api/                    ← Ejecuta aquí: cd apps/api && npx claudeos-core init
-│   └── storybook/
+│   ├── web/                    ← Next.js detectado desde apps/web/package.json
+│   │   ├── app/dashboard/      ← Dominio frontend detectado
+│   │   └── package.json        ← { "dependencies": { "next": "^14" } }
+│   └── api/                    ← Express detectado desde apps/api/package.json
+│       ├── src/modules/users/  ← Dominio backend detectado
+│       └── package.json        ← { "dependencies": { "express": "^4" } }
 ├── packages/
-│   ├── ui/
-│   └── utils/
-└── package.json                ← Solo devDependencies (turbo, eslint, etc.)
+│   ├── db/                     ← Drizzle detectado desde packages/db/package.json
+│   └── ui/
+└── package.json                ← { "workspaces": ["apps/*", "packages/*"] }
 ```
+
+> **Nota:** Para monorepos Kotlin/Java, la detección multi-módulo usa `settings.gradle.kts` (ver [Detección de Dominios Kotlin Multi-Módulo](#detección-de-dominios-kotlin-multi-módulo) arriba) y no requiere marcadores de monorepo JS.
 
 ## Solución de Problemas
 
@@ -614,7 +642,7 @@ my-monorepo/                    ← No ejecutes aquí (la raíz no tiene deps de
 
 - **Nuevas plantillas de stack** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Soporte profundo para monorepos** — Raíces de sub-proyectos separadas, detección de workspaces
-- **Cobertura de tests** — Suite de tests en expansión (actualmente 87 tests cubriendo detección de stack, agrupación de dominios, validación de planes, escaneo de estructura y herramientas de verificación)
+- **Cobertura de tests** — Suite de tests en expansión (actualmente 256 tests cubriendo todos los scanners, detección de stack, agrupación de dominios, parsing de planes, generación de prompts, selectores CLI, detección de monorepos y herramientas de verificación)
 
 ---
 

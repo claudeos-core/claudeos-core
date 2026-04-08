@@ -115,7 +115,7 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  try { main(); } catch (e) { console.error(`\n  ❌ Unexpected error: ${e.message || e}`); process.exit(1); }
 }
 
 module.exports = { main };

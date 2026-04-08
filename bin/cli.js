@@ -19,7 +19,7 @@
 
 const path = require("path");
 const { TOOLS_DIR, PROJECT_ROOT, log, run, readFile } = require("./lib/cli-utils");
-const { cmdInit } = require("./commands/init");
+const { cmdInit, InitError } = require("./commands/init");
 
 // Set env var so sub-tools (plan-installer, etc.) correctly resolve the project root
 process.env.CLAUDEOS_ROOT = PROJECT_ROOT;
@@ -131,6 +131,10 @@ if (!commands[command]) {
 }
 
 Promise.resolve(commands[command]()).catch((e) => {
-  console.error(e.message || e);
+  if (e instanceof InitError) {
+    log(`\n  ❌ ${e.message}\n`);
+  } else {
+    console.error(e.message || e);
+  }
   process.exit(1);
 });

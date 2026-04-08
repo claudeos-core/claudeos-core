@@ -35,6 +35,10 @@ function claudeWaitMsg(lang, passLabel) {
   return (CLAUDE_WAIT_TMPL[lang] || CLAUDE_WAIT_TMPL.en).replace("{{PASS}}", passLabel);
 }
 
+class InitError extends Error {
+  constructor(msg) { super(msg); this.name = "InitError"; }
+}
+
 function formatElapsed(ms) {
   const sec = Math.floor(ms / 1000);
   if (sec < 60) return `${sec}s`;
@@ -58,26 +62,18 @@ async function cmdInit(parsedArgs) {
 
   const nodeVersion = parseInt(process.versions.node.split(".")[0]);
   if (nodeVersion < 18) {
-    log(`\n  ❌ Node.js v18+ required (current: v${process.versions.node})`);
-    log("  Install: https://nodejs.org/\n");
-    process.exit(1);
+    throw new InitError(`Node.js v18+ required (current: v${process.versions.node})\n  Install: https://nodejs.org/`);
   }
 
   const claudeExists = run("claude --version", { silent: true, ignoreError: true });
   if (!claudeExists) {
-    log("\n  ❌ Claude Code CLI not found.");
-    log("  Install: https://code.claude.com/docs/en/overview");
-    log("  Then run: claude (and complete authentication)\n");
-    process.exit(1);
+    throw new InitError("Claude Code CLI not found.\n  Install: https://code.claude.com/docs/en/overview\n  Then run: claude (and complete authentication)");
   }
 
   // Verify Claude is authenticated (quick prompt test)
   const claudeAuth = run('claude -p "echo ok"', { silent: true, ignoreError: true });
   if (!claudeAuth) {
-    log("\n  ⚠️  Claude Code may not be authenticated.");
-    log("  Run: claude (and complete authentication)");
-    log("  Then retry: npx claudeos-core init\n");
-    process.exit(1);
+    throw new InitError("Claude Code may not be authenticated.\n  Run: claude (and complete authentication)\n  Then retry: npx claudeos-core init");
   }
 
   // ─── Language selection (required) ────────────────────────────
@@ -85,10 +81,11 @@ async function cmdInit(parsedArgs) {
   if (!lang) {
     lang = await selectLangInteractive();
   }
+  if (!lang) {
+    throw new InitError("Cancelled.");
+  }
   if (!isValidLang(lang)) {
-    log(`\n  ❌ Unsupported language: "${lang}"`);
-    log(`  Supported: ${LANG_CODES.join(", ")}\n`);
-    process.exit(1);
+    throw new InitError(`Unsupported language: "${lang}"\n  Supported: ${LANG_CODES.join(", ")}`);
   }
   process.env.CLAUDEOS_LANG = lang;
 
@@ -106,6 +103,7 @@ async function cmdInit(parsedArgs) {
       } else {
         const status = { pass1Done: existingPass1.length, pass2Done: pass2Exists };
         const mode = await selectResumeMode(lang, status);
+        if (!mode) throw new InitError("Cancelled.");
         if (mode === "fresh") {
           for (const f of existingPass1) fs.unlinkSync(path.join(GENERATED_DIR, f));
           if (pass2Exists) fs.unlinkSync(path.join(GENERATED_DIR, "pass2-merged.json"));
@@ -178,15 +176,11 @@ async function cmdInit(parsedArgs) {
       readFile(path.join(GENERATED_DIR, "domain-groups.json"))
     );
   } catch (e) {
-    log(`    ❌ domain-groups.json is missing or malformed: ${e.message}`);
-    log("    Re-run plan-installer or check claudeos-core/generated/");
-    process.exit(1);
+    throw new InitError(`domain-groups.json is missing or malformed: ${e.message}\n    Re-run plan-installer or check claudeos-core/generated/`);
   }
   const totalGroups = domainGroups.totalGroups;
   if (!totalGroups || typeof totalGroups !== "number" || totalGroups < 1) {
-    log(`    ❌ domain-groups.json has invalid totalGroups: ${totalGroups}`);
-    log("    Re-run plan-installer or check claudeos-core/generated/");
-    process.exit(1);
+    throw new InitError(`domain-groups.json has invalid totalGroups: ${totalGroups}\n    Re-run plan-installer or check claudeos-core/generated/`);
   }
 
   // Load pass1 prompts by type
@@ -204,8 +198,7 @@ async function cmdInit(parsedArgs) {
   }
 
   if (!domainGroups.groups || totalGroups !== domainGroups.groups.length) {
-    log(`    ❌ domain-groups.json is malformed: expected ${totalGroups} groups, found ${domainGroups.groups ? domainGroups.groups.length : 0}`);
-    process.exit(1);
+    throw new InitError(`domain-groups.json is malformed: expected ${totalGroups} groups, found ${domainGroups.groups ? domainGroups.groups.length : 0}`);
   }
   for (let i = 1; i <= totalGroups; i++) {
     const group = domainGroups.groups[i - 1];
@@ -234,8 +227,7 @@ async function cmdInit(parsedArgs) {
     // Select prompt for this type
     const template = pass1Prompts[groupType] || pass1Prompts["backend"];
     if (!template) {
-      log(`    ❌ No pass1 prompt found for type: ${groupType}. Aborting.`);
-      process.exit(1);
+      throw new InitError(`No pass1 prompt found for type: ${groupType}`);
     }
 
     // Placeholder substitution
@@ -250,13 +242,11 @@ async function cmdInit(parsedArgs) {
     const elapsed1 = formatElapsed(Date.now() - t1);
 
     if (!ok) {
-      log(`    ❌ Pass 1-${i} failed. Aborting.`);
-      process.exit(1);
+      throw new InitError(`Pass 1-${i} failed`);
     }
 
     if (!fileExists(pass1Json)) {
-      log(`    ❌ pass1-${i}.json was not created. Aborting.`);
-      process.exit(1);
+      throw new InitError(`pass1-${i}.json was not created`);
     }
 
     log(`    ✅ pass1-${i}.json created (${elapsed1})`);
@@ -272,8 +262,7 @@ async function cmdInit(parsedArgs) {
   } else {
     const pass2PromptFile = path.join(GENERATED_DIR, "pass2-prompt.md");
     if (!fileExists(pass2PromptFile)) {
-      log("    ❌ pass2-prompt.md not found. Re-run plan-installer.");
-      process.exit(1);
+      throw new InitError("pass2-prompt.md not found. Re-run plan-installer.");
     }
     let prompt = injectProjectRoot(readFile(pass2PromptFile));
 
@@ -283,13 +272,11 @@ async function cmdInit(parsedArgs) {
     const elapsed2 = formatElapsed(Date.now() - t2);
 
     if (!ok) {
-      log("    ❌ Pass 2 failed. Aborting.");
-      process.exit(1);
+      throw new InitError("Pass 2 failed");
     }
 
     if (!fileExists(pass2Json)) {
-      log("    ❌ pass2-merged.json was not created. Aborting.");
-      process.exit(1);
+      throw new InitError("pass2-merged.json was not created");
     }
 
     log(`    ✅ pass2-merged.json created (${elapsed2})`);
@@ -301,8 +288,7 @@ async function cmdInit(parsedArgs) {
 
   const pass3PromptFile = path.join(GENERATED_DIR, "pass3-prompt.md");
   if (!fileExists(pass3PromptFile)) {
-    log("    ❌ pass3-prompt.md not found. Re-run plan-installer.");
-    process.exit(1);
+    throw new InitError("pass3-prompt.md not found. Re-run plan-installer.");
   }
   let prompt = injectProjectRoot(readFile(pass3PromptFile));
 
@@ -312,13 +298,11 @@ async function cmdInit(parsedArgs) {
   const elapsed3 = formatElapsed(Date.now() - t3);
 
   if (!ok3) {
-    log("    ❌ Pass 3 failed. Aborting.");
-    process.exit(1);
+    throw new InitError("Pass 3 failed");
   }
 
   if (!fileExists(path.join(PROJECT_ROOT, "CLAUDE.md"))) {
-    log("    ❌ CLAUDE.md was not created. Pass 3 may have failed silently.");
-    process.exit(1);
+    throw new InitError("CLAUDE.md was not created. Pass 3 may have failed silently.");
   }
   log(`    ✅ Pass 3 complete (${elapsed3})`);
   log("");
@@ -366,4 +350,4 @@ async function cmdInit(parsedArgs) {
   log("");
 }
 
-module.exports = { cmdInit };
+module.exports = { cmdInit, InitError };

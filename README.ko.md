@@ -76,14 +76,16 @@ ClaudeOS-Core는 프로젝트가 `ApiResponse.ok()`를 쓴다는 것, MyBatis XM
 |---|---|---|
 | **Java / Spring Boot** | `build.gradle`, `pom.xml`, 5가지 패키지 패턴 | 10개 대분류, 59개 소분류 |
 | **Kotlin / Spring Boot** | `build.gradle.kts`, kotlin 플러그인, `settings.gradle.kts`, CQRS/BFF 자동감지 | 12개 대분류, 95개 소분류 |
-| **Node.js / Express / NestJS** | `package.json` | 9개 대분류, 57개 소분류 |
-| **Next.js / React / Vue** | `package.json`, `next.config.*`, FSD 지원 | 9개 대분류, 55개 소분류 |
+| **Node.js / Express** | `package.json` | 9개 대분류, 57개 소분류 |
+| **Node.js / NestJS** | `package.json` (`@nestjs/core`) | 10개 대분류, 68개 소분류 |
+| **Next.js / React** | `package.json`, `next.config.*`, FSD 지원 | 9개 대분류, 55개 소분류 |
+| **Vue / Nuxt** | `package.json`, `nuxt.config.*`, Composition API | 9개 대분류, 58개 소분류 |
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10개 대분류, 55개 소분류 |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10개 대분류, 58개 소분류 |
 | **Node.js / Fastify** | `package.json` | 10개 대분류, 62개 소분류 |
 | **Angular** | `package.json`, `angular.json` | 12개 대분류, 78개 소분류 |
 
-자동 감지 항목: 언어 & 버전, 프레임워크 & 버전, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy 등), 데이터베이스 (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), 패키지 매니저 (Gradle, Maven, npm, yarn, pnpm, pip, poetry), 아키텍처 (CQRS, BFF — 모듈명에서 감지), 멀티모듈 구조 (settings.gradle에서 감지).
+자동 감지 항목: 언어 & 버전, 프레임워크 & 버전, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy 등), 데이터베이스 (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), 패키지 매니저 (Gradle, Maven, npm, yarn, pnpm, pip, poetry), 아키텍처 (CQRS, BFF — 모듈명에서 감지), 멀티모듈 구조 (settings.gradle에서 감지), 모노레포 (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **직접 지정할 필요 없습니다. 전부 자동으로 감지합니다.**
 
@@ -97,7 +99,7 @@ ClaudeOS-Core는 프로젝트가 `ApiResponse.ok()`를 쓴다는 것, MyBatis XM
 | E | DDD/헥사고날 | `{domain}/adapter/in/web/` | `user/adapter/in/web/UserController.java` |
 | C | 플랫 | `controller/*.java` | `controller/UserController.java` → 클래스명에서 `user` 추출 |
 
-Controller 없는 서비스 전용 도메인도 `service/`, `dao/`, `aggregator/`, `mapper/`, `repository/` 디렉토리를 통해 감지됩니다. 스킵: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2` 등.
+Controller 없는 서비스 전용 도메인도 `service/`, `dao/`, `aggregator/`, `facade/`, `usecase/`, `orchestrator/`, `mapper/`, `repository/` 디렉토리를 통해 감지됩니다. 스킵: `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2` 등.
 
 
 ### Kotlin 멀티모듈 도메인 감지
@@ -188,7 +190,7 @@ npx claudeos-core init --lang ja    # 日本語
 
 > **참고:** 이 설정은 생성되는 문서 파일의 언어만 변경합니다. 코드 분석(Pass 1–2)은 항상 영어로 실행되며, 생성 결과(Pass 3)만 선택한 언어로 작성됩니다. 코드 예시는 원래 프로그래밍 언어 구문 그대로 유지됩니다.
 
-이게 전부입니다. 5–18분 후 모든 문서가 생성되어 바로 사용 가능합니다.
+이게 전부입니다. 5–18분 후 모든 문서가 생성되어 바로 사용 가능합니다. CLI가 각 Pass별 소요시간과 총 소요시간을 완료 배너에 표시합니다.
 
 ### 수동 단계별 설치
 
@@ -566,6 +568,15 @@ ClaudeOS-Core로 프로젝트 규칙을 생성한 뒤, ECC나 Harness를 그 위
 **Q: 재실행하면 어떻게 되나요?**
 이전 Pass 1/2 결과가 존재하면 인터랙티브 프롬프트가 표시됩니다: **Continue** (중단된 곳에서 재개) 또는 **Fresh** (전부 삭제 후 새로 시작). `--force`를 사용하면 프롬프트 없이 항상 새로 시작합니다. Pass 3는 항상 재실행됩니다. 이전 버전은 Master Plans에서 복원할 수 있습니다.
 
+**Q: NestJS는 전용 템플릿이 있나요, 아니면 Express 템플릿을 사용하나요?**
+NestJS는 NestJS 전용 분석 카테고리가 포함된 `node-nestjs` 전용 템플릿을 사용합니다: `@Module`, `@Injectable`, `@Controller` 데코레이터, Guards, Pipes, Interceptors, DI 컨테이너, CQRS 패턴, `Test.createTestingModule`. Express 프로젝트는 별도의 `node-express` 템플릿을 사용합니다.
+
+**Q: Vue / Nuxt 프로젝트는?**
+Vue/Nuxt는 Composition API, `<script setup>`, defineProps/defineEmits, Pinia 스토어, `useFetch`/`useAsyncData`, Nitro 서버 라우트, `@nuxt/test-utils`를 커버하는 `vue-nuxt` 전용 템플릿을 사용합니다. Next.js/React 프로젝트는 `node-nextjs` 템플릿을 사용합니다.
+
+**Q: Turborepo / pnpm workspaces / Lerna 모노레포에서도 작동하나요?**
+네. ClaudeOS-Core는 `turbo.json`, `pnpm-workspace.yaml`, `lerna.json`, `package.json#workspaces`를 감지하고 서브 패키지 `package.json`에서 프레임워크/ORM/DB 의존성을 자동으로 스캔합니다. 도메인 스캔은 `apps/*/src/`와 `packages/*/src/` 패턴을 지원합니다. 모노레포 루트에서 실행하세요.
+
 **Q: Kotlin을 지원하나요?**
 네. ClaudeOS-Core는 `build.gradle.kts` 또는 `build.gradle`의 kotlin 플러그인에서 Kotlin을 자동 감지합니다. Kotlin 전용 `kotlin-spring` 템플릿을 사용하여 data class, sealed class, 코루틴, 확장 함수, MockK 등 Kotlin 고유 패턴을 분석합니다.
 
@@ -581,52 +592,68 @@ ClaudeOS-Core는 중첩 깊이에 관계없이 모든 서브모듈(`**/src/main/
 
 ```
 pass-prompts/templates/
-├── common/                  # 공통 헤더/푸터
+├── common/                  # Shared header/footer
 ├── java-spring/             # Java / Spring Boot
-├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, 멀티모듈)
-├── node-express/            # Node.js / Express / NestJS
-├── node-nextjs/             # Next.js / React / Vue
-├── python-django/           # Python / Django (DRF)
+├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
+├── node-express/            # Node.js / Express
+├── node-nestjs/             # Node.js / NestJS (Module, DI, Guard, Pipe, Interceptor)
 ├── node-fastify/            # Node.js / Fastify
+├── node-nextjs/             # Next.js / React
+├── vue-nuxt/                # Vue / Nuxt (Composition API, Pinia, Nitro)
 ├── angular/                 # Angular
+├── python-django/           # Python / Django (DRF)
 └── python-fastapi/          # Python / FastAPI
 ```
 
-`plan-installer`가 스택을 자동 감지한 후 타입별 프롬프트를 조합합니다. 멀티스택 프로젝트에서는 `pass1-backend-prompt.md`와 `pass1-frontend-prompt.md`가 별도로 생성되고, `pass3-prompt.md`는 두 스택의 생성 대상을 결합합니다.
+`plan-installer`가 스택을 자동 감지한 후 타입별 프롬프트를 조합합니다. NestJS와 Vue/Nuxt는 프레임워크별 분석 카테고리가 적용된 전용 템플릿을 사용합니다. 멀티스택 프로젝트에서는 `pass1-backend-prompt.md`와 `pass1-frontend-prompt.md`가 별도로 생성되고, `pass3-prompt.md`는 두 스택의 생성 대상을 결합합니다.
 
 ---
 
 ## 모노레포 지원
 
-ClaudeOS-Core는 **현재 디렉토리**의 `package.json`을 읽습니다. 모노레포 환경(Turborepo, Nx, Lerna, pnpm workspaces)에서는 루트 `package.json`에 `next`, `express`, `react` 같은 프레임워크 의존성이 없는 경우가 많습니다 — 개별 앱 디렉토리에 있기 때문입니다.
+ClaudeOS-Core는 JS/TS 모노레포 구성을 자동으로 감지하고 서브 패키지의 의존성을 스캔합니다.
 
-**모노레포 루트가 아닌 앱 디렉토리에서 실행하세요:**
+**지원하는 모노레포 마커** (자동 감지):
+- `turbo.json` (Turborepo)
+- `pnpm-workspace.yaml` (pnpm workspaces)
+- `lerna.json` (Lerna)
+- `package.json#workspaces` (npm/yarn workspaces)
+
+**모노레포 루트에서 실행하세요** — ClaudeOS-Core는 `apps/*/package.json`과 `packages/*/package.json`을 읽어 서브 패키지의 프레임워크/ORM/DB 의존성을 자동으로 검색합니다:
 
 ```bash
-# 예시: Turborepo의 apps/my-app
-cd apps/my-app
-npx claudeos-core init
-
-# 예시: Nx 워크스페이스
-cd apps/frontend
+cd my-monorepo
 npx claudeos-core init
 ```
 
-각 앱은 해당 스택과 패턴에 맞는 독립적인 Standards, Rules, Skills, Guides를 갖게 됩니다.
+**감지되는 항목:**
+- `apps/web/package.json`의 의존성 (예: `next`, `react`) → 프론트엔드 스택
+- `apps/api/package.json`의 의존성 (예: `express`, `prisma`) → 백엔드 스택
+- `packages/db/package.json`의 의존성 (예: `drizzle-orm`) → ORM/DB
+- `pnpm-workspace.yaml`의 커스텀 워크스페이스 경로 (예: `services/*`)
 
-**일반적인 모노레포 구조:**
+**도메인 스캔도 모노레포 레이아웃을 지원합니다:**
+- 백엔드 도메인: `apps/api/src/modules/*/`, `apps/api/src/*/`
+- 프론트엔드 도메인: `apps/web/app/*/`, `apps/web/src/app/*/`, `apps/web/pages/*/`
+- 공유 패키지 도메인: `packages/*/src/*/`
 
 ```
-my-monorepo/                    ← 여기서 실행하지 마세요 (루트에 프레임워크 없음)
+my-monorepo/                    ← 여기서 실행: npx claudeos-core init
+├── turbo.json                  ← Turborepo 자동 감지
 ├── apps/
-│   ├── web/                    ← 여기서 실행: cd apps/web && npx claudeos-core init
-│   ├── api/                    ← 여기서 실행: cd apps/api && npx claudeos-core init
-│   └── storybook/
+│   ├── web/                    ← apps/web/package.json에서 Next.js 감지
+│   │   ├── app/dashboard/      ← 프론트엔드 도메인 감지
+│   │   └── package.json        ← { "dependencies": { "next": "^14" } }
+│   └── api/                    ← apps/api/package.json에서 Express 감지
+│       ├── src/modules/users/  ← 백엔드 도메인 감지
+│       └── package.json        ← { "dependencies": { "express": "^4" } }
 ├── packages/
-│   ├── ui/
-│   └── utils/
-└── package.json                ← devDependencies만 (turbo, eslint 등)
+│   ├── db/                     ← packages/db/package.json에서 Drizzle 감지
+│   └── ui/
+└── package.json                ← { "workspaces": ["apps/*", "packages/*"] }
 ```
+
+> **참고:** Kotlin/Java 모노레포의 경우, 멀티모듈 감지는 `settings.gradle.kts`를 사용합니다 (위의 [Kotlin 멀티모듈 도메인 감지](#kotlin-멀티모듈-도메인-감지) 참조). JS 모노레포 마커가 필요하지 않습니다.
 
 ## 트러블슈팅
 
@@ -650,7 +677,7 @@ my-monorepo/                    ← 여기서 실행하지 마세요 (루트에 
 
 - **새 스택 템플릿** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **모노레포 심화 지원** — 서브프로젝트 루트 분리, 워크스페이스 감지
-- **테스트 커버리지** — 테스트 스위트 확장 중 (현재 87개 테스트, 스택 감지, 도메인 그룹핑, 플랜 검증, 구조 스캐닝, 검증 도구 커버)
+- **테스트 커버리지** — 테스트 스위트 확장 중 (현재 256개 테스트, 전체 스캐너, 스택 감지, 도메인 그룹핑, 플랜 파싱, 프롬프트 생성, CLI 셀렉터, 모노레포 감지, 검증 도구 커버)
 
 ---
 

@@ -90,14 +90,14 @@ selectLangInteractive().then(lang => {
     assert.ok(r.output.includes("SELECTED:zh-CN"), `should select zh-CN, got: ${r.output.trim()}`);
   });
 
-  it("rejects invalid input and exits", () => {
+  it("returns null for invalid input", () => {
     const r = runScriptFile(writeLangScript(), "xyz\n");
-    assert.ok(!r.ok || r.output.includes("Invalid"), "should reject invalid input");
+    assert.ok(r.output.includes("SELECTED:null"), "should resolve null for invalid input");
   });
 
-  it("rejects out-of-range number", () => {
+  it("returns null for out-of-range number", () => {
     const r = runScriptFile(writeLangScript(), "99\n");
-    assert.ok(!r.ok || r.output.includes("Invalid"), "should reject out-of-range number");
+    assert.ok(r.output.includes("SELECTED:null"), "should resolve null for out-of-range number");
   });
 
   it("displays language selection menu", () => {
@@ -166,9 +166,9 @@ selectResumeMode(${JSON.stringify(lang)}, { pass1Done: ${pass1Done}, pass2Done: 
     assert.ok(r.output.includes("Previous analysis found"), "should fall back to English");
   });
 
-  it("exits on invalid input", () => {
+  it("returns null for invalid input", () => {
     const r = runScriptFile(writeResumeScript("en", 1, false), "3\n");
-    assert.ok(!r.ok || r.output.includes("Cancelled"), "should exit on invalid input");
+    assert.ok(r.output.includes("MODE:null"), "should resolve null for invalid input");
   });
 
   it("shows all 10 language variants without error", () => {

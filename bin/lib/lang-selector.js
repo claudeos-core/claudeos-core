@@ -32,8 +32,7 @@ function selectLangInteractive() {
         const num = parseInt(trimmed);
         if (num >= 1 && num <= LANG_CODES.length) { resolve(LANG_CODES[num - 1]); return; }
         if (isValidLang(trimmed)) { resolve(trimmed); return; }
-        log(`\n  ❌ Invalid selection: "${trimmed}"`);
-        process.exit(1);
+        resolve(null);
       });
       return;
     }
@@ -110,8 +109,7 @@ function selectLangInteractive() {
         const num = parseInt(trimmed);
         if (num >= 1 && num <= total) { resolve(LANG_CODES[num - 1]); return; }
         if (isValidLang(trimmed)) { resolve(trimmed); return; }
-        log(`\n  ❌ Invalid selection: "${trimmed}"`);
-        process.exit(1);
+        resolve(null);
       });
       return;
     }
@@ -129,15 +127,19 @@ function selectLangInteractive() {
       // Ctrl+C
       if (k === "\x03") {
         process.stdin.setRawMode(false);
-        log("\n  Cancelled.\n");
-        process.exit(0);
+        process.stdin.pause();
+        process.stdin.removeAllListeners("data");
+        resolve(null);
+        return;
       }
 
       // ESC (single byte only — arrow keys send \x1b[ or \x1bO which are 3 bytes)
       if (k === "\x1b" && key.length === 1) {
         process.stdin.setRawMode(false);
-        log("\n  Cancelled.\n");
-        process.exit(0);
+        process.stdin.pause();
+        process.stdin.removeAllListeners("data");
+        resolve(null);
+        return;
       }
 
       // Up arrow (normal mode \x1b[A and application mode \x1bOA)

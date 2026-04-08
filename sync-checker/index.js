@@ -117,7 +117,7 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch(console.error);
+  main().catch(e => { console.error(`\n  ❌ Unexpected error: ${e.message || e}`); process.exit(1); });
 }
 
 module.exports = { main };

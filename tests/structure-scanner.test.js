@@ -227,6 +227,40 @@ describe("scanStructure — Java dao/aggregator", () => {
   });
 });
 
+// ─── Java facade/usecase/orchestrator detection ─────────────
+
+describe("scanStructure — Java facade/usecase/orchestrator", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("counts facade and usecase as services", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/payment/controller/PaymentController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/payment/facade/PaymentFacade.java"));
+    touch(path.join(tmp, "src/main/java/com/example/payment/usecase/ProcessPaymentUseCase.java"));
+    touch(path.join(tmp, "src/main/java/com/example/payment/service/PaymentService.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const result = await scanStructure(stack, tmp);
+
+    const payment = result.backendDomains.find(d => d.name === "payment");
+    assert.ok(payment, "should detect payment domain");
+    assert.ok(payment.services >= 3, "facade + usecase + service should count as services >= 3");
+  });
+
+  it("detects domain with only orchestrator (no controller)", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/order/controller/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/billing/orchestrator/BillingOrchestrator.java"));
+    touch(path.join(tmp, "src/main/java/com/example/billing/service/BillingService.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const result = await scanStructure(stack, tmp);
+
+    const names = result.backendDomains.map(d => d.name);
+    assert.ok(names.includes("billing"), "should detect billing via supplementary scan (orchestrator)");
+  });
+});
+
 // ─── Java MyBatis XML — mybatis/ path ────────────────────────
 
 describe("scanStructure — Java MyBatis XML path", () => {

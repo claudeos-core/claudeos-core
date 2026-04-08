@@ -59,8 +59,10 @@ function selectTemplates(stack) {
   else if (stack.language === "python" && stack.framework) templates.backend = "python-fastapi";
 
   // Frontend template
-  if (stack.frontend === "nextjs" || stack.frontend === "react" || stack.frontend === "vue") {
+  if (stack.frontend === "nextjs" || stack.frontend === "react") {
     templates.frontend = "node-nextjs";
+  } else if (stack.frontend === "vue") {
+    templates.frontend = "vue-nuxt";
   } else if (stack.frontend === "angular") {
     templates.frontend = "angular";
   }

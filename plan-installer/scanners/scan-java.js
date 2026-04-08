@@ -20,7 +20,7 @@ async function scanJavaDomains(stack, ROOT) {
 
   const javaFiles = await glob("src/main/java/**/*.java", { cwd: ROOT });
   for (const f of javaFiles) {
-    const m = f.match(/src\/main\/java\/(.+?)\/(controller|aggregator|service|mapper|dao|dto|entity|repository|adapter)/);
+    const m = f.match(/src\/main\/java\/(.+?)\/(controller|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)/);
     if (m) { rootPackage = m[1].replace(/\//g, "."); break; }
   }
   const domainMap = {};
@@ -100,16 +100,16 @@ async function scanJavaDomains(stack, ROOT) {
     if (Object.keys(domainMap).length > 0) detectedPattern = "C";
   }
 
-  // ── Supplementary scan: detect domains without controllers (service/dao/aggregator only) ──
+  // ── Supplementary scan: detect domains without controllers (service/dao/aggregator/facade/usecase only) ──
   // Runs for ALL detected patterns (A/B/C/D/E) to catch core-only domains
   {
     const serviceDirs = await glob("src/main/java/**/*/service/*.java", { cwd: ROOT });
     const mapperDirs = await glob("src/main/java/**/*/{mapper,repository,dao}/*.java", { cwd: ROOT });
-    const aggregatorDirs = await glob("src/main/java/**/*/aggregator/*.java", { cwd: ROOT });
-    const allServiceFiles = [...serviceDirs, ...mapperDirs, ...aggregatorDirs];
+    const orchestrationDirs = await glob("src/main/java/**/*/{aggregator,facade,usecase,orchestrator}/*.java", { cwd: ROOT });
+    const allServiceFiles = [...serviceDirs, ...mapperDirs, ...orchestrationDirs];
     const skipDomains = ["common", "config", "util", "utils", "base", "core", "shared", "global", "framework", "infra", "front", "admin", "back", "internal", "external", "web", "app", "test", "tests", "main", "generated", "build"];
     for (const f of allServiceFiles) {
-      const m = f.match(/\/([^/]+)\/(service|mapper|repository|dao|aggregator)\/[^/]+\.java$/);
+      const m = f.match(/\/([^/]+)\/(service|mapper|repository|dao|aggregator|facade|usecase|orchestrator)\/[^/]+\.java$/);
       if (m) {
         const d = m[1];
         if (!domainMap[d] && !skipDomains.includes(d) && !/^v\d+$/.test(d)) {
@@ -119,7 +119,7 @@ async function scanJavaDomains(stack, ROOT) {
     }
   }
 
-  // Scan service/mapper/dao/aggregator/dto/xml files for each domain
+  // Scan service/mapper/dao/aggregator/facade/usecase/dto/xml files for each domain
   for (const d of Object.keys(domainMap)) {
     const p = domainMap[d].pattern;
     const dn = domainMap[d].domainName || d;
@@ -129,12 +129,12 @@ async function scanJavaDomains(stack, ROOT) {
       svcGlob = `src/main/java/**/service/${d}/*.java`;
       mprGlob = `src/main/java/**/{mapper,repository,dao}/${d}/*.java`;
       dtoGlob = `src/main/java/**/dto/${d}/**/*.java`;
-      aggGlob = `src/main/java/**/aggregator/${d}/*.java`;
+      aggGlob = `src/main/java/**/{aggregator,facade,usecase,orchestrator}/${d}/*.java`;
     } else if (p === "B" || p === "D") {
       svcGlob = `src/main/java/**/${dn}/service/*.java`;
       mprGlob = `src/main/java/**/${dn}/{mapper,repository,dao}/*.java`;
       dtoGlob = `src/main/java/**/${dn}/dto/**/*.java`;
-      aggGlob = `src/main/java/**/${dn}/aggregator/*.java`;
+      aggGlob = `src/main/java/**/${dn}/{aggregator,facade,usecase,orchestrator}/*.java`;
     } else if (p === "E") {
       svcGlob = `src/main/java/**/${d}/{application,domain}/**/*.java`;
       mprGlob = `src/main/java/**/${d}/adapter/out/{persistence,repository}/*.java`;
@@ -146,7 +146,7 @@ async function scanJavaDomains(stack, ROOT) {
       svcGlob = `src/main/java/**/service/${cap}*.java`;
       mprGlob = `src/main/java/**/{mapper,repository,dao}/${cap}*.java`;
       dtoGlob = `src/main/java/**/dto/${cap}*.java`;
-      aggGlob = `src/main/java/**/aggregator/${cap}*.java`;
+      aggGlob = `src/main/java/**/{aggregator,facade,usecase,orchestrator}/${cap}*.java`;
     }
     // Pattern C (flat): XML may be in flat directory without domain subdirectory (e.g., mapper/OrderMapper.xml)
     // Other patterns: XML is in domain subdirectory (e.g., mapper/order/OrderMapper.xml)
@@ -174,7 +174,7 @@ async function scanJavaDomains(stack, ROOT) {
     const javaDomains = {};
     const skipNames = ["common", "config", "util", "utils", "base", "shared", "global", "framework", "infra", "api", "main", "front", "admin", "back", "internal", "external", "web", "app", "test", "tests", "generated", "build"];
     const versionPattern = /^v\d+$/;
-    const layerNames = ["controller", "aggregator", "service", "mapper", "repository", "dao", "dto", "vo", "entity", "adapter"];
+    const layerNames = ["controller", "aggregator", "facade", "usecase", "orchestrator", "service", "mapper", "repository", "dao", "dto", "vo", "entity", "adapter"];
 
     for (const f of allJava) {
       const parts = f.replace(/\\/g, "/").split("/");
@@ -187,7 +187,7 @@ async function scanJavaDomains(stack, ROOT) {
           if (i > 0 && !skipNames.includes(prevDir) && !layerNames.includes(prevDir) && !prevDir.includes(".") && !versionPattern.test(prevDir)) {
             if (!javaDomains[prevDir]) javaDomains[prevDir] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "B" };
             if (parts[i] === "controller") javaDomains[prevDir].controllers++;
-            else if (parts[i] === "aggregator" || parts[i] === "service") javaDomains[prevDir].services++;
+            else if (["aggregator", "facade", "usecase", "orchestrator", "service"].includes(parts[i])) javaDomains[prevDir].services++;
             else if (["mapper", "repository", "dao"].includes(parts[i])) javaDomains[prevDir].mappers++;
             else if (["dto", "vo"].includes(parts[i])) javaDomains[prevDir].dtos++;
           }
@@ -195,7 +195,7 @@ async function scanJavaDomains(stack, ROOT) {
           if (nextDir && !nextDir.endsWith(".java") && !skipNames.includes(nextDir) && !layerNames.includes(nextDir) && !versionPattern.test(nextDir)) {
             if (!javaDomains[nextDir]) javaDomains[nextDir] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "A" };
             if (parts[i] === "controller") javaDomains[nextDir].controllers++;
-            else if (parts[i] === "aggregator" || parts[i] === "service") javaDomains[nextDir].services++;
+            else if (["aggregator", "facade", "usecase", "orchestrator", "service"].includes(parts[i])) javaDomains[nextDir].services++;
             else if (["mapper", "repository", "dao"].includes(parts[i])) javaDomains[nextDir].mappers++;
             else if (["dto", "vo"].includes(parts[i])) javaDomains[nextDir].dtos++;
           }

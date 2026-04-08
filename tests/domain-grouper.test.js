@@ -153,6 +153,18 @@ describe("selectTemplates", () => {
     assert.equal(t.backend, "node-fastify");
   });
 
+  it("selects vue-nuxt frontend for Vue", () => {
+    const t = selectTemplates({ language: "typescript", frontend: "vue" });
+    assert.equal(t.backend, null);
+    assert.equal(t.frontend, "vue-nuxt");
+  });
+
+  it("selects vue-nuxt with backend for Vue + Express", () => {
+    const t = selectTemplates({ language: "typescript", framework: "express", frontend: "vue" });
+    assert.equal(t.backend, "node-express");
+    assert.equal(t.frontend, "vue-nuxt");
+  });
+
   it("selects angular frontend for Angular", () => {
     const t = selectTemplates({ language: "typescript", frontend: "angular" });
     assert.equal(t.backend, null);

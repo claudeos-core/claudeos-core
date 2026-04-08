@@ -41,8 +41,14 @@ async function scanKotlinDomains(stack, ROOT) {
       const parts = md.replace(/\/src\/main\/kotlin\/?$/, "").split("/");
       const moduleName = parts[parts.length - 1]; // e.g., "reservation-command-server"
       if (moduleSet[moduleName]) {
-        // Name conflict: use full relative path as key to avoid silent loss
-        const fullKey = md.replace(/\/src\/main\/kotlin\/$/, "").replace(/\//g, "__");
+        // Name conflict: upgrade first entry to full key too
+        if (!moduleName.includes("__")) {
+          const existingPath = moduleSet[moduleName];
+          const existingFullKey = existingPath.replace(/\/src\/main\/kotlin\/?$/, "").replace(/\//g, "__");
+          moduleSet[existingFullKey] = existingPath;
+          delete moduleSet[moduleName];
+        }
+        const fullKey = md.replace(/\/src\/main\/kotlin\/?$/, "").replace(/\//g, "__");
         moduleSet[fullKey] = md;
       } else {
         moduleSet[moduleName] = md;
@@ -56,16 +62,21 @@ async function scanKotlinDomains(stack, ROOT) {
   const domainMap = {};
 
   for (const [moduleName, modulePath] of Object.entries(moduleSet)) {
-    if (skipModules.some(s => moduleName.includes(s))) continue;
+    // Full key (e.g., "servers__command__reservation-command-server") → extract actual module name
+    const actualModuleName = moduleName.includes("__")
+      ? moduleName.split("__").pop()
+      : moduleName;
+
+    if (skipModules.some(s => actualModuleName.includes(s))) continue;
 
     // Determine server type from module name
     let serverType = "standalone";
     for (const [key, val] of Object.entries(serverTypes)) {
-      if (moduleName.includes(key)) { serverType = val; break; }
+      if (actualModuleName.includes(key)) { serverType = val; break; }
     }
 
     // Extract domain name from module name
-    let domainName = moduleName
+    let domainName = actualModuleName
       .replace(/-(?:command|query|bff|integration|adapter)-server$/, "")
       .replace(/-server$/, "");
 
@@ -87,17 +98,27 @@ async function scanKotlinDomains(stack, ROOT) {
     if (totalFiles === 0) continue;
 
     const key = `${domainName}:${serverType}`;
-    domainMap[key] = {
-      name: domainName,
-      moduleName,
-      modulePath,
-      serverType,
-      controllers,
-      services,
-      repositories,
-      dtos,
-      totalFiles,
-    };
+    if (domainMap[key]) {
+      // Merge into existing entry (e.g., same domain+type from collided module names)
+      domainMap[key].moduleNames.push(moduleName);
+      domainMap[key].controllers += controllers;
+      domainMap[key].services += services;
+      domainMap[key].repositories += repositories;
+      domainMap[key].dtos += dtos;
+      domainMap[key].totalFiles += totalFiles;
+    } else {
+      domainMap[key] = {
+        name: domainName,
+        moduleNames: [moduleName],
+        modulePath,
+        serverType,
+        controllers,
+        services,
+        repositories,
+        dtos,
+        totalFiles,
+      };
+    }
   }
 
   // Group by domain: merge command/query/bff of same domain
@@ -108,7 +129,7 @@ async function scanKotlinDomains(stack, ROOT) {
       domainGroups[name] = { name, type: "backend", modules: [], controllers: 0, services: 0, repositories: 0, dtos: 0, totalFiles: 0, serverTypes: [] };
     }
     const dg = domainGroups[name];
-    dg.modules.push(info.moduleName);
+    dg.modules.push(...info.moduleNames);
     dg.controllers += info.controllers;
     dg.services += info.services;
     dg.repositories += info.repositories;

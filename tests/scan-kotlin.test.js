@@ -95,6 +95,46 @@ describe("scanKotlinDomains — multi-module", () => {
   });
 });
 
+// ─── Module name collision ──────────────────────────────────
+
+describe("scanKotlinDomains — module name collision", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("handles same module name under different parent dirs", async () => {
+    // Two modules both named "api-server" under servers/command/ and servers/query/
+    // Same actual module name → collision in moduleSet → both upgraded to full key
+    touch(path.join(tmp, "servers/command/api-server/src/main/kotlin/com/example/order/controller/OrderCmdController.kt"));
+    touch(path.join(tmp, "servers/query/api-server/src/main/kotlin/com/example/order/controller/OrderQueryController.kt"));
+
+    const stack = { language: "kotlin", buildTool: "gradle" };
+    const { backendDomains } = await scanKotlinDomains(stack, tmp);
+
+    // Both collide to same domainName "api" + serverType "standalone" (api-server has no command/query keyword)
+    // so they merge into one domain. The key point: no module is silently lost from moduleSet.
+    assert.ok(backendDomains.length >= 1, "should detect at least one domain");
+    // Verify the full key upgrade didn't lose module paths
+    const api = backendDomains.find(d => d.name === "api");
+    assert.ok(api, "should detect api domain");
+    assert.ok(api.modules.length === 2, "should have 2 modules from collision upgrade");
+  });
+
+  it("extracts correct domain name from collided full key", async () => {
+    // Same module name "reservation-command-server" under different parent dirs
+    touch(path.join(tmp, "region-a/reservation-command-server/src/main/kotlin/com/example/reservation/controller/ResA.kt"));
+    touch(path.join(tmp, "region-b/reservation-command-server/src/main/kotlin/com/example/reservation/controller/ResB.kt"));
+
+    const stack = { language: "kotlin", buildTool: "gradle" };
+    const { backendDomains } = await scanKotlinDomains(stack, tmp);
+
+    // Domain name should still be "reservation" (extracted from actual module name, not full key)
+    const res = backendDomains.find(d => d.name === "reservation");
+    assert.ok(res, "should extract domain name correctly from collided modules");
+    assert.equal(res.totalFiles, 2, "should merge files from both collided modules");
+  });
+});
+
 // ─── Generic name guarding ──────────────────────────────────
 
 describe("scanKotlinDomains — generic name guard", () => {

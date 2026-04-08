@@ -203,7 +203,7 @@ describe("generatePrompts — missing templates", () => {
   });
 });
 
-describe("generatePrompts — strips header/footer from template body", () => {
+describe("generatePrompts — template body passed through unchanged", () => {
   let tmpTemplates, tmpGenerated;
   beforeEach(() => {
     tmpTemplates = makeTmpDir();
@@ -211,30 +211,27 @@ describe("generatePrompts — strips header/footer from template body", () => {
     writeFile(path.join(tmpTemplates, "common/header.md"), "# HEADER\n\n");
     writeFile(path.join(tmpTemplates, "common/pass3-footer.md"), "\n# FOOTER\n");
     writeFile(path.join(tmpTemplates, "common/lang-instructions.json"), JSON.stringify({ instructions: {}, labels: {} }));
-    // Template with embedded header that should be stripped
-    writeFile(path.join(tmpTemplates, "java-spring/pass1.md"),
-      "Project root path: /some/path\nInterpret all file paths relative to this root.\n\n---\n\nActual template content.\n");
-    writeFile(path.join(tmpTemplates, "java-spring/pass3.md"),
-      "1. Generate stuff.\n\nAfter completion, run the following commands in order:\n1. npx claudeos-core health\n");
+    writeFile(path.join(tmpTemplates, "java-spring/pass1.md"), "Actual template content.\n");
+    writeFile(path.join(tmpTemplates, "java-spring/pass3.md"), "1. Generate stuff.\n");
   });
   afterEach(() => { cleanup(tmpTemplates); cleanup(tmpGenerated); });
 
-  it("strips Project root path header from pass1 body", () => {
+  it("pass1 body is included unchanged after header", () => {
     const templates = { backend: "java-spring", frontend: null };
     generatePrompts(templates, "en", tmpTemplates, tmpGenerated);
 
     const pass1 = fs.readFileSync(path.join(tmpGenerated, "pass1-backend-prompt.md"), "utf-8");
-    assert.ok(!pass1.includes("Project root path:"), "should strip old header");
-    assert.ok(pass1.includes("Actual template content"), "should keep actual content");
+    assert.ok(pass1.includes("# HEADER"), "should include header");
+    assert.ok(pass1.includes("Actual template content"), "should include template body unchanged");
   });
 
-  it("strips 'After completion' footer from pass3 body", () => {
+  it("pass3 body is included unchanged between header and footer", () => {
     const templates = { backend: "java-spring", frontend: null };
     generatePrompts(templates, "en", tmpTemplates, tmpGenerated);
 
     const pass3 = fs.readFileSync(path.join(tmpGenerated, "pass3-prompt.md"), "utf-8");
-    assert.ok(!pass3.includes("After completion, run the following"), "should strip old footer");
-    assert.ok(pass3.includes("Generate stuff"), "should keep main content");
+    assert.ok(pass3.includes("Generate stuff"), "should include template body unchanged");
+    assert.ok(pass3.includes("# FOOTER"), "should include footer");
   });
 });
 

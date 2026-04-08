@@ -36,10 +36,7 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
   function readTemplate(templateName, passName) {
     const src = path.join(templatesDir, templateName, `${passName}.md`);
     if (!existsSafe(src)) return null;
-    let body = readFileSafe(src);
-    body = body.replace(/^Project root path:.*\nInterpret all file paths.*\n\n?---\n\n?/s, "");
-    body = body.replace(/\nAfter completion, run the following commands in order:[\s\S]*$/, "");
-    return body;
+    return readFileSafe(src);
   }
 
   const activeTemplates = [templates.backend, templates.frontend].filter(Boolean);

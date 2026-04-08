@@ -35,7 +35,17 @@ function claudeWaitMsg(lang, passLabel) {
   return (CLAUDE_WAIT_TMPL[lang] || CLAUDE_WAIT_TMPL.en).replace("{{PASS}}", passLabel);
 }
 
+function formatElapsed(ms) {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const rem = sec % 60;
+  return rem > 0 ? `${min}m ${rem}s` : `${min}m`;
+}
+
 async function cmdInit(parsedArgs) {
+  const totalStart = Date.now();
+
   // ─── Prerequisites check ───────────────────────────────────
   const hasProjectMarker = [".git", "package.json", "build.gradle", "build.gradle.kts", "pom.xml", "pyproject.toml", "requirements.txt"].some(
     m => fs.existsSync(path.join(PROJECT_ROOT, m))
@@ -235,7 +245,9 @@ async function cmdInit(parsedArgs) {
     prompt = injectProjectRoot(prompt);
 
     log(claudeWaitMsg(lang, `Pass 1-${i}/${totalGroups}`));
+    const t1 = Date.now();
     const ok = runClaudePrompt(prompt, { ignoreError: true });
+    const elapsed1 = formatElapsed(Date.now() - t1);
 
     if (!ok) {
       log(`    ❌ Pass 1-${i} failed. Aborting.`);
@@ -247,7 +259,7 @@ async function cmdInit(parsedArgs) {
       process.exit(1);
     }
 
-    log(`    ✅ pass1-${i}.json created`);
+    log(`    ✅ pass1-${i}.json created (${elapsed1})`);
   }
   log("");
 
@@ -266,7 +278,9 @@ async function cmdInit(parsedArgs) {
     let prompt = injectProjectRoot(readFile(pass2PromptFile));
 
     log(claudeWaitMsg(lang, "Pass 2"));
+    const t2 = Date.now();
     const ok = runClaudePrompt(prompt, { ignoreError: true });
+    const elapsed2 = formatElapsed(Date.now() - t2);
 
     if (!ok) {
       log("    ❌ Pass 2 failed. Aborting.");
@@ -278,7 +292,7 @@ async function cmdInit(parsedArgs) {
       process.exit(1);
     }
 
-    log("    ✅ pass2-merged.json created");
+    log(`    ✅ pass2-merged.json created (${elapsed2})`);
   }
   log("");
 
@@ -293,9 +307,11 @@ async function cmdInit(parsedArgs) {
   let prompt = injectProjectRoot(readFile(pass3PromptFile));
 
   log(claudeWaitMsg(lang, "Pass 3"));
-  const ok = runClaudePrompt(prompt, { ignoreError: true });
+  const t3 = Date.now();
+  const ok3 = runClaudePrompt(prompt, { ignoreError: true });
+  const elapsed3 = formatElapsed(Date.now() - t3);
 
-  if (!ok) {
+  if (!ok3) {
     log("    ❌ Pass 3 failed. Aborting.");
     process.exit(1);
   }
@@ -304,6 +320,7 @@ async function cmdInit(parsedArgs) {
     log("    ❌ CLAUDE.md was not created. Pass 3 may have failed silently.");
     process.exit(1);
   }
+  log(`    ✅ Pass 3 complete (${elapsed3})`);
   log("");
 
   // ─── [7] Run verification tools ───────────────────────────────
@@ -338,6 +355,7 @@ async function cmdInit(parsedArgs) {
   log(`║   Domains analyzed:  ${pad(totalGroups + " groups", 29)}║`);
   log(`║   Analysis passes:   ${pad(pass1Files + " pass1 files", 29)}║`);
   log(`║   Output language:   ${pad(SUPPORTED_LANGS[lang] || lang, 29)}║`);
+  log(`║   Total time:       ${pad(formatElapsed(Date.now() - totalStart), 29)}║`);
   log("║                                                    ║");
   log("║   Verify anytime:                                  ║");
   log("║   npx claudeos-core health                         ║");

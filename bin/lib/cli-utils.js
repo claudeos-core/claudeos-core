@@ -7,6 +7,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { ensureDir, existsSafe } = require("../../lib/safe-fs");
 
 // ─── Path configuration ──────────────────────────────────────────
 const TOOLS_DIR = path.resolve(__dirname, "../..");
@@ -77,16 +78,11 @@ function runClaudePrompt(prompt, options = {}) {
 }
 
 // ─── Filesystem ─────────────────────────────────────────────────
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
+// ensureDir: delegated to lib/safe-fs.js (single source of truth)
+// fileExists: alias for existsSafe from lib/safe-fs.js
+const fileExists = existsSafe;
 
-function fileExists(p) {
-  return fs.existsSync(p);
-}
-
+// readFile: intentionally throws on error (CLI needs hard failure, unlike safe-fs fallback)
 function readFile(p) {
   return fs.readFileSync(p, "utf-8");
 }

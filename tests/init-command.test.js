@@ -352,6 +352,40 @@ describe("init — claude wait message i18n", () => {
   });
 });
 
+// ─── formatElapsed ──────────────────────────────────────────
+
+describe("init — formatElapsed", () => {
+  // Reproduce the same logic from init.js
+  function formatElapsed(ms) {
+    const sec = Math.floor(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    const rem = sec % 60;
+    return rem > 0 ? `${min}m ${rem}s` : `${min}m`;
+  }
+
+  it("formats seconds only", () => {
+    assert.equal(formatElapsed(5000), "5s");
+    assert.equal(formatElapsed(45000), "45s");
+    assert.equal(formatElapsed(0), "0s");
+  });
+
+  it("formats minutes and seconds", () => {
+    assert.equal(formatElapsed(90000), "1m 30s");
+    assert.equal(formatElapsed(503000), "8m 23s");
+  });
+
+  it("formats exact minutes without remainder", () => {
+    assert.equal(formatElapsed(120000), "2m");
+    assert.equal(formatElapsed(300000), "5m");
+  });
+
+  it("handles sub-second (rounds down)", () => {
+    assert.equal(formatElapsed(999), "0s");
+    assert.equal(formatElapsed(1500), "1s");
+  });
+});
+
 // ─── Language validation ────────────────────────────────────
 
 describe("init — language validation", () => {

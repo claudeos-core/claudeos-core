@@ -9,15 +9,18 @@
 const path = require("path");
 const { glob } = require("glob");
 
+// Normalize backslash paths from glob on Windows to forward slashes
+const norm = (p) => p.replace(/\\/g, "/");
+
 async function scanKotlinDomains(stack, ROOT) {
   const backendDomains = [];
   let rootPackage = null;
 
   // Scan all .kt files across all submodules
-  const ktFiles = await glob("**/src/main/kotlin/**/*.kt", {
+  const ktFiles = (await glob("**/src/main/kotlin/**/*.kt", {
     cwd: ROOT,
     ignore: ["**/node_modules/**", "**/build/**", "**/test/**", "**/generated/**"],
-  });
+  })).map(norm);
 
   // Detect root package from first controller/service file
   for (const f of ktFiles) {
@@ -33,9 +36,9 @@ async function scanKotlinDomains(stack, ROOT) {
   ];
   const moduleSet = {};
   for (const mg of moduleGlobs) {
-    const moduleDirs = await glob(mg, { cwd: ROOT });
+    const moduleDirs = (await glob(mg, { cwd: ROOT })).map(norm);
     for (const md of moduleDirs) {
-      const parts = md.replace(/\/src\/main\/kotlin\/$/, "").split("/");
+      const parts = md.replace(/\/src\/main\/kotlin\/?$/, "").split("/");
       const moduleName = parts[parts.length - 1]; // e.g., "reservation-command-server"
       if (moduleSet[moduleName]) {
         // Name conflict: use full relative path as key to avoid silent loss
@@ -73,7 +76,7 @@ async function scanKotlinDomains(stack, ROOT) {
     }
 
     // Scan files in this module (append "/" to prevent prefix overlap)
-    const modulePrefix = modulePath.replace(/\/$/, "").replace(/\/src\/main\/kotlin$/, "") + "/";
+    const modulePrefix = modulePath.replace(/\/?$/, "").replace(/\/src\/main\/kotlin$/, "") + "/";
     const moduleKtFiles = ktFiles.filter(f => f.startsWith(modulePrefix) || f === modulePrefix.slice(0, -1));
     const controllers = moduleKtFiles.filter(f => /controller/i.test(f)).length;
     const services = moduleKtFiles.filter(f => /service/i.test(f)).length;
@@ -131,7 +134,7 @@ async function scanKotlinDomains(stack, ROOT) {
   }
 
   // Also scan shared libraries as special domains
-  const libDirs = await glob("{shared-lib,integration-lib,*-lib}/src/main/kotlin/", { cwd: ROOT });
+  const libDirs = (await glob("{shared-lib,integration-lib,*-lib}/src/main/kotlin/", { cwd: ROOT })).map(norm);
   for (const ld of libDirs) {
     const libName = ld.split("/")[0];
     if (domainGroups[libName]) continue; // Already captured

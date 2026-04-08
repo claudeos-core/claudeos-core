@@ -137,6 +137,17 @@ describe("selectTemplates", () => {
     assert.equal(t.frontend, "node-nextjs");
   });
 
+  it("selects node-nestjs for NestJS", () => {
+    const t = selectTemplates({ language: "typescript", framework: "nestjs" });
+    assert.equal(t.backend, "node-nestjs");
+  });
+
+  it("selects node-nestjs with frontend for NestJS + Next.js", () => {
+    const t = selectTemplates({ language: "typescript", framework: "nestjs", frontend: "nextjs" });
+    assert.equal(t.backend, "node-nestjs");
+    assert.equal(t.frontend, "node-nextjs");
+  });
+
   it("selects node-fastify for Fastify", () => {
     const t = selectTemplates({ language: "typescript", framework: "fastify" });
     assert.equal(t.backend, "node-fastify");

@@ -50,7 +50,8 @@ function selectTemplates(stack) {
   // Backend template (requires a backend framework; language-only fallback skipped for pure frontend projects)
   if (stack.language === "kotlin") templates.backend = "kotlin-spring";
   else if (stack.language === "java") templates.backend = "java-spring";
-  else if (stack.framework === "express" || stack.framework === "nestjs") templates.backend = "node-express";
+  else if (stack.framework === "nestjs") templates.backend = "node-nestjs";
+  else if (stack.framework === "express") templates.backend = "node-express";
   else if (stack.framework === "fastify") templates.backend = "node-fastify";
   else if (stack.framework === "django") templates.backend = "python-django";
   else if (stack.framework === "fastapi" || stack.framework === "flask") templates.backend = "python-fastapi";

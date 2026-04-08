@@ -90,7 +90,8 @@ async function detectStack(ROOT) {
     framework: null, frameworkVersion: null,
     buildTool: null, database: null, orm: null,
     frontend: null, frontendVersion: null,
-    packageManager: null, detected: [],
+    packageManager: null, monorepo: null, workspaces: null,
+    detected: [],
   };
 
   // ── Java/Kotlin: Gradle ──
@@ -237,7 +238,45 @@ async function detectStack(ROOT) {
     const pkg = readJsonSafe(path.join(ROOT, "package.json"));
     if (pkg) {
       stack.detected.push("package.json");
+
+      // ── Monorepo detection ──
+      // Detect monorepo markers: turbo.json, pnpm-workspace.yaml, lerna.json, package.json#workspaces
+      if (existsSafe(path.join(ROOT, "turbo.json"))) { stack.monorepo = "turborepo"; stack.detected.push("turbo.json"); }
+      else if (existsSafe(path.join(ROOT, "pnpm-workspace.yaml"))) { stack.monorepo = "pnpm-workspace"; stack.detected.push("pnpm-workspace.yaml"); }
+      else if (existsSafe(path.join(ROOT, "lerna.json"))) { stack.monorepo = "lerna"; stack.detected.push("lerna.json"); }
+      else if (pkg.workspaces) { stack.monorepo = "npm-workspaces"; stack.detected.push("npm-workspaces"); }
+      if (stack.monorepo) {
+        // Resolve workspace paths from package.json#workspaces or pnpm-workspace.yaml
+        let wsPatterns = [];
+        if (Array.isArray(pkg.workspaces)) wsPatterns = pkg.workspaces;
+        else if (pkg.workspaces && Array.isArray(pkg.workspaces.packages)) wsPatterns = pkg.workspaces.packages;
+        if (wsPatterns.length === 0 && existsSafe(path.join(ROOT, "pnpm-workspace.yaml"))) {
+          const wy = readFileSafe(path.join(ROOT, "pnpm-workspace.yaml"));
+          const wm = [...wy.matchAll(/- ['"]?([^'"#\n]+)['"]?/g)].map(m => m[1].trim());
+          if (wm.length > 0) wsPatterns = wm;
+        }
+        if (wsPatterns.length > 0) stack.workspaces = wsPatterns;
+      }
+
+      // Merge deps from root + sub-package package.json files (monorepo)
+      // Sub-packages provide framework/frontend/ORM that root may lack
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (stack.monorepo) {
+        const subPkgGlobs = ["{apps,packages}/*/package.json"];
+        if (stack.workspaces) {
+          for (const ws of stack.workspaces) {
+            const wsGlob = ws.replace(/\/?\*?\*?$/, "/*/package.json");
+            if (!subPkgGlobs.includes(wsGlob)) subPkgGlobs.push(wsGlob);
+          }
+        }
+        for (const spg of subPkgGlobs) {
+          const subPkgs = await glob(spg, { cwd: ROOT, ignore: ["**/node_modules/**"] });
+          for (const sp of subPkgs) {
+            const sub = readJsonSafe(path.join(ROOT, sp));
+            if (sub) Object.assign(deps, sub.dependencies, sub.devDependencies);
+          }
+        }
+      }
 
       if (!stack.language) stack.language = deps.typescript ? "typescript" : "javascript";
       if (deps.typescript) { stack.detected.push("typescript"); const tv = deps.typescript.match(/(\d+(?:\.\d+)*)/); if (tv) stack.languageVersion = tv[1]; }

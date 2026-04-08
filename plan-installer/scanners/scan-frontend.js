@@ -15,8 +15,11 @@ async function scanFrontendDomains(stack, ROOT) {
 
   // ── Angular ──
   if (stack.frontend === "angular") {
-    // Angular feature modules: src/app/*/ with *.component.ts or *.module.ts
-    const angularAppDirs = await glob("{src/app,app}/*/", { cwd: ROOT });
+    // Angular feature modules: src/app/*/ with *.component.ts or *.module.ts (+ monorepo apps/*/)
+    const angularAppDirs = [
+      ...await glob("{src/app,app}/*/", { cwd: ROOT }),
+      ...await glob("{apps,packages}/*/src/app/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+    ];
     const skipAngularDirs = ["shared", "core", "common", "layout", "layouts", "environments", "assets", "styles", "testing", "utils"];
     for (const dir of angularAppDirs) {
       const name = path.basename(dir.replace(/\/$/, ""));
@@ -51,10 +54,14 @@ async function scanFrontendDomains(stack, ROOT) {
 
   // ── Next.js/React/Vue ──
   if (stack.frontend === "nextjs" || stack.frontend === "react" || stack.frontend === "vue") {
-    // App Router / Pages Router domains
+    // App Router / Pages Router domains (standard + monorepo apps/*/)
     const allDirs = [
       ...await glob("{app,src/app}/*/", { cwd: ROOT }),
       ...await glob("{pages,src/pages}/*/", { cwd: ROOT }),
+      ...await glob("{apps,packages}/*/app/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+      ...await glob("{apps,packages}/*/src/app/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+      ...await glob("{apps,packages}/*/pages/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+      ...await glob("{apps,packages}/*/src/pages/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
     ];
     const skipPages = ["api", "_app", "_document", "fonts", "not-found", "error", "loading"];
     for (const dir of allDirs) {

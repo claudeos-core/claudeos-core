@@ -252,8 +252,10 @@ async function detectStack(ROOT) {
         else if (pkg.workspaces && Array.isArray(pkg.workspaces.packages)) wsPatterns = pkg.workspaces.packages;
         if (wsPatterns.length === 0 && existsSafe(path.join(ROOT, "pnpm-workspace.yaml"))) {
           const wy = readFileSafe(path.join(ROOT, "pnpm-workspace.yaml"));
-          const wm = [...wy.matchAll(/- ['"]?([^'"#\n]+)['"]?/g)].map(m => m[1].trim());
-          if (wm.length > 0) wsPatterns = wm;
+          if (wy) {
+            const wm = [...wy.matchAll(/- ['"]?([^'"#\n]+)['"]?/g)].map(m => m[1].trim());
+            if (wm.length > 0) wsPatterns = wm;
+          }
         }
         if (wsPatterns.length > 0) stack.workspaces = wsPatterns;
       }

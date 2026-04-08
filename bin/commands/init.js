@@ -242,11 +242,11 @@ async function cmdInit(parsedArgs) {
     const elapsed1 = formatElapsed(Date.now() - t1);
 
     if (!ok) {
-      throw new InitError(`Pass 1-${i} failed`);
+      throw new InitError(`Pass 1-${i} failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force`);
     }
 
     if (!fileExists(pass1Json)) {
-      throw new InitError(`pass1-${i}.json was not created`);
+      throw new InitError(`pass1-${i}.json was not created. Claude may have run but not produced expected output.\n    Ensure the prompt instructs Claude to write to claudeos-core/generated/pass1-${i}.json`);
     }
 
     log(`    ✅ pass1-${i}.json created (${elapsed1})`);
@@ -272,11 +272,11 @@ async function cmdInit(parsedArgs) {
     const elapsed2 = formatElapsed(Date.now() - t2);
 
     if (!ok) {
-      throw new InitError("Pass 2 failed");
+      throw new InitError("Pass 2 failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force");
     }
 
     if (!fileExists(pass2Json)) {
-      throw new InitError("pass2-merged.json was not created");
+      throw new InitError("pass2-merged.json was not created. Claude may have run but not produced expected output.");
     }
 
     log(`    ✅ pass2-merged.json created (${elapsed2})`);
@@ -298,11 +298,11 @@ async function cmdInit(parsedArgs) {
   const elapsed3 = formatElapsed(Date.now() - t3);
 
   if (!ok3) {
-    throw new InitError("Pass 3 failed");
+    throw new InitError("Pass 3 failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force");
   }
 
   if (!fileExists(path.join(PROJECT_ROOT, "CLAUDE.md"))) {
-    throw new InitError("CLAUDE.md was not created. Pass 3 may have failed silently.");
+    throw new InitError("CLAUDE.md was not created. Claude ran but did not produce CLAUDE.md.\n    Verify pass3-prompt.md instructs Claude to create CLAUDE.md at project root.");
   }
   log(`    ✅ Pass 3 complete (${elapsed3})`);
   log("");

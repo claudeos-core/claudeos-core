@@ -59,10 +59,11 @@ describe("splitDomainGroups", () => {
       { name: "c", totalFiles: 5 },
     ];
     const groups = splitDomainGroups(domains, "backend", "java-spring");
-    // a(20) added. b check: 20+20=40 >= 40 → flush [a]. b(20) added. c check: 20+5=25 < 40 → ok.
+    // a(20) added. b check: 20+20=40 > 40 false → b added (group uses full budget).
+    // c check: 40+5=45 > 40 → flush [a,b]. c added.
     assert.equal(groups.length, 2);
-    assert.deepEqual(groups[0].domains, ["a"]);
-    assert.deepEqual(groups[1].domains, ["b", "c"]);
+    assert.deepEqual(groups[0].domains, ["a", "b"]);
+    assert.deepEqual(groups[1].domains, ["c"]);
   });
 
   it("handles single domain exceeding MAX_FILES_PER_GROUP", () => {

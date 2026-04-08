@@ -107,7 +107,7 @@ async function main() {
         continue;
       }
       // All rules must have paths: frontmatter (value varies by category — e.g. ["**/*"] for core/backend, scoped patterns for infra/sync)
-      const hasFrontmatter = c.startsWith("---");
+      const hasFrontmatter = c.replace(/^\uFEFF/, "").startsWith("---");
       const hasPathsKey = c.includes("paths:");
       if (!hasFrontmatter) {
         warnings.push({ file: r, type: "NO_FRONTMATTER", msg: "Missing YAML frontmatter (---)" });

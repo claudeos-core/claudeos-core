@@ -38,13 +38,17 @@ function rel(p) {
 }
 
 function stat(f) {
-  const s = fs.statSync(f);
-  const c = fs.readFileSync(f, "utf-8");
-  return {
-    lines: c.split("\n").length,
-    bytes: s.size,
-    modified: s.mtime.toISOString().split("T")[0],
-  };
+  try {
+    const s = fs.statSync(f);
+    const c = fs.readFileSync(f, "utf-8");
+    return {
+      lines: c.endsWith("\n") ? c.split("\n").length - 1 : c.split("\n").length,
+      bytes: s.size,
+      modified: s.mtime.toISOString().split("T")[0],
+    };
+  } catch (_e) {
+    return { lines: 0, bytes: 0, modified: "unknown" };
+  }
 }
 
 function frontmatter(f) {
@@ -158,7 +162,7 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch(e => { console.error(e); process.exit(1); });
+  main().catch(e => { console.error(`\n  ❌ Manifest Generator failed: ${e.message || e}`); process.exit(1); });
 }
 
 module.exports = { main };

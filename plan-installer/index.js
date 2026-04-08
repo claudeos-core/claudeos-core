@@ -92,6 +92,7 @@ async function main() {
 
   // Save outputs
   const defaultPort = (stack.framework === "fastapi" || stack.framework === "django") ? 8000
+    : stack.framework === "flask" ? 5000
     : (stack.framework === "express" || stack.framework === "nestjs" || stack.framework === "fastify") ? 3000 : 8080;
   const analysis = {
     analyzedAt: new Date().toISOString(), lang,

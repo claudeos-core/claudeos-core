@@ -5,8 +5,8 @@
 # One-click full system auto-build
 # Automatically splits Pass 1 into N runs based on project size
 #
-# Prerequisites: bash, node (v18+), claude CLI, perl
-# For cross-platform use without perl, use: node bin/cli.js init
+# Prerequisites: bash, node (v18+), claude CLI
+# Cross-platform alternative: node bin/cli.js init
 #
 # Usage: bash claudeos-core-tools/bootstrap.sh --lang ko
 #        bash claudeos-core-tools/bootstrap.sh              (interactive)
@@ -27,7 +27,7 @@ GENERATED_DIR="$PROJECT_ROOT/claudeos-core/generated"
 cd "$PROJECT_ROOT"
 
 # Cleanup temp files on exit (Ctrl+C, errors, etc.)
-trap 'rm -f "$GENERATED_DIR"/_tmp_*.md "$GENERATED_DIR"/_tmp_*.md.final 2>/dev/null' EXIT
+trap 'rc=$?; rm -f "$GENERATED_DIR"/_tmp_*.md "$GENERATED_DIR"/_tmp_*.md.final 2>/dev/null; exit $rc' EXIT
 
 # ─── Language selection (required) ──────────────────────────────
 SUPPORTED_LANGS=("en" "ko" "zh-CN" "ja" "es" "vi" "hi" "ru" "fr" "de")
@@ -97,7 +97,7 @@ if ! command -v node &> /dev/null; then
   exit 1
 fi
 
-NODE_MAJOR=$(node -e "console.log(process.versions.node.split('.')[0])")
+NODE_MAJOR=$(node -e "console.log(process.versions.node.split('.')[0])" 2>/dev/null)
 if ! [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]] || [ "$NODE_MAJOR" -lt 18 ]; then
   echo ""
   echo "  ❌ Node.js v18+ required (current: v$(node --version))"
@@ -115,13 +115,7 @@ if ! command -v claude &> /dev/null; then
   exit 1
 fi
 
-if ! command -v perl &> /dev/null; then
-  echo ""
-  echo "  ❌ perl not found (required for placeholder substitution)."
-  echo "  Install perl or use the Node.js CLI instead: npx claudeos-core init"
-  echo ""
-  exit 1
-fi
+## perl is no longer required — placeholder substitution now uses Node.js
 
 
 
@@ -246,18 +240,20 @@ for i in $(seq 1 "$TOTAL_GROUPS"); do
   if [ ! -f "$PROMPT_FILE" ]; then
     PROMPT_FILE="$GENERATED_DIR/pass1-prompt.md"
   fi
-  # Substitute placeholders via temp file (avoids sed special char issues and $() newline stripping)
+  # Substitute placeholders via temp file (uses Node.js for safe literal replacement)
   TMP_PROMPT="$GENERATED_DIR/_tmp_pass1_prompt.md"
   cp "$PROMPT_FILE" "$TMP_PROMPT"
-  # Use perl with $ENV{} for safe literal replacement (no shell interpolation into Perl code)
   export _DOMAIN_LIST="$DOMAIN_LIST"
   export _PASS_NUM="$i"
-  perl -pi -e 's/\{\{DOMAIN_GROUP\}\}/$ENV{_DOMAIN_LIST}/g' "$TMP_PROMPT"
-  perl -pi -e 's/\{\{PASS_NUM\}\}/$ENV{_PASS_NUM}/g' "$TMP_PROMPT"
-  # inject_project_root: pipe through perl, write to final temp file
   export _PROJECT_ROOT="$PROJECT_ROOT"
-  perl -pe 's/\{\{PROJECT_ROOT\}\}/$ENV{_PROJECT_ROOT}/g' "$TMP_PROMPT" > "${TMP_PROMPT}.final"
-  mv "${TMP_PROMPT}.final" "$TMP_PROMPT"
+  node -e "
+    const fs = require('fs');
+    let c = fs.readFileSync(process.argv[1], 'utf8');
+    c = c.replace(/\{\{DOMAIN_GROUP\}\}/g, process.env._DOMAIN_LIST);
+    c = c.replace(/\{\{PASS_NUM\}\}/g, process.env._PASS_NUM);
+    c = c.replace(/\{\{PROJECT_ROOT\}\}/g, process.env._PROJECT_ROOT);
+    fs.writeFileSync(process.argv[1], c);
+  " "$TMP_PROMPT"
 
   echo "    ⏳ [Pass 1-${i}/${TOTAL_GROUPS}] Running claude -p (no output is normal, please wait)..."
   if ! (cd "$PROJECT_ROOT" && cat "$TMP_PROMPT" | claude -p --dangerously-skip-permissions); then
@@ -288,7 +284,12 @@ if [ -f "$GENERATED_DIR/pass2-merged.json" ]; then
 else
   TMP_PASS2="$GENERATED_DIR/_tmp_pass2_prompt.md"
   export _PROJECT_ROOT="$PROJECT_ROOT"
-  perl -pe 's/\{\{PROJECT_ROOT\}\}/$ENV{_PROJECT_ROOT}/g' "$GENERATED_DIR/pass2-prompt.md" > "$TMP_PASS2"
+  node -e "
+    const fs = require('fs');
+    let c = fs.readFileSync(process.argv[1], 'utf8');
+    c = c.replace(/\{\{PROJECT_ROOT\}\}/g, process.env._PROJECT_ROOT);
+    fs.writeFileSync(process.argv[2], c);
+  " "$GENERATED_DIR/pass2-prompt.md" "$TMP_PASS2"
 
   echo "    ⏳ [Pass 2] Running claude -p (no output is normal, please wait)..."
   if ! (cd "$PROJECT_ROOT" && cat "$TMP_PASS2" | claude -p --dangerously-skip-permissions); then
@@ -313,7 +314,12 @@ echo "[6] Pass 3 — Generating all files..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 TMP_PASS3="$GENERATED_DIR/_tmp_pass3_prompt.md"
 export _PROJECT_ROOT="$PROJECT_ROOT"
-perl -pe 's/\{\{PROJECT_ROOT\}\}/$ENV{_PROJECT_ROOT}/g' "$GENERATED_DIR/pass3-prompt.md" > "$TMP_PASS3"
+node -e "
+  const fs = require('fs');
+  let c = fs.readFileSync(process.argv[1], 'utf8');
+  c = c.replace(/\{\{PROJECT_ROOT\}\}/g, process.env._PROJECT_ROOT);
+  fs.writeFileSync(process.argv[2], c);
+" "$GENERATED_DIR/pass3-prompt.md" "$TMP_PASS3"
 
 echo "    ⏳ [Pass 3] Running claude -p (no output is normal, please wait)..."
 if ! (cd "$PROJECT_ROOT" && cat "$TMP_PASS3" | claude -p --dangerously-skip-permissions); then

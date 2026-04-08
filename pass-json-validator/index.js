@@ -86,7 +86,7 @@ async function main() {
       console.log(`    domains: ${pa.domains.length}`);
       console.log(`    lang: ${pa.lang || "en (default)"}`);
       const tmpl = pa.templates || pa.template;
-      if (typeof tmpl === "object") {
+      if (tmpl && typeof tmpl === "object") {
         console.log(`    templates: backend=${tmpl.backend || "none"}, frontend=${tmpl.frontend || "none"}`);
         if (pa.isMultiStack) console.log(`    mode: 🔀 multi-stack`);
       } else {
@@ -195,7 +195,7 @@ async function main() {
           const framework = paData.stack?.framework;
           const language = paData.stack?.language;
           const architecture = paData.stack?.architecture;
-          isBackend = !frontend || ["express", "nestjs", "django", "fastapi", "spring-boot"].includes(framework);
+          isBackend = !frontend || ["express", "nestjs", "fastify", "django", "fastapi", "flask", "spring-boot"].includes(framework);
           isKotlin = language === "kotlin";
           isKotlinCqrs = isKotlin && (architecture === "cqrs" || paData.stack?.multiModule);
         } catch (_e) { /* If project-analysis parsing fails, conservatively assume backend */ }

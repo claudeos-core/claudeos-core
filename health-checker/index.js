@@ -32,7 +32,7 @@ function run(name, script) {
     });
     return { name, ok: true, output };
   } catch (e) {
-    return { name, ok: false, output: e.stdout || e.stderr || e.message || "", exitCode: e.status || 1 };
+    return { name, ok: false, output: [e.stdout, e.stderr].filter(Boolean).join("\n") || e.message || "", exitCode: e.status || 1 };
   }
 }
 
@@ -43,15 +43,17 @@ function main() {
 
   // ─── [0] Run manifest-generator first (prerequisite) ──────────────────
   // Must run first because sync-checker reads sync-map.json
+  let manifestOk = false;
   const manifestScript = path.join(TOOLS, "manifest-generator/index.js");
   if (fs.existsSync(manifestScript)) {
     process.stdout.write("  ⏳ manifest-generator — generating metadata...");
     const r = run("manifest-generator", manifestScript);
     if (r.ok) {
       console.log(" ✅");
+      manifestOk = true;
     } else {
       console.log(" ❌");
-      console.log("  ⚠️  manifest-generator failed. Subsequent sync-checker results may be inaccurate.");
+      console.log("  ⚠️  manifest-generator failed. sync-checker will be skipped.");
     }
   } else {
     console.log("  ⏭️  manifest-generator — not found");
@@ -72,6 +74,12 @@ function main() {
   for (const t of tools) {
     if (!fs.existsSync(t.script)) {
       console.log(`  ⏭️  ${t.name} — not found`);
+      results.push({ name: t.name, status: "skipped" });
+      continue;
+    }
+    // Skip sync-checker if manifest-generator failed (depends on sync-map.json)
+    if (t.name === "sync-checker" && !manifestOk) {
+      console.log(`  ⏭️  ${t.name} — skipped (manifest-generator failed)`);
       results.push({ name: t.name, status: "skipped" });
       continue;
     }

@@ -63,7 +63,11 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
 
   if (primaryTemplate) {
     const primaryBody = readTemplate(primaryTemplate, "pass3");
-    let combinedBody = primaryBody || "";
+    if (!primaryBody) {
+      console.log(`    ⚠️  pass3 template not found for ${primaryTemplate}, skipping`);
+      return;
+    }
+    let combinedBody = primaryBody;
 
     if (templates.backend && templates.frontend && templates.backend !== templates.frontend) {
       const frontendBody = readTemplate(templates.frontend, "pass3");

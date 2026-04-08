@@ -14,7 +14,7 @@ function splitDomainGroups(domains, type, template) {
 
   for (const d of domains) {
     // Flush current group before adding if it would exceed limits
-    if (current.length > 0 && (fileCount + d.totalFiles >= MAX_FILES_PER_GROUP || current.length >= MAX_DOMAINS_PER_GROUP)) {
+    if (current.length > 0 && (fileCount + d.totalFiles > MAX_FILES_PER_GROUP || current.length >= MAX_DOMAINS_PER_GROUP)) {
       groups.push({ type, template, domains: [...current], estimatedFiles: fileCount });
       current = [];
       fileCount = 0;

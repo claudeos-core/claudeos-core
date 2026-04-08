@@ -34,6 +34,16 @@ function rel(p) {
   return path.relative(ROOT, p).replace(/\\/g, "/");
 }
 
+function isWithinRoot(absPath) {
+  let resolved = path.resolve(absPath);
+  let root = path.resolve(ROOT);
+  if (process.platform === "win32") {
+    resolved = resolved.toLowerCase();
+    root = root.toLowerCase();
+  }
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
+
 async function main() {
   console.log("\n╔═══════════════════════════════════════╗");
   console.log("║  ClaudeOS-Core — Sync Checker         ║");
@@ -55,7 +65,7 @@ async function main() {
     console.log("  ❌ sync-map.json has no mappings array.\n");
     process.exit(1);
   }
-  const reg = new Set(sm.mappings.map((m) => m.sourcePath));
+  const reg = new Set(sm.mappings.map((m) => m.sourcePath).filter(Boolean));
   const issues = { unreg: [], orphan: [] };
 
   // ─── [1/2] Disk → Plan: detect unregistered files ───────
@@ -83,9 +93,7 @@ async function main() {
   for (const m of sm.mappings) {
     const abs = path.join(ROOT, m.sourcePath);
     // Skip path traversal attempts (allow files at ROOT level and below)
-    const resolvedAbs = path.resolve(abs);
-    const resolvedRoot = path.resolve(ROOT);
-    if (resolvedAbs !== resolvedRoot && !resolvedAbs.startsWith(resolvedRoot + path.sep)) continue;
+    if (!isWithinRoot(abs)) continue;
     if (!fs.existsSync(abs)) {
       issues.orphan.push({ path: m.sourcePath, plan: m.planFile });
     }

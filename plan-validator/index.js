@@ -28,6 +28,16 @@ function rel(p) {
   return path.relative(ROOT, p).replace(/\\/g, "/");
 }
 
+function isWithinRoot(absPath) {
+  let resolved = path.resolve(absPath);
+  let root = path.resolve(ROOT);
+  if (process.platform === "win32") {
+    resolved = resolved.toLowerCase();
+    root = root.toLowerCase();
+  }
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
+
 // Aliases for backward compatibility (used by tests and main())
 function extractFileBlocks(content) { return parseFileBlocks(content, { includeContent: true }); }
 function extractCodeBlocks(content) { return parseCodeBlocks(content, { includeContent: true }); }
@@ -70,9 +80,7 @@ async function main() {
       const abs = path.join(ROOT, b.path);
 
       // Block path traversal attempts (allow files at ROOT level and below)
-      const resolvedAbs = path.resolve(abs);
-      const resolvedRoot = path.resolve(ROOT);
-      if (resolvedAbs !== resolvedRoot && !resolvedAbs.startsWith(resolvedRoot + path.sep)) {
+      if (!isWithinRoot(abs)) {
         console.log(`     ⚠️  SKIPPED: ${b.path} (path traversal blocked)`);
         continue;
       }
@@ -93,9 +101,9 @@ async function main() {
         continue;
       }
 
-      // File exists — compare content (normalize trailing newlines only)
-      const diskContent = fs.readFileSync(abs, "utf-8").replace(/\n+$/, "");
-      const planContent = b.content.replace(/\n+$/, "");
+      // File exists — compare content (normalize CRLF + trailing newlines)
+      const diskContent = fs.readFileSync(abs, "utf-8").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+      const planContent = b.content.replace(/\r\n/g, "\n").replace(/\n+$/, "");
 
       if (diskContent === planContent) {
         synced++;

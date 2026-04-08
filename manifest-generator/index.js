@@ -17,6 +17,8 @@ const fs = require("fs");
 const path = require("path");
 const matter = require("gray-matter");
 const { glob } = require("glob");
+const { parseFileBlocks, parseCodeBlocks, CODE_BLOCK_PLANS } = require("../lib/plan-parser");
+const { updateStaleReport } = require("../lib/stale-report");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const GEN = path.join(ROOT, "claudeos-core/generated");
@@ -54,33 +56,17 @@ function frontmatter(f) {
 }
 
 
-// Plans using <file path="..."> block format
-function extractFileBlocks(f) {
+// Wrappers: read file → parse → attach planFile metadata
+function extractFileBlocksFromFile(f) {
   if (!fs.existsSync(f)) return [];
   const content = fs.readFileSync(f, "utf-8");
-  const result = [];
-  let m;
-  const re = /<file\s+path="([^"]+)">/g;
-  while ((m = re.exec(content)) !== null) {
-    result.push({ sourcePath: m[1], planFile: rel(f) });
-  }
-  return result;
+  return parseFileBlocks(content).map(b => ({ sourcePath: b.path, planFile: rel(f) }));
 }
 
-// Plans using ## N. `path` ```markdown code block format (e.g., 21.sync-rules-master.md)
-function extractCodeBlockPaths(f) {
+function extractCodeBlockPathsFromFile(f) {
   if (!fs.existsSync(f)) return [];
   const content = fs.readFileSync(f, "utf-8");
-  const result = [];
-  const headingRe = /^##\s+\d+\.\s+`?([^`\n]+)`?/gm;
-  let headingMatch;
-  while ((headingMatch = headingRe.exec(content)) !== null) {
-    const filePath = headingMatch[1].trim();
-    if (filePath && filePath.includes("/")) {
-      result.push({ sourcePath: filePath, planFile: rel(f) });
-    }
-  }
-  return result;
+  return parseCodeBlocks(content).map(b => ({ sourcePath: b.path, planFile: rel(f) }));
 }
 
 async function main() {
@@ -136,15 +122,15 @@ async function main() {
   // import-graph.json removed — @import was never a Claude Code feature
 
   // ─── sync-map.json ─────────────────────────────────────
-  const CODE_BLOCK_PLANS = ["21.sync-rules-master.md"];
+  // CODE_BLOCK_PLANS imported from lib/plan-parser.js
   const sm = { generatedAt: new Date().toISOString(), mappings: [] };
   if (fs.existsSync(DIRS.plan)) {
     for (const p of await glob("*.md", { cwd: DIRS.plan, absolute: true })) {
       const bn = path.basename(p);
       if (CODE_BLOCK_PLANS.includes(bn)) {
-        sm.mappings.push(...extractCodeBlockPaths(p));
+        sm.mappings.push(...extractCodeBlockPathsFromFile(p));
       } else {
-        sm.mappings.push(...extractFileBlocks(p));
+        sm.mappings.push(...extractFileBlocksFromFile(p));
       }
     }
   }
@@ -158,7 +144,7 @@ async function main() {
     for (const p of await glob("*.md", { cwd: DIRS.plan, absolute: true })) {
       const r = rel(p);
       const s = stat(p);
-      const blocks = extractFileBlocks(p);
+      const blocks = extractFileBlocksFromFile(p);
       pm.plans.push({ path: r, ...s, fileBlocks: blocks.length, status: "ok" });
     }
   }
@@ -166,16 +152,7 @@ async function main() {
   console.log(`  ✅ plan-manifest.json — ${pm.plans.length} plans`);
 
   // ─── Initialize stale-report.json (preserve existing sub-tool results) ──
-  const srPath = path.join(GEN, "stale-report.json");
-  let sr = {};
-  if (fs.existsSync(srPath)) {
-    try { sr = JSON.parse(fs.readFileSync(srPath, "utf-8")); } catch (_e) { sr = {}; }
-  }
-  sr.generatedAt = new Date().toISOString();
-  if (!sr.summary) sr.summary = {};
-  sr.summary.totalIssues = 0;
-  sr.summary.status = "initial";
-  fs.writeFileSync(srPath, JSON.stringify(sr, null, 2));
+  updateStaleReport(GEN, "generatedAt", new Date().toISOString(), { totalIssues: 0, status: "initial" });
   console.log("  ✅ stale-report.json — initialized");
   console.log("\n  📁 Output: claudeos-core/generated/ (4 files)\n");
 }

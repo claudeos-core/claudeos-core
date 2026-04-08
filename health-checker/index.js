@@ -17,6 +17,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { updateStaleReport } = require("../lib/stale-report");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const TOOLS = path.resolve(__dirname, "..");
@@ -104,22 +105,11 @@ function main() {
   console.log("  ══════════════════════════════\n");
 
   // ─── Update stale-report.json ────────────────────────────
-  if (fs.existsSync(GEN)) {
-    const rp = path.join(GEN, "stale-report.json");
-    let ex = {};
-    if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
-    }
-    ex.generatedAt = new Date().toISOString();
-    ex.healthCheck = { results, status: hasErr ? "fail" : "pass" };
-    if (!ex.summary) ex.summary = {};
-    ex.summary = {
-      ...ex.summary,
-      totalIssues: results.filter((r) => r.status === "fail").length,
-      healthStatus: hasErr ? "fail" : "ok",
-    };
-    fs.writeFileSync(rp, JSON.stringify(ex, null, 2));
-  }
+  updateStaleReport(GEN, "generatedAt", new Date().toISOString());
+  updateStaleReport(GEN, "healthCheck",
+    { results, status: hasErr ? "fail" : "pass" },
+    { totalIssues: results.filter((r) => r.status === "fail").length, healthStatus: hasErr ? "fail" : "ok" }
+  );
 
   process.exit(hasErr ? 1 : 0);
 }

@@ -15,126 +15,22 @@
 const fs = require("fs");
 const path = require("path");
 const { glob } = require("glob");
+const { parseFileBlocks, parseCodeBlocks, replaceFileBlock, replaceCodeBlock, CODE_BLOCK_PLANS } = require("../lib/plan-parser");
+const { updateStaleReport } = require("../lib/stale-report");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const PLAN = path.join(ROOT, "claudeos-core/plan");
 const GEN  = path.join(ROOT, "claudeos-core/generated");
 
-// Plan files using code block format (the rest use <file> block format)
-const CODE_BLOCK_PLANS = ["21.sync-rules-master.md"];
+// CODE_BLOCK_PLANS imported from lib/plan-parser.js
 
 function rel(p) {
   return path.relative(ROOT, p).replace(/\\/g, "/");
 }
 
-// Extract <file path="..."> ... </file> blocks
-function extractFileBlocks(content) {
-  const result = [];
-  let m;
-  const re = /<file\s+path="([^"]+)">\s*\n([\s\S]*?)\n<\/file>/g;
-  while ((m = re.exec(content)) !== null) {
-    result.push({ path: m[1], content: m[2] });
-  }
-  return result;
-}
-
-// Extract ## N. `path` \n```markdown ... ``` blocks
-// Uses indexOf-based parsing to correctly handle nested code fences inside markdown content
-function extractCodeBlocks(content) {
-  const result = [];
-  const headingRe = /^##\s+\d+\.\s+([^\n]+)/gm;
-  let headingMatch;
-  while ((headingMatch = headingRe.exec(content)) !== null) {
-    const filePath = headingMatch[1].replace(/`/g, "").trim();
-    // Find the opening ```markdown after the heading
-    const openFence = content.indexOf("```markdown\n", headingMatch.index);
-    if (openFence < 0) continue;
-    const contentStart = openFence + "```markdown\n".length;
-    // Find the matching closing ``` — track nesting depth to skip inner fenced blocks
-    let searchPos = contentStart;
-    let closingPos = -1;
-    let nestDepth = 0;
-    while (searchPos < content.length) {
-      const nextFence = content.indexOf("\n```", searchPos);
-      if (nextFence < 0) break;
-      const fenceLineStart = nextFence + 1; // position of ```
-      // Determine end of this ``` line
-      const nextNewline = content.indexOf("\n", fenceLineStart + 3);
-      const restOfLine = nextNewline >= 0
-        ? content.substring(fenceLineStart + 3, nextNewline)
-        : content.substring(fenceLineStart + 3);
-      // Opening fence: ``` followed by a language tag (non-empty alphanumeric text)
-      const isOpening = /^[a-zA-Z]/.test(restOfLine.trim());
-      if (isOpening) {
-        nestDepth++;
-        searchPos = nextNewline >= 0 ? nextNewline : fenceLineStart + 3;
-      } else if (nestDepth > 0) {
-        nestDepth--;
-        searchPos = nextNewline >= 0 ? nextNewline : fenceLineStart + 3;
-      } else {
-        closingPos = fenceLineStart;
-        break;
-      }
-    }
-    if (closingPos < 0) continue;
-    const blockContent = content.substring(contentStart, closingPos).trimEnd();
-    result.push({ path: filePath, content: blockContent });
-    // Advance headingRe past this block to avoid re-matching inside content
-    headingRe.lastIndex = closingPos;
-  }
-  return result;
-}
-
-// Replace <file> block content with new content
-function replaceFileBlock(content, filePath, newContent) {
-  const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return content.replace(
-    new RegExp(`(<file\\s+path="${escaped}">\\s*\\n)[\\s\\S]*?(\\n</file>)`, "g"),
-    `$1${newContent}$2`
-  );
-}
-
-// Replace code block content with new content
-// Uses indexOf-based approach to avoid regex issues with nested code fences
-function replaceCodeBlock(content, filePath, newContent) {
-  const cleanPath = filePath.replace(/`/g, "");
-  // Find the heading line containing the file path
-  const headingPattern = new RegExp(`^##\\s+\\d+\\.\\s+\`?${cleanPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\`?`, "m");
-  const headingMatch = headingPattern.exec(content);
-  if (!headingMatch) return content;
-  // Find the opening ```markdown after the heading
-  const afterHeading = content.indexOf("```markdown\n", headingMatch.index);
-  if (afterHeading < 0) return content;
-  const contentStart = afterHeading + "```markdown\n".length;
-  // Find the matching closing ``` — track nesting depth to skip inner fenced blocks
-  let searchPos = contentStart;
-  let closingPos = -1;
-  let nestDepth = 0;
-  while (searchPos < content.length) {
-    const nextFence = content.indexOf("\n```", searchPos);
-    if (nextFence < 0) break;
-    const fenceLineStart = nextFence + 1; // position of ```
-    // Determine end of this ``` line
-    const nextNewline = content.indexOf("\n", fenceLineStart + 3);
-    const restOfLine = nextNewline >= 0
-      ? content.substring(fenceLineStart + 3, nextNewline)
-      : content.substring(fenceLineStart + 3);
-    // Opening fence: ``` followed by a language tag (non-empty alphanumeric text)
-    const isOpening = /^[a-zA-Z]/.test(restOfLine.trim());
-    if (isOpening) {
-      nestDepth++;
-      searchPos = nextNewline >= 0 ? nextNewline : fenceLineStart + 3;
-    } else if (nestDepth > 0) {
-      nestDepth--;
-      searchPos = nextNewline >= 0 ? nextNewline : fenceLineStart + 3;
-    } else {
-      closingPos = fenceLineStart;
-      break;
-    }
-  }
-  if (closingPos < 0) return content;
-  return content.substring(0, contentStart) + newContent + "\n" + content.substring(closingPos);
-}
+// Aliases for backward compatibility (used by tests and main())
+function extractFileBlocks(content) { return parseFileBlocks(content, { includeContent: true }); }
+function extractCodeBlocks(content) { return parseCodeBlocks(content, { includeContent: true }); }
 
 async function main() {
   const validModes = ["--check", "--refresh", "--execute"];
@@ -244,16 +140,10 @@ async function main() {
     );
 
     // Also write to stale-report.json for consolidated health reporting
-    const rp = path.join(GEN, "stale-report.json");
-    let ex = {};
-    if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
-    }
-    ex.planValidation = { checkedAt: new Date().toISOString(), mode, total, synced, drift, missing };
-    if (!ex.summary) ex.summary = {};
-    ex.summary.planDrift = drift;
-    ex.summary.planMissing = missing;
-    fs.writeFileSync(rp, JSON.stringify(ex, null, 2));
+    updateStaleReport(GEN, "planValidation",
+      { checkedAt: new Date().toISOString(), mode, total, synced, drift, missing },
+      { planDrift: drift, planMissing: missing }
+    );
   }
 
   process.exit(drift + missing > 0 ? 1 : 0);

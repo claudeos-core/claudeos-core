@@ -15,6 +15,7 @@
 const fs = require("fs");
 const path = require("path");
 const { glob } = require("glob");
+const { updateStaleReport } = require("../lib/stale-report");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const GEN = path.join(ROOT, "claudeos-core/generated");
@@ -105,24 +106,10 @@ async function main() {
   console.log(total === 0 ? "  ✅ All in sync\n" : `  ⚠️  ${total} issues\n`);
 
   // ─── Update stale-report.json ────────────────────────────
-  if (fs.existsSync(GEN)) {
-    const rp = path.join(GEN, "stale-report.json");
-    let ex = {};
-    if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
-    }
-    ex.syncMisses = {
-      checkedAt: new Date().toISOString(),
-      unregistered: issues.unreg,
-      orphaned: issues.orphan,
-    };
-    ex.summary = {
-      ...ex.summary,
-      syncIssues: total,
-      status: total === 0 ? "ok" : "warning",
-    };
-    fs.writeFileSync(rp, JSON.stringify(ex, null, 2));
-  }
+  updateStaleReport(GEN, "syncMisses",
+    { checkedAt: new Date().toISOString(), unregistered: issues.unreg, orphaned: issues.orphan },
+    { syncIssues: total, status: total === 0 ? "ok" : "warning" }
+  );
 
   // Exit 1 only for orphaned files (actual breakage), not for unregistered (informational)
   const orphanCount = issues.orphan.length;

@@ -17,6 +17,7 @@
 const fs = require("fs");
 const path = require("path");
 const { glob } = require("glob");
+const { updateStaleReport } = require("../lib/stale-report");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const GEN_DIR = path.join(ROOT, "claudeos-core/generated");
@@ -282,16 +283,10 @@ async function main() {
   }
 
   // Record in stale-report
-  if (fs.existsSync(GEN_DIR)) {
-    const rp = path.join(GEN_DIR, "stale-report.json");
-    let ex = {};
-    if (fs.existsSync(rp)) {
-      try { ex = JSON.parse(fs.readFileSync(rp, "utf-8")); } catch (_e) { ex = {}; }
-    }
-    ex.jsonValidation = { checkedAt: new Date().toISOString(), checked, errors: errors.length, warnings: warnings.length };
-    ex.summary = { ...ex.summary, jsonErrors: errors.length, jsonWarnings: warnings.length };
-    fs.writeFileSync(rp, JSON.stringify(ex, null, 2));
-  }
+  updateStaleReport(GEN_DIR, "jsonValidation",
+    { checkedAt: new Date().toISOString(), checked, errors: errors.length, warnings: warnings.length },
+    { jsonErrors: errors.length, jsonWarnings: warnings.length }
+  );
 
   console.log(`  Total: ${errors.length} errors, ${warnings.length} warnings\n`);
   process.exit(errors.length > 0 ? 1 : 0);

@@ -29,7 +29,8 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
     const langData = readJsonSafe(langPath);
     if (langData && langData.instructions && langData.instructions[lang]) {
       langInstruction = langData.instructions[lang];
-      console.log(`    🌐 Language: ${langData.labels[lang]} (Pass 3 output)`);
+      const label = (langData.labels && langData.labels[lang]) || lang;
+      console.log(`    🌐 Language: ${label} (Pass 3 output)`);
     }
   }
 
@@ -39,7 +40,7 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
     return readFileSafe(src);
   }
 
-  const activeTemplates = [templates.backend, templates.frontend].filter(Boolean);
+  const activeTemplates = [...new Set([templates.backend, templates.frontend].filter(Boolean))];
   const primaryTemplate = templates.backend || templates.frontend;
 
   for (let ti = 0; ti < activeTemplates.length; ti++) {

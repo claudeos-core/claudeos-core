@@ -69,7 +69,12 @@ async function scanJavaDomains(stack, ROOT) {
         domainMap[d].controllers += entries.length;
       }
     }
-    if (Object.keys(domainMap).length > 0) detectedPattern = domainMap[Object.keys(domainMap)[0]].pattern;
+    if (Object.keys(domainMap).length > 0) {
+      // Determine pattern by majority vote (B vs D)
+      const patternCounts = {};
+      for (const v of Object.values(domainMap)) patternCounts[v.pattern] = (patternCounts[v.pattern] || 0) + 1;
+      detectedPattern = Object.entries(patternCounts).sort((a, b) => b[1] - a[1])[0][0];
+    }
   }
 
   // Pattern E: DDD/Hexagonal — {domain}/adapter/in/web/*.java or {domain}/adapter/in/rest/*.java

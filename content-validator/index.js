@@ -85,7 +85,7 @@ async function main() {
     for (let i = 0; i < enKeywords.length; i++) {
       const candidates = [enKeywords[i], langKeywords[i]].filter(Boolean);
       const found = candidates.some(kw => {
-        const re = new RegExp(`(^|#|\\s)${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "im");
+        const re = new RegExp(`(^|#|\\s)${kw.replace(/[.*+?^${}()|\\[\]\\\\]/g, "\\$&")}`, "im");
         return re.test(content);
       });
       if (!found) {

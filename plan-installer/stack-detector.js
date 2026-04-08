@@ -267,7 +267,9 @@ async function detectStack(ROOT) {
         const subPkgGlobs = ["{apps,packages}/*/package.json"];
         if (stack.workspaces) {
           for (const ws of stack.workspaces) {
-            const wsGlob = ws.replace(/\/?\*?\*?$/, "/*/package.json");
+            const wsGlob = /[*?]/.test(ws)
+              ? ws.replace(/\/?\*?\*?$/, "/*/package.json")
+              : `${ws.replace(/\/?$/, "")}/{,*/}package.json`;
             if (!subPkgGlobs.includes(wsGlob)) subPkgGlobs.push(wsGlob);
           }
         }

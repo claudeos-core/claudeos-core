@@ -17,7 +17,7 @@ async function scanPythonDomains(stack, ROOT) {
       const dir = path.dirname(f);
       if (dir === "." || dir.includes("venv")) continue;
       const name = path.basename(dir);
-      const appFiles = await glob(`${dir}/*.py`, { cwd: ROOT });
+      const appFiles = await glob(`${dir.replace(/\\/g, "/")}/*.py`, { cwd: ROOT });
       const views = appFiles.filter(x => x.includes("views")).length;
       const models = appFiles.filter(x => x.includes("models")).length;
       const serializers = appFiles.filter(x => x.includes("serializers")).length;
@@ -25,16 +25,16 @@ async function scanPythonDomains(stack, ROOT) {
     }
   }
 
-  // ── FastAPI / Flask ──
-  if (stack.framework === "fastapi" || stack.framework === "flask") {
+  // ── FastAPI / Flask / generic Python ──
+  if (stack.framework === "fastapi" || stack.framework === "flask" || (stack.language === "python" && stack.framework !== "django")) {
     const routerFiles = await glob("**/{router,routes,endpoints}*.py", { cwd: ROOT, ignore: ["**/venv/**", "**/.venv/**"] });
     const seen = new Set();
     for (const f of routerFiles) {
       const dir = path.dirname(f);
       const name = path.basename(dir);
-      if (seen.has(name) || ["venv", ".venv", "__pycache__"].includes(name)) continue;
+      if (name === "." || seen.has(name) || ["venv", ".venv", "__pycache__"].includes(name)) continue;
       seen.add(name);
-      const appFiles = await glob(`${dir}/*.py`, { cwd: ROOT });
+      const appFiles = await glob(`${dir.replace(/\\/g, "/")}/*.py`, { cwd: ROOT });
       backendDomains.push({ name, type: "backend", totalFiles: appFiles.length });
     }
     if (backendDomains.filter(d => d.type === "backend").length === 0) {

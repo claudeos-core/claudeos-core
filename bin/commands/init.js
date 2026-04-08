@@ -96,9 +96,9 @@ async function cmdInit(parsedArgs) {
 
     if (existingPass1.length > 0 || pass2Exists) {
       if (parsedArgs.force) {
-        // --force: delete without prompt
-        for (const f of existingPass1) fs.unlinkSync(path.join(GENERATED_DIR, f));
-        if (pass2Exists) fs.unlinkSync(path.join(GENERATED_DIR, "pass2-merged.json"));
+        // --force: clean all generated files for truly fresh start
+        const genFiles = fs.readdirSync(GENERATED_DIR).filter(f => f.endsWith(".json") || f.endsWith(".md"));
+        for (const f of genFiles) fs.unlinkSync(path.join(GENERATED_DIR, f));
         log("  🔄 Previous results deleted (--force)\n");
       } else {
         const status = { pass1Done: existingPass1.length, pass2Done: pass2Exists };
@@ -107,6 +107,10 @@ async function cmdInit(parsedArgs) {
         if (mode === "fresh") {
           for (const f of existingPass1) fs.unlinkSync(path.join(GENERATED_DIR, f));
           if (pass2Exists) fs.unlinkSync(path.join(GENERATED_DIR, "pass2-merged.json"));
+        } else if (mode === "continue" && existingPass1.length === 0 && pass2Exists) {
+          // pass2 exists but no pass1 → pass2 is stale, force re-run
+          fs.unlinkSync(path.join(GENERATED_DIR, "pass2-merged.json"));
+          log("    ⚠️  pass2-merged.json deleted (no pass1 files to continue from)");
         }
       }
     }
@@ -202,8 +206,8 @@ async function cmdInit(parsedArgs) {
   }
   for (let i = 1; i <= totalGroups; i++) {
     const group = domainGroups.groups[i - 1];
-    const domainList = group.domains.join(", ");
-    const estFiles = group.estimatedFiles;
+    const domainList = (group.domains || []).join(", ") || "(unknown)";
+    const estFiles = group.estimatedFiles || 0;
     const groupType = group.type || "backend";
     const icon = groupType === "frontend" ? "🎨" : "⚙️";
 

@@ -262,7 +262,10 @@ function resolveSharedQueryDomains(backendDomains, ktFiles) {
   for (const shared of sharedModules) {
     const moduleNames = shared.modules || [];
     const sharedKtFiles = ktFiles.filter(f =>
-      moduleNames.some(m => f.includes(`/${m}/`) || f.startsWith(`${m}/`))
+      moduleNames.some(m => {
+        const p = m.includes("__") ? m.replace(/__/g, "/") : m;
+        return f.includes(`/${p}/`) || f.startsWith(`${p}/`);
+      })
     );
     if (sharedKtFiles.length === 0) continue;
 

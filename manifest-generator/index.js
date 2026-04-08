@@ -148,7 +148,10 @@ async function main() {
     for (const p of await glob("*.md", { cwd: DIRS.plan, absolute: true })) {
       const r = rel(p);
       const s = stat(p);
-      const blocks = extractFileBlocksFromFile(p);
+      const bn = path.basename(p);
+      const blocks = CODE_BLOCK_PLANS.includes(bn)
+        ? extractCodeBlockPathsFromFile(p)
+        : extractFileBlocksFromFile(p);
       pm.plans.push({ path: r, ...s, fileBlocks: blocks.length, status: "ok" });
     }
   }

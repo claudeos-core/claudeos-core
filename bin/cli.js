@@ -130,7 +130,7 @@ if (!commands[command]) {
   process.exit(1);
 }
 
-Promise.resolve(commands[command]()).catch((e) => {
+Promise.resolve().then(() => commands[command]()).catch((e) => {
   if (e instanceof InitError) {
     log(`\n  ❌ ${e.message}\n`);
   } else {

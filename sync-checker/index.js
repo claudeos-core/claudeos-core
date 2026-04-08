@@ -91,6 +91,7 @@ async function main() {
   // ─── [2/2] Plan → Disk: detect orphaned files ───────────────
   console.log("  [2/2] Plan → Disk...");
   for (const m of sm.mappings) {
+    if (!m.sourcePath) continue;
     const abs = path.join(ROOT, m.sourcePath);
     // Skip path traversal attempts (allow files at ROOT level and below)
     if (!isWithinRoot(abs)) continue;

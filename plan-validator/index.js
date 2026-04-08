@@ -88,6 +88,10 @@ async function main() {
       // File does not exist
       if (!fs.existsSync(abs)) {
         if (mode === "--execute") {
+          if (!b.content || b.content.trim().length === 0) {
+            console.log(`     ⚠️  SKIPPED: ${b.path} (empty content in plan)`);
+            continue;
+          }
           const dir = path.dirname(abs);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
           fs.writeFileSync(abs, b.content + "\n");

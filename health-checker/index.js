@@ -113,7 +113,6 @@ function main() {
   console.log("  ══════════════════════════════\n");
 
   // ─── Update stale-report.json ────────────────────────────
-  updateStaleReport(GEN, "generatedAt", new Date().toISOString());
   updateStaleReport(GEN, "healthCheck",
     { results, status: hasErr ? "fail" : "pass" },
     { totalIssues: results.filter((r) => r.status === "fail").length, healthStatus: hasErr ? "fail" : "ok" }

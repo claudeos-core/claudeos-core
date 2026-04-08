@@ -41,7 +41,7 @@ async function scanStructure(stack, ROOT) {
     backendDomains.push(...r.backendDomains);
   }
 
-  if (stack.framework === "django" || stack.framework === "fastapi" || stack.framework === "flask") {
+  if (stack.language === "python") {
     const r = await scanPythonDomains(stack, ROOT);
     backendDomains.push(...r.backendDomains);
   }

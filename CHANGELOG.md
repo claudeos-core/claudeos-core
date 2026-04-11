@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.1] — 2026-04-11
+
+### Added
+
+- **Java scanner unit tests** — New `tests/scan-java.test.js` with 17 tests covering all 5 patterns (A/B/C/D/E), supplementary scan, skip list, root package extraction, MyBatis XML detection, and full fallback
+
+### Fixed
+
+- **Java scanner Windows path normalization** — `scan-java.js` added `norm()` function and `.map(norm)` to 9 glob calls; regex matching failed on Windows backslash paths for Pattern E (DDD/Hexagonal), root package extraction, and supplementary scan
+
 ## [1.7.0] — 2026-04-11
 
 ### Added

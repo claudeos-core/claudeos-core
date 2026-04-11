@@ -14,11 +14,14 @@
 const path = require("path");
 const { glob } = require("glob");
 
+// Normalize backslash paths from glob on Windows to forward slashes
+const norm = (p) => p.replace(/\\/g, "/");
+
 async function scanJavaDomains(stack, ROOT) {
   const backendDomains = [];
   let rootPackage = null;
 
-  const javaFiles = await glob("src/main/java/**/*.java", { cwd: ROOT });
+  const javaFiles = (await glob("src/main/java/**/*.java", { cwd: ROOT })).map(norm);
   for (const f of javaFiles) {
     const m = f.match(/src\/main\/java\/(.+?)\/(controller|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)/);
     if (m) { rootPackage = m[1].replace(/\//g, "."); break; }
@@ -27,7 +30,7 @@ async function scanJavaDomains(stack, ROOT) {
   let detectedPattern = null;
 
   // Pattern A: controller/{domain}/*.java (layer-first — domain under controller)
-  const controllersA = await glob("src/main/java/**/controller/*/*.java", { cwd: ROOT });
+  const controllersA = (await glob("src/main/java/**/controller/*/*.java", { cwd: ROOT })).map(norm);
   for (const f of controllersA) {
     const m = f.match(/controller\/([^/]+)\//);
     if (m) {
@@ -41,7 +44,7 @@ async function scanJavaDomains(stack, ROOT) {
   // Pattern B/D: {domain}/controller/*.java (domain-first — controller under domain)
   // D extends B: {module}/{domain}/controller/ — auto-upgrade to module/domain on name conflict
   if (!detectedPattern) {
-    const controllersB = await glob("src/main/java/**/*/controller/*.java", { cwd: ROOT });
+    const controllersB = (await glob("src/main/java/**/*/controller/*.java", { cwd: ROOT })).map(norm);
     const domainPaths = {};
     for (const f of controllersB) {
       const m = f.match(/\/([^/]+)\/controller\/[^/]+\.java$/);
@@ -79,7 +82,7 @@ async function scanJavaDomains(stack, ROOT) {
 
   // Pattern E: DDD/Hexagonal — {domain}/adapter/in/web/*.java or {domain}/adapter/in/rest/*.java
   if (!detectedPattern) {
-    const controllersE = await glob("src/main/java/**/adapter/in/{web,rest}/*.java", { cwd: ROOT });
+    const controllersE = (await glob("src/main/java/**/adapter/in/{web,rest}/*.java", { cwd: ROOT })).map(norm);
     for (const f of controllersE) {
       const m = f.match(/\/([^/]+)\/adapter\/in\/(web|rest)\/[^/]+\.java$/);
       if (m) {
@@ -93,7 +96,7 @@ async function scanJavaDomains(stack, ROOT) {
 
   // Pattern C: Flat structure — controller/*.java (no domain directory, extract domain from class name)
   if (!detectedPattern) {
-    const controllersC = await glob("src/main/java/**/controller/*.java", { cwd: ROOT });
+    const controllersC = (await glob("src/main/java/**/controller/*.java", { cwd: ROOT })).map(norm);
     for (const f of controllersC) {
       const m = f.match(/\/([A-Z][a-zA-Z]*)Controller\.java$/);
       if (m) {
@@ -108,9 +111,9 @@ async function scanJavaDomains(stack, ROOT) {
   // ── Supplementary scan: detect domains without controllers (service/dao/aggregator/facade/usecase only) ──
   // Runs for ALL detected patterns (A/B/C/D/E) to catch core-only domains
   {
-    const serviceDirs = await glob("src/main/java/**/*/service/*.java", { cwd: ROOT });
-    const mapperDirs = await glob("src/main/java/**/*/{mapper,repository,dao}/*.java", { cwd: ROOT });
-    const orchestrationDirs = await glob("src/main/java/**/*/{aggregator,facade,usecase,orchestrator}/*.java", { cwd: ROOT });
+    const serviceDirs = (await glob("src/main/java/**/*/service/*.java", { cwd: ROOT })).map(norm);
+    const mapperDirs = (await glob("src/main/java/**/*/{mapper,repository,dao}/*.java", { cwd: ROOT })).map(norm);
+    const orchestrationDirs = (await glob("src/main/java/**/*/{aggregator,facade,usecase,orchestrator}/*.java", { cwd: ROOT })).map(norm);
     const allServiceFiles = [...serviceDirs, ...mapperDirs, ...orchestrationDirs];
     const skipDomains = ["common", "config", "util", "utils", "base", "core", "shared", "global", "framework", "infra", "front", "admin", "back", "internal", "external", "web", "app", "test", "tests", "main", "generated", "build"];
     for (const f of allServiceFiles) {
@@ -175,7 +178,7 @@ async function scanJavaDomains(stack, ROOT) {
 
   // ── Java fallback: extract domains directly from all .java files when glob returns 0 ──
   if (backendDomains.length === 0) {
-    const allJava = await glob("**/*.java", { cwd: ROOT, ignore: ["**/node_modules/**", "**/build/**", "**/target/**", "**/test/**", "**/generated/**"] });
+    const allJava = (await glob("**/*.java", { cwd: ROOT, ignore: ["**/node_modules/**", "**/build/**", "**/target/**", "**/test/**", "**/generated/**"] })).map(norm);
     const javaDomains = {};
     const skipNames = ["common", "config", "util", "utils", "base", "shared", "global", "framework", "infra", "api", "main", "front", "admin", "back", "internal", "external", "web", "app", "test", "tests", "generated", "build"];
     const versionPattern = /^v\d+$/;

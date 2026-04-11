@@ -145,7 +145,7 @@ async function scanJavaDomains(stack, ROOT) {
       aggGlob = `src/main/java/**/${dn}/{aggregator,facade,usecase,orchestrator}/*.java`;
     } else if (p === "E") {
       svcGlob = `src/main/java/**/${d}/{application,domain}/**/*.java`;
-      mprGlob = `src/main/java/**/${d}/adapter/out/{persistence,repository}/*.java`;
+      mprGlob = `src/main/java/**/${d}/{adapter/out/{persistence,repository},infrastructure}/*.java`;
       dtoGlob = `src/main/java/**/${d}/**/{dto,command,query}/**/*.java`;
       aggGlob = null; // DDD/Hexagonal typically doesn't use aggregator layer
     } else {

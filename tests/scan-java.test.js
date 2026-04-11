@@ -209,6 +209,19 @@ describe("scanJavaDomains — Pattern E (DDD/Hexagonal)", () => {
     const names = backendDomains.map(d => d.name);
     assert.ok(names.includes("inventory"), "should detect from adapter/in/rest/");
   });
+
+  it("counts infrastructure/ files as mappers", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/order/adapter/in/web/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/order/infrastructure/OrderRepositoryImpl.java"));
+    touch(path.join(tmp, "src/main/java/com/example/order/infrastructure/OrderJpaAdapter.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+
+    const order = backendDomains.find(d => d.name === "order");
+    assert.ok(order, "should detect order domain");
+    assert.ok(order.mappers >= 2, "infrastructure/ files should count as mappers");
+  });
 });
 
 // ─── Supplementary scan: service-only domains ──────────────

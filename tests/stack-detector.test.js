@@ -373,3 +373,58 @@ describe("detectStack — Angular", () => {
     assert.equal(s.frontend, "angular");
   });
 });
+
+// ─── Vite detection ──────────────────────────────────
+
+describe("detectStack — Vite", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("detects Vite as framework from package.json", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+      dependencies: { react: "^18.0.0", "react-dom": "^18.0.0" },
+      devDependencies: { vite: "^5.4.0", typescript: "^5.3.0" },
+    }));
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "vite");
+    assert.equal(s.frontend, "react");
+    assert.equal(s.language, "typescript");
+    assert.equal(s.frameworkVersion, "5.4.0");
+  });
+
+  it("detects Vite + Vue (framework=vite, frontend=vue)", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+      dependencies: { vue: "^3.4.0" },
+      devDependencies: { vite: "^5.0.0" },
+    }));
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "vite");
+    assert.equal(s.frontend, "vue");
+  });
+
+  it("does not override NestJS framework when Vite is also present", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+      dependencies: { "@nestjs/core": "^10.0.0", react: "^18.0.0" },
+      devDependencies: { vite: "^5.0.0" },
+    }));
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "nestjs");
+  });
+
+  it("does not override Express framework when Vite is also present", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+      dependencies: { express: "^4.18.0", react: "^18.0.0" },
+      devDependencies: { vite: "^5.0.0" },
+    }));
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "express");
+  });
+
+  it("detects Vite from vite.config.ts fallback (no package.json)", async () => {
+    fs.writeFileSync(path.join(tmp, "vite.config.ts"), "export default {};");
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "vite");
+    assert.equal(s.frontend, "react");
+  });
+});

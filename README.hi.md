@@ -72,9 +72,10 @@ ClaudeOS-Core ऐसा डॉक्यूमेंटेशन बनाता 
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 कैटेगरी, 55 सब-आइटम |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 कैटेगरी, 58 सब-आइटम |
 | **Node.js / Fastify** | `package.json` | 10 कैटेगरी, 62 सब-आइटम |
+| **Vite / React SPA** | `package.json`, `vite.config.*` | 9 कैटेगरी, 55 सब-आइटम |
 | **Angular** | `package.json`, `angular.json` | 12 कैटेगरी, 78 सब-आइटम |
 
-ऑटो-डिटेक्ट: भाषा और वर्शन, फ्रेमवर्क और वर्शन, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, आदि), डेटाबेस (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), पैकेज मैनेजर (Gradle, Maven, npm, yarn, pnpm, pip, poetry), आर्किटेक्चर (CQRS, BFF — मॉड्यूल नामों से पता लगाया), मल्टी-मॉड्यूल संरचना (settings.gradle से पता लगाया), मोनोरेपो (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces)।
+ऑटो-डिटेक्ट: भाषा और वर्शन, फ्रेमवर्क और वर्शन (Vite को SPA फ्रेमवर्क के रूप में शामिल), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, आदि), डेटाबेस (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), पैकेज मैनेजर (Gradle, Maven, npm, yarn, pnpm, pip, poetry), आर्किटेक्चर (CQRS, BFF — मॉड्यूल नामों से पता लगाया), मल्टी-मॉड्यूल संरचना (settings.gradle से पता लगाया), मोनोरेपो (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces)।
 
 **आपको कुछ भी स्पेसिफाई करने की ज़रूरत नहीं। सब कुछ ऑटोमैटिकली डिटेक्ट होता है।**
 
@@ -112,6 +113,7 @@ Gradle मल्टी-मॉड्यूल संरचना वाले Kot
 - **Pages Router**: `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)**: `features/*/`, `widgets/*/`, `entities/*/`
 - **RSC/Client split**: `client.tsx` पैटर्न डिटेक्ट, Server/Client कम्पोनेंट सेपरेशन ट्रैक
+- **नॉन-स्टैंडर्ड नेस्टेड पाथ**: `src/*/pages/`, `src/*/components/`, `src/*/features/` के तहत पेज, कंपोनेंट और FSD लेयर डिटेक्ट (उदा. `src/admin/pages/dashboard/`)
 - **Config fallback**: `package.json` में न होने पर भी config फ़ाइलों से Next.js/Vite/Nuxt डिटेक्ट (monorepo सपोर्ट)
 - **Deep directory fallback**: React/CRA/Vite/Vue/RN प्रोजेक्ट्स के लिए किसी भी गहराई पर `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` स्कैन
 
@@ -180,7 +182,7 @@ npx claudeos-core init --lang ko    # 한국어
 
 > **नोट:** यह केवल जनरेट होने वाली डॉक्यूमेंट फ़ाइलों की भाषा बदलता है। कोड एनालिसिस (Pass 1–2) हमेशा अंग्रेज़ी में चलता है; केवल जनरेट रिज़ल्ट (Pass 3) चुनी गई भाषा में लिखा जाता है।
 
-बस इतना ही। 5–18 मिनट बाद, सारा डॉक्यूमेंटेशन जेनरेट होकर उपयोग के लिए तैयार है। CLI प्रत्येक Pass का बीता समय और कुल समय पूर्ण बैनर में दिखाता है।
+बस इतना ही। 5–18 मिनट बाद, सारा डॉक्यूमेंटेशन जेनरेट होकर उपयोग के लिए तैयार है। CLI प्रत्येक Pass के लिए प्रतिशत, बीता समय और अनुमानित शेष समय के साथ प्रोग्रेस बार दिखाता है।
 
 ### मैन्युअल स्टेप-बाय-स्टेप इंस्टॉलेशन
 
@@ -641,7 +643,7 @@ my-monorepo/                    ← यहाँ रन करें: npx claude
 
 - **नए स्टैक टेम्पलेट्स** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Monorepo डीप सपोर्ट** — अलग सब-प्रोजेक्ट roots, वर्कस्पेस डिटेक्शन
-- **टेस्ट कवरेज** — टेस्ट सूट का विस्तार जारी (वर्तमान में 256 टेस्ट, सभी स्कैनर, स्टैक डिटेक्शन, डोमेन ग्रुपिंग, प्लान पार्सिंग, प्रॉम्प्ट जेनरेशन, CLI सेलेक्टर, मोनोरेपो डिटेक्शन और वेरिफिकेशन टूल्स कवर)
+- **टेस्ट कवरेज** — टेस्ट सूट का विस्तार जारी (वर्तमान में 269 टेस्ट, सभी स्कैनर, स्टैक डिटेक्शन, डोमेन ग्रुपिंग, प्लान पार्सिंग, प्रॉम्प्ट जेनरेशन, CLI सेलेक्टर, मोनोरेपो डिटेक्शन, वेरिफिकेशन टूल्स और Vite SPA डिटेक्शन कवर)
 
 ---
 

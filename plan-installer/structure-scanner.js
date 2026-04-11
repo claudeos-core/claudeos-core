@@ -36,7 +36,7 @@ async function scanStructure(stack, ROOT) {
     if (r.rootPackage) rootPackage = r.rootPackage;
   }
 
-  if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework) {
+  if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework && stack.framework !== "vite") {
     const r = await scanNodeDomains(stack, ROOT);
     backendDomains.push(...r.backendDomains);
   }

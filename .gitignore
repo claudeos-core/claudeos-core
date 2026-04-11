@@ -5,3 +5,4 @@ package-lock.json
 .env*
 _tmp_prompt*.md
 claudeos-core/
+CLAUDE.md

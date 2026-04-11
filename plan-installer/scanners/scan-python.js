@@ -21,7 +21,16 @@ async function scanPythonDomains(stack, ROOT) {
       const views = appFiles.filter(x => x.includes("views")).length;
       const models = appFiles.filter(x => x.includes("models")).length;
       const serializers = appFiles.filter(x => x.includes("serializers")).length;
-      backendDomains.push({ name, type: "backend", views, models, serializers, totalFiles: appFiles.length });
+      const admin = appFiles.filter(x => x.includes("admin")).length;
+      const forms = appFiles.filter(x => x.includes("forms")).length;
+      const urls = appFiles.filter(x => x.includes("urls")).length;
+      const tasks = appFiles.filter(x => x.includes("tasks")).length;
+      const domain = { name, type: "backend", views, models, serializers, totalFiles: appFiles.length };
+      if (admin > 0) domain.admin = admin;
+      if (forms > 0) domain.forms = forms;
+      if (urls > 0) domain.urls = urls;
+      if (tasks > 0) domain.tasks = tasks;
+      backendDomains.push(domain);
     }
   }
 

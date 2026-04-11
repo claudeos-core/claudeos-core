@@ -72,9 +72,10 @@ Dieser Unterschied summiert sich. 10 Aufgaben/Tag × 20 Minuten gespart = **übe
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 Kategorien, 55 Unterpunkte |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 Kategorien, 58 Unterpunkte |
 | **Node.js / Fastify** | `package.json` | 10 Kategorien, 62 Unterpunkte |
+| **Vite / React SPA** | `package.json`, `vite.config.*` | 9 Kategorien, 55 Unterpunkte |
 | **Angular** | `package.json`, `angular.json` | 12 Kategorien, 78 Unterpunkte |
 
-Automatisch erkannt: Sprache und Version, Framework und Version, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy usw.), Datenbank (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), Paketmanager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), Architektur (CQRS, BFF — aus Modulnamen erkannt), Multi-Modul-Struktur (aus settings.gradle), Monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+Automatisch erkannt: Sprache und Version, Framework und Version (einschließlich Vite als SPA-Framework), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy usw.), Datenbank (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), Paketmanager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), Architektur (CQRS, BFF — aus Modulnamen erkannt), Multi-Modul-Struktur (aus settings.gradle), Monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **Sie müssen nichts angeben. Alles wird automatisch erkannt.**
 
@@ -112,6 +113,7 @@ Unterstützte Modultypen: `command`, `query`, `bff`, `integration`, `standalone`
 - **Pages Router**: `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)**: `features/*/`, `widgets/*/`, `entities/*/`
 - **RSC/Client-Split**: Erkennt `client.tsx`-Muster, verfolgt Server/Client-Trennung
+- **Nicht-standardmäßige verschachtelte Pfade**: Erkennung von Seiten, Komponenten und FSD-Layern unter `src/*/pages/`, `src/*/components/`, `src/*/features/` (z.B. `src/admin/pages/dashboard/`)
 - **Config-Fallback**: Erkennt Next.js/Vite/Nuxt aus Config-Dateien (Monorepo-Unterstützung)
 - **Tiefe Verzeichnis-Fallback**: Für React/CRA/Vite/Vue/RN-Projekte scannt `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` in beliebiger Tiefe
 
@@ -179,7 +181,7 @@ npx claudeos-core init --lang ko    # 한국어
 
 > **Hinweis:** Dies ändert nur die Sprache der generierten Dokumentationsdateien. Die Codeanalyse (Pass 1–2) läuft immer auf Englisch; nur das generierte Ergebnis (Pass 3) wird in der gewählten Sprache geschrieben.
 
-Das war's. Nach 5–18 Minuten ist die gesamte Dokumentation generiert und einsatzbereit. Die CLI zeigt die verstrichene Zeit pro Pass und die Gesamtzeit im Abschlussbanner an.
+Das war's. Nach 5–18 Minuten ist die gesamte Dokumentation generiert und einsatzbereit. Die CLI zeigt einen Fortschrittsbalken mit Prozent, verstrichener Zeit und geschätzter Restzeit für jeden Pass an.
 
 ### Manuelle Schritt-für-Schritt-Installation
 
@@ -640,7 +642,7 @@ Beiträge sind willkommen! Bereiche, in denen am meisten Hilfe benötigt wird:
 
 - **Neue Stack-Templates** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Tiefe Monorepo-Unterstützung** — Separate Unterprojekt-Roots, Workspace-Erkennung
-- **Testabdeckung** — Wachsende Testsuite (derzeit 256 Tests für alle Scanner, Stack-Erkennung, Domain-Gruppierung, Plan-Parsing, Prompt-Generierung, CLI-Selektoren, Monorepo-Erkennung und Verifizierungstools)
+- **Testabdeckung** — Wachsende Testsuite (derzeit 269 Tests für alle Scanner, Stack-Erkennung, Domain-Gruppierung, Plan-Parsing, Prompt-Generierung, CLI-Selektoren, Monorepo-Erkennung, Verifizierungstools und Vite SPA-Erkennung)
 
 ---
 

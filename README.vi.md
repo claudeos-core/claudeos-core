@@ -72,9 +72,10 @@ Sự khác biệt này tích lũy. 10 task/ngày × 20 phút tiết kiệm = **h
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 danh mục, 55 mục con |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 danh mục, 58 mục con |
 | **Node.js / Fastify** | `package.json` | 10 danh mục, 62 mục con |
+| **Vite / React SPA** | `package.json`, `vite.config.*` | 9 danh mục, 55 mục con |
 | **Angular** | `package.json`, `angular.json` | 12 danh mục, 78 mục con |
 
-Tự động phát hiện: ngôn ngữ & phiên bản, framework & phiên bản, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, v.v.), database (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), package manager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), kiến trúc (CQRS, BFF — phát hiện từ tên module), cấu trúc multi-module (từ settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+Tự động phát hiện: ngôn ngữ & phiên bản, framework & phiên bản (bao gồm Vite như SPA framework), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, v.v.), database (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), package manager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), kiến trúc (CQRS, BFF — phát hiện từ tên module), cấu trúc multi-module (từ settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **Bạn không cần chỉ định gì cả. Tất cả được phát hiện tự động.**
 
@@ -112,6 +113,7 @@ Loại module hỗ trợ: `command`, `query`, `bff`, `integration`, `standalone`
 - **Pages Router**: `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)**: `features/*/`, `widgets/*/`, `entities/*/`
 - **RSC/Client split**: Phát hiện pattern `client.tsx`, theo dõi tách Server/Client
+- **Đường dẫn lồng nhau không chuẩn**: Phát hiện pages, components và FSD layers dưới `src/*/pages/`, `src/*/components/`, `src/*/features/` (ví dụ: `src/admin/pages/dashboard/`)
 - **Config fallback**: Phát hiện Next.js/Vite/Nuxt từ file config (hỗ trợ monorepo)
 - **Fallback thư mục sâu**: Với dự án React/CRA/Vite/Vue/RN, quét `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` ở mọi độ sâu
 
@@ -180,7 +182,7 @@ npx claudeos-core init --lang ko    # 한국어
 
 > **Lưu ý:** Chỉ thay đổi ngôn ngữ của file tài liệu được tạo. Phân tích mã (Pass 1–2) luôn chạy bằng tiếng Anh; chỉ kết quả tạo (Pass 3) được viết bằng ngôn ngữ đã chọn.
 
-Chỉ vậy thôi. Sau 5–18 phút, tất cả tài liệu được tạo và sẵn sàng sử dụng. CLI hiển thị thời gian mỗi Pass và tổng thời gian trong banner hoàn thành.
+Chỉ vậy thôi. Sau 5–18 phút, tất cả tài liệu được tạo và sẵn sàng sử dụng. CLI hiển thị thanh tiến trình với phần trăm, thời gian đã trôi và thời gian còn lại ước tính cho mỗi Pass.
 
 ### Cài Đặt Thủ Công Từng Bước
 
@@ -641,7 +643,7 @@ Chào đón mọi đóng góp! Các lĩnh vực cần hỗ trợ nhất:
 
 - **Template stack mới** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Hỗ trợ monorepo sâu** — Root sub-project riêng, phát hiện workspace
-- **Độ phủ test** — Mở rộng bộ test (hiện tại 256 test bao gồm tất cả scanner, phát hiện stack, nhóm domain, phân tích plan, tạo prompt, bộ chọn CLI, phát hiện monorepo và công cụ xác thực)
+- **Độ phủ test** — Mở rộng bộ test (hiện tại 269 test bao gồm tất cả scanner, phát hiện stack, nhóm domain, phân tích plan, tạo prompt, bộ chọn CLI, phát hiện monorepo, công cụ xác thực và phát hiện Vite SPA)
 
 ---
 

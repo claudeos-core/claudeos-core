@@ -54,7 +54,7 @@ async function scanFrontendDomains(stack, ROOT) {
 
   // ── Next.js/React/Vue ──
   if (stack.frontend === "nextjs" || stack.frontend === "react" || stack.frontend === "vue") {
-    // App Router / Pages Router domains (standard + monorepo apps/*/)
+    // App Router / Pages Router domains (standard + monorepo apps/*/ + nested src/*/)
     const allDirs = [
       ...await glob("{app,src/app}/*/", { cwd: ROOT }),
       ...await glob("{pages,src/pages}/*/", { cwd: ROOT }),
@@ -62,6 +62,8 @@ async function scanFrontendDomains(stack, ROOT) {
       ...await glob("{apps,packages}/*/src/app/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
       ...await glob("{apps,packages}/*/pages/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
       ...await glob("{apps,packages}/*/src/pages/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+      // Non-standard nested page paths (e.g., src/admin/pages/*, src/dashboard/app/*)
+      ...await glob("src/*/{app,pages}/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
     ];
     const skipPages = ["api", "_app", "_document", "fonts", "not-found", "error", "loading"];
     for (const dir of allDirs) {
@@ -84,7 +86,10 @@ async function scanFrontendDomains(stack, ROOT) {
     // FSD (Feature-Sliced Design): features/*, widgets/*, entities/*
     const fsdLayers = ["features", "widgets", "entities"];
     for (const layer of fsdLayers) {
-      const fsdDirs = await glob(`{${layer},src/${layer}}/*/`, { cwd: ROOT });
+      const fsdDirs = [...new Set([
+        ...await glob(`{${layer},src/${layer}}/*/`, { cwd: ROOT }),
+        ...await glob(`src/*/${layer}/*/`, { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+      ])];
       for (const dir of fsdDirs) {
         const name = path.basename(dir);
         if (["ui", "common", "shared", "lib", "config", "index"].includes(name)) continue;
@@ -97,8 +102,12 @@ async function scanFrontendDomains(stack, ROOT) {
       }
     }
 
-    // components/* (existing)
-    const compDirs = await glob("{src/,}components/*/", { cwd: ROOT });
+    // components/* (existing + nested src/*/components/*)
+    const compDirSet = new Set([
+      ...await glob("{src/,}components/*/", { cwd: ROOT }),
+      ...await glob("src/*/components/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+    ]);
+    const compDirs = [...compDirSet];
     for (const dir of compDirs) {
       const name = path.basename(dir);
       if (["ui", "common", "shared", "layout", "icons"].includes(name)) continue;
@@ -232,7 +241,8 @@ async function countFrontendStats(stack, ROOT) {
       frontend.hooks = (await glob("{src/,}**/*.service.ts", { cwd: ROOT, ignore: ["**/node_modules/**", "**/dist/**"] })).length;
     } else {
       frontend.components = (await glob("{src/,}**/components/**/*.{tsx,jsx,vue}", { cwd: ROOT, ignore: ["**/node_modules/**"] })).length;
-      frontend.pages = (await glob("{src/,}{app,pages}/**/{page,index}.{tsx,jsx,vue}", { cwd: ROOT, ignore: ["**/node_modules/**"] })).length;
+      frontend.pages = (await glob("{src/,}{app,pages}/**/{page,index}.{tsx,jsx,vue}", { cwd: ROOT, ignore: ["**/node_modules/**"] })).length
+        + (await glob("src/*/{app,pages}/**/{page,index}.{tsx,jsx,vue}", { cwd: ROOT, ignore: ["**/node_modules/**"] })).length;
       frontend.hooks = (await glob("{src/,}**/hooks/**/*.{ts,js}", { cwd: ROOT, ignore: ["**/node_modules/**"] })).length;
     }
   }

@@ -314,6 +314,13 @@ async function detectStack(ROOT) {
         }
       }
 
+      // Vite as framework (only if no backend framework was detected — Vite is a build/dev tool for SPA)
+      if (deps.vite && !stack.framework) {
+        stack.framework = "vite";
+        stack.detected.push("vite");
+        stack.frameworkVersion = deps.vite.replace(/[^0-9.]/g, "");
+      }
+
       // ORM
       for (const [depKeys, ormName] of NODE_ORM_RULES) {
         if (stack.orm) break;
@@ -432,17 +439,22 @@ async function detectStack(ROOT) {
   }
 
   // ── Config file fallback (monorepo) ──
+  // [configFiles, frontendName, frameworkName (optional), label]
   const frontendFallbacks = [
-    [["next.config.js", "next.config.mjs", "next.config.ts"], "nextjs", "next.config (fallback)"],
-    [["vite.config.ts", "vite.config.js"], "react", "vite.config (fallback)"],
-    [["nuxt.config.ts", "nuxt.config.js"], "vue", "nuxt.config (fallback)"],
-    [["angular.json", ".angular.json"], "angular", "angular.json (fallback)"],
+    [["next.config.js", "next.config.mjs", "next.config.ts"], "nextjs", null, "next.config (fallback)"],
+    [["vite.config.ts", "vite.config.js"], "react", "vite", "vite.config (fallback)"],
+    [["nuxt.config.ts", "nuxt.config.js"], "vue", null, "nuxt.config (fallback)"],
+    [["angular.json", ".angular.json"], "angular", null, "angular.json (fallback)"],
   ];
   if (!stack.frontend) {
-    for (const [files, name, label] of frontendFallbacks) {
+    for (const [files, frontendName, frameworkName, label] of frontendFallbacks) {
       if (files.some(f => existsSafe(path.join(ROOT, f)))) {
-        stack.frontend = name; stack.detected.push(label);
+        stack.frontend = frontendName; stack.detected.push(label);
         if (!stack.language) stack.language = "typescript";
+        if (frameworkName && !stack.framework) {
+          stack.framework = frameworkName;
+          stack.detected.push(frameworkName + " (fallback)");
+        }
         break;
       }
     }

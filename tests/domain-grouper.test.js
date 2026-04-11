@@ -101,6 +101,12 @@ describe("determineActiveDomains", () => {
     assert.equal(active["10.backend"], true);
     assert.equal(active["20.frontend"], true);
   });
+
+  it("does NOT activate backend for Vite SPA", () => {
+    const active = determineActiveDomains({ framework: "vite", frontend: "react" });
+    assert.equal(active["10.backend"], false);
+    assert.equal(active["20.frontend"], true);
+  });
 });
 
 // ─── selectTemplates ──────────────────────────────────────
@@ -176,6 +182,23 @@ describe("selectTemplates", () => {
     const t = selectTemplates({ language: "typescript", framework: "express", frontend: "angular" });
     assert.equal(t.backend, "node-express");
     assert.equal(t.frontend, "angular");
+  });
+
+  it("selects node-vite frontend for React + Vite", () => {
+    const t = selectTemplates({ language: "typescript", framework: "vite", frontend: "react" });
+    assert.equal(t.backend, null);
+    assert.equal(t.frontend, "node-vite");
+  });
+
+  it("selects node-nextjs frontend for React without Vite (no framework)", () => {
+    const t = selectTemplates({ language: "typescript", frontend: "react" });
+    assert.equal(t.frontend, "node-nextjs");
+  });
+
+  it("selects node-vite with backend for Vite + Express", () => {
+    const t = selectTemplates({ language: "typescript", framework: "express", frontend: "react" });
+    assert.equal(t.backend, "node-express");
+    assert.equal(t.frontend, "node-nextjs");
   });
 });
 

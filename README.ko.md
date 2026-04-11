@@ -83,9 +83,10 @@ ClaudeOS-Core는 프로젝트가 `ApiResponse.ok()`를 쓴다는 것, MyBatis XM
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10개 대분류, 55개 소분류 |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10개 대분류, 58개 소분류 |
 | **Node.js / Fastify** | `package.json` | 10개 대분류, 62개 소분류 |
+| **Vite / React SPA** | `package.json`, `vite.config.*` | 9개 대분류, 55개 소분류 |
 | **Angular** | `package.json`, `angular.json` | 12개 대분류, 78개 소분류 |
 
-자동 감지 항목: 언어 & 버전, 프레임워크 & 버전, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy 등), 데이터베이스 (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), 패키지 매니저 (Gradle, Maven, npm, yarn, pnpm, pip, poetry), 아키텍처 (CQRS, BFF — 모듈명에서 감지), 멀티모듈 구조 (settings.gradle에서 감지), 모노레포 (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+자동 감지 항목: 언어 & 버전, 프레임워크 & 버전(Vite 포함), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy 등), 데이터베이스 (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), 패키지 매니저 (Gradle, Maven, npm, yarn, pnpm, pip, poetry), 아키텍처 (CQRS, BFF — 모듈명에서 감지), 멀티모듈 구조 (settings.gradle에서 감지), 모노레포 (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **직접 지정할 필요 없습니다. 전부 자동으로 감지합니다.**
 
@@ -122,6 +123,7 @@ Gradle 멀티모듈 구조의 Kotlin 프로젝트(예: CQRS 모노레포)용:
 - **Pages Router**: `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)**: `features/*/`, `widgets/*/`, `entities/*/`
 - **RSC/Client 분리**: `client.tsx` 패턴 감지, Server/Client 컴포넌트 분리 추적
+- **비표준 중첩 경로**: `src/*/pages/`, `src/*/components/`, `src/*/features/` 하위의 페이지, 컴포넌트, FSD 레이어 감지 (예: `src/admin/pages/dashboard/`)
 - **설정 파일 폴백**: `package.json`에 없어도 `next.config.*`, `vite.config.*` 등에서 감지 (모노레포 지원)
 - **깊은 디렉토리 폴백**: React/CRA/Vite/Vue/RN 프로젝트에서 `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/`를 깊이 무관하게 스캔
 
@@ -190,7 +192,7 @@ npx claudeos-core init --lang ja    # 日本語
 
 > **참고:** 이 설정은 생성되는 문서 파일의 언어만 변경합니다. 코드 분석(Pass 1–2)은 항상 영어로 실행되며, 생성 결과(Pass 3)만 선택한 언어로 작성됩니다. 코드 예시는 원래 프로그래밍 언어 구문 그대로 유지됩니다.
 
-이게 전부입니다. 5–18분 후 모든 문서가 생성되어 바로 사용 가능합니다. CLI가 각 Pass별 소요시간과 총 소요시간을 완료 배너에 표시합니다.
+이게 전부입니다. 5–18분 후 모든 문서가 생성되어 바로 사용 가능합니다. CLI가 각 Pass 실행 시 퍼센트, 경과시간, 예상 남은시간이 포함된 프로그레스 바를 표시합니다.
 
 ### 수동 단계별 설치
 
@@ -677,7 +679,7 @@ my-monorepo/                    ← 여기서 실행: npx claudeos-core init
 
 - **새 스택 템플릿** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **모노레포 심화 지원** — 서브프로젝트 루트 분리, 워크스페이스 감지
-- **테스트 커버리지** — 테스트 스위트 확장 중 (현재 256개 테스트, 전체 스캐너, 스택 감지, 도메인 그룹핑, 플랜 파싱, 프롬프트 생성, CLI 셀렉터, 모노레포 감지, 검증 도구 커버)
+- **테스트 커버리지** — 테스트 스위트 확장 중 (현재 269개 테스트, 전체 스캐너, 스택 감지, 도메인 그룹핑, 플랜 파싱, 프롬프트 생성, CLI 셀렉터, 모노레포 감지, 검증 도구, Vite SPA 감지 커버)
 
 ---
 

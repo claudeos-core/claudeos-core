@@ -31,12 +31,12 @@ function splitDomainGroups(domains, type, template) {
 
 // ─── Determine active domains ───────────────────────────────────
 function determineActiveDomains(stack) {
-  const isBackend = !!stack.framework;
+  const isBackend = !!stack.framework && stack.framework !== "vite";
   return {
     "00.core": true,
     "10.backend": !!isBackend,
     "20.frontend": !!stack.frontend,
-    "30.security-db": !!(stack.database || stack.framework),
+    "30.security-db": !!(stack.database || isBackend || stack.frontend),
     "40.infra": true,
     "50.verification": true,
     "90.optional": true,
@@ -55,12 +55,14 @@ function selectTemplates(stack) {
   else if (stack.framework === "fastify") templates.backend = "node-fastify";
   else if (stack.framework === "django") templates.backend = "python-django";
   else if (stack.framework === "fastapi" || stack.framework === "flask") templates.backend = "python-fastapi";
-  else if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework) templates.backend = "node-express";
+  else if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework && stack.framework !== "vite") templates.backend = "node-express";
   else if (stack.language === "python" && stack.framework) templates.backend = "python-fastapi";
 
   // Frontend template
-  if (stack.frontend === "nextjs" || stack.frontend === "react") {
+  if (stack.frontend === "nextjs") {
     templates.frontend = "node-nextjs";
+  } else if (stack.frontend === "react") {
+    templates.frontend = stack.framework === "vite" ? "node-vite" : "node-nextjs";
   } else if (stack.frontend === "vue") {
     templates.frontend = "vue-nuxt";
   } else if (stack.frontend === "angular") {

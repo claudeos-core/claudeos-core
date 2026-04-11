@@ -72,9 +72,10 @@ Cette différence s'accumule. 10 tâches/jour × 20 minutes économisées = **pl
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 catégories, 55 sous-éléments |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 catégories, 58 sous-éléments |
 | **Node.js / Fastify** | `package.json` | 10 catégories, 62 sous-éléments |
+| **Vite / React SPA** | `package.json`, `vite.config.*` | 9 catégories, 55 sous-éléments |
 | **Angular** | `package.json`, `angular.json` | 12 catégories, 78 sous-éléments |
 
-Détection automatique : langage et version, framework et version, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), base de données (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), gestionnaire de paquets (Gradle, Maven, npm, yarn, pnpm, pip, poetry), architecture (CQRS, BFF — détecté à partir des noms de modules), structure multi-module (depuis settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+Détection automatique : langage et version, framework et version (y compris Vite comme framework SPA), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), base de données (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), gestionnaire de paquets (Gradle, Maven, npm, yarn, pnpm, pip, poetry), architecture (CQRS, BFF — détecté à partir des noms de modules), structure multi-module (depuis settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **Vous n'avez rien à spécifier. Tout est détecté automatiquement.**
 
@@ -112,6 +113,7 @@ Types de modules supportés : `command`, `query`, `bff`, `integration`, `standal
 - **Pages Router** : `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)** : `features/*/`, `widgets/*/`, `entities/*/`
 - **RSC/Client split** : Détecte le pattern `client.tsx`, suit la séparation Server/Client
+- **Chemins imbriqués non standard** : détection des pages, composants et couches FSD sous `src/*/pages/`, `src/*/components/`, `src/*/features/` (ex. `src/admin/pages/dashboard/`)
 - **Fallback config** : Détecte Next.js/Vite/Nuxt depuis les fichiers de config (support monorepo)
 - **Fallback répertoires profonds** : Pour les projets React/CRA/Vite/Vue/RN, scanne `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` à toute profondeur
 
@@ -181,7 +183,7 @@ npx claudeos-core init --lang ko    # 한국어
 > **Note :** Ceci ne change que la langue des fichiers de documentation générés. L'analyse du code (Pass 1–2) s'exécute toujours en anglais ; seul le résultat généré (Pass 3) est écrit dans la langue choisie.
 
 C'est tout. Après 5–18 minutes, toute la documentation est générée et prête à l'emploi.
-Le CLI affiche le temps écoulé par Pass et le temps total dans la bannière de fin.
+Le CLI affiche une barre de progression avec pourcentage, temps écoulé et temps restant estimé pour chaque Pass.
 
 ### Installation Manuelle Étape par Étape
 
@@ -642,7 +644,7 @@ Les contributions sont les bienvenues ! Domaines où l'aide est la plus nécessa
 
 - **Nouveaux templates de stack** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Support approfondi monorepo** — Racines de sous-projets séparées, détection de workspaces
-- **Couverture de tests** — Suite de tests en expansion (actuellement 256 tests couvrant tous les scanners, la détection de stack, le groupement de domaines, le parsing de plans, la génération de prompts, les sélecteurs CLI, la détection de monorepos et les outils de vérification)
+- **Couverture de tests** — Suite de tests en expansion (actuellement 269 tests couvrant tous les scanners, la détection de stack, le groupement de domaines, le parsing de plans, la génération de prompts, les sélecteurs CLI, la détection de monorepos, les outils de vérification et la détection Vite SPA)
 
 ---
 

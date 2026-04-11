@@ -82,9 +82,10 @@ This difference compounds. 10 tasks/day × 20 minutes saved = **3+ hours/day**.
 | **Python / Django** | `requirements.txt`, `pyproject.toml` | 10 categories, 55 sub-items |
 | **Python / FastAPI** | `requirements.txt`, `pyproject.toml` | 10 categories, 58 sub-items |
 | **Node.js / Fastify** | `package.json` | 10 categories, 62 sub-items |
+| **Vite / React SPA** | `package.json`, `vite.config.*` | 9 categories, 55 sub-items |
 | **Angular** | `package.json`, `angular.json` | 12 categories, 78 sub-items |
 
-Auto-detected: language & version, framework & version, ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), database (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), package manager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), architecture (CQRS, BFF — from module names), multi-module structure (from settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+Auto-detected: language & version, framework & version (including Vite as SPA framework), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), database (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), package manager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), architecture (CQRS, BFF — from module names), multi-module structure (from settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **You don't specify anything. It's all detected automatically.**
 
@@ -120,6 +121,7 @@ Supported module types: `command`, `query`, `bff`, `integration`, `standalone`, 
 - **Pages Router**: `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)**: `features/*/`, `widgets/*/`, `entities/*/`
 - **RSC/Client split**: Detects `client.tsx` pattern, tracks Server/Client component separation
+- **Non-standard nested paths**: Detects pages, components, and FSD layers under `src/*/` paths (e.g., `src/admin/pages/dashboard/`, `src/admin/components/form/`, `src/admin/features/billing/`)
 - **Config fallback**: Detects Next.js/Vite/Nuxt from config files when not in `package.json` (monorepo support)
 - **Deep directory fallback**: For React/CRA/Vite/Vue/RN projects, scans `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` at any depth
 
@@ -194,7 +196,7 @@ npx claudeos-core init --lang en    # English (default)
 
 > **Note:** This sets the language for generated documentation files only. Code analysis (Pass 1–2) always runs in English; generated output (Pass 3) is written in your chosen language. Code examples inside the generated files remain in their original programming language syntax.
 
-That's it. After 5–18 minutes, all documentation is generated and ready to use. The CLI shows elapsed time per pass and total time in the completion banner.
+That's it. After 5–18 minutes, all documentation is generated and ready to use. The CLI shows a progress bar with percentage, elapsed time, and ETA for each pass.
 
 ### Manual Step-by-Step Installation
 
@@ -697,7 +699,7 @@ Contributions are welcome! Areas where help is most needed:
 
 - **New stack templates** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
 - **Monorepo deep support** — Separate sub-project roots, workspace detection
-- **Test coverage** — Expanding test suite (currently 256 tests covering all scanners, stack detection, domain grouping, plan parsing, prompt generation, CLI selectors, monorepo detection, and verification tools)
+- **Test coverage** — Expanding test suite (currently 269 tests covering all scanners, stack detection, domain grouping, plan parsing, prompt generation, CLI selectors, monorepo detection, Vite SPA detection, and verification tools)
 
 ---
 

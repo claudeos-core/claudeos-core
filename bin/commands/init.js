@@ -204,6 +204,27 @@ async function cmdInit(parsedArgs) {
   if (!domainGroups.groups || totalGroups !== domainGroups.groups.length) {
     throw new InitError(`domain-groups.json is malformed: expected ${totalGroups} groups, found ${domainGroups.groups ? domainGroups.groups.length : 0}`);
   }
+
+  // Progress tracking: Pass 1 (N groups) + Pass 2 + Pass 3 = totalSteps
+  const totalSteps = totalGroups + 2;
+  let completedSteps = 0;
+  const stepTimes = [];
+  const passStart = Date.now();
+
+  function progressBar(step, label) {
+    const pct = Math.round((step / totalSteps) * 100);
+    const elapsed = Date.now() - passStart;
+    let eta = "";
+    if (stepTimes.length > 0) {
+      const avgMs = stepTimes.reduce((a, b) => a + b, 0) / stepTimes.length;
+      const remaining = (totalSteps - step) * avgMs;
+      eta = ` | ETA ${formatElapsed(remaining)}`;
+    }
+    const filled = Math.round(pct / 5);
+    const bar = "█".repeat(filled) + "░".repeat(20 - filled);
+    log(`    [${bar}] ${pct}% (${step}/${totalSteps}) ${formatElapsed(elapsed)}${eta} — ${label}`);
+  }
+
   for (let i = 1; i <= totalGroups; i++) {
     const group = domainGroups.groups[i - 1];
     const domainList = (group.domains || []).join(", ") || "(unknown)";
@@ -222,6 +243,7 @@ async function cmdInit(parsedArgs) {
         const existing = JSON.parse(readFile(pass1Json));
         if (existing && existing.analysisPerDomain) {
           log(`    ⏭️  pass1-${i}.json already exists, skipping`);
+          completedSteps++;
           continue;
         }
       } catch (_e) { /* malformed — re-run */ }
@@ -243,7 +265,8 @@ async function cmdInit(parsedArgs) {
     log(claudeWaitMsg(lang, `Pass 1-${i}/${totalGroups}`));
     const t1 = Date.now();
     const ok = runClaudePrompt(prompt, { ignoreError: true });
-    const elapsed1 = formatElapsed(Date.now() - t1);
+    const elapsed1 = Date.now() - t1;
+    stepTimes.push(elapsed1);
 
     if (!ok) {
       throw new InitError(`Pass 1-${i} failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force`);
@@ -253,7 +276,8 @@ async function cmdInit(parsedArgs) {
       throw new InitError(`pass1-${i}.json was not created. Claude may have run but not produced expected output.\n    Ensure the prompt instructs Claude to write to claudeos-core/generated/pass1-${i}.json`);
     }
 
-    log(`    ✅ pass1-${i}.json created (${elapsed1})`);
+    completedSteps++;
+    progressBar(completedSteps, `pass1-${i}.json created (${formatElapsed(elapsed1)})`);
   }
   log("");
 
@@ -263,6 +287,7 @@ async function cmdInit(parsedArgs) {
   const pass2Json = path.join(GENERATED_DIR, "pass2-merged.json");
   if (fileExists(pass2Json)) {
     log("    ⏭️  pass2-merged.json already exists, skipping");
+    completedSteps++;
   } else {
     const pass2PromptFile = path.join(GENERATED_DIR, "pass2-prompt.md");
     if (!fileExists(pass2PromptFile)) {
@@ -273,7 +298,8 @@ async function cmdInit(parsedArgs) {
     log(claudeWaitMsg(lang, "Pass 2"));
     const t2 = Date.now();
     const ok = runClaudePrompt(prompt, { ignoreError: true });
-    const elapsed2 = formatElapsed(Date.now() - t2);
+    const elapsed2 = Date.now() - t2;
+    stepTimes.push(elapsed2);
 
     if (!ok) {
       throw new InitError("Pass 2 failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force");
@@ -283,7 +309,8 @@ async function cmdInit(parsedArgs) {
       throw new InitError("pass2-merged.json was not created. Claude may have run but not produced expected output.");
     }
 
-    log(`    ✅ pass2-merged.json created (${elapsed2})`);
+    completedSteps++;
+    progressBar(completedSteps, `pass2-merged.json created (${formatElapsed(elapsed2)})`);
   }
   log("");
 
@@ -299,7 +326,8 @@ async function cmdInit(parsedArgs) {
   log(claudeWaitMsg(lang, "Pass 3"));
   const t3 = Date.now();
   const ok3 = runClaudePrompt(prompt, { ignoreError: true });
-  const elapsed3 = formatElapsed(Date.now() - t3);
+  const elapsed3 = Date.now() - t3;
+  stepTimes.push(elapsed3);
 
   if (!ok3) {
     throw new InitError("Pass 3 failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force");
@@ -308,7 +336,8 @@ async function cmdInit(parsedArgs) {
   if (!fileExists(path.join(PROJECT_ROOT, "CLAUDE.md"))) {
     throw new InitError("CLAUDE.md was not created. Claude ran but did not produce CLAUDE.md.\n    Verify pass3-prompt.md instructs Claude to create CLAUDE.md at project root.");
   }
-  log(`    ✅ Pass 3 complete (${elapsed3})`);
+  completedSteps++;
+  progressBar(completedSteps, `Pass 3 complete (${formatElapsed(elapsed3)})`);
   log("");
 
   // ─── [7] Run verification tools ───────────────────────────────

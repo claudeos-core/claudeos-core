@@ -33,10 +33,21 @@ async function scanNodeDomains(stack, ROOT) {
     if (skipDirs.includes(name)) continue;
     const files = await glob(`${dir.replace(/\\/g, "/")}**/*.{ts,js}`, { cwd: ROOT, ignore: ["**/*.spec.*", "**/*.test.*"] });
     if (files.length > 0) {
-      const controllers = files.filter(f => /controller|router|route/.test(f)).length;
+      const controllers = files.filter(f => /controller|router|route|handler/.test(f)).length;
       const services = files.filter(f => /service/.test(f)).length;
       const dtos = files.filter(f => /dto|schema|type/.test(f)).length;
-      backendDomains.push({ name, type: "backend", controllers, services, dtos, totalFiles: files.length });
+      const entities = files.filter(f => /entity|model/.test(f) && !/controller|service|dto/.test(f)).length;
+      const modules = files.filter(f => /\.module\./.test(f)).length;
+      const guards = files.filter(f => /guard/.test(f)).length;
+      const pipes = files.filter(f => /pipe/.test(f)).length;
+      const interceptors = files.filter(f => /interceptor/.test(f)).length;
+      const domain = { name, type: "backend", controllers, services, dtos, totalFiles: files.length };
+      if (entities > 0) domain.entities = entities;
+      if (modules > 0) domain.modules = modules;
+      if (guards > 0) domain.guards = guards;
+      if (pipes > 0) domain.pipes = pipes;
+      if (interceptors > 0) domain.interceptors = interceptors;
+      backendDomains.push(domain);
     }
   }
 

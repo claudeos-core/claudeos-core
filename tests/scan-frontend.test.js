@@ -450,6 +450,63 @@ describe("scanFrontendDomains — Vue", () => {
   });
 });
 
+// ─── Non-standard nested paths (src/admin/pages/*, src/admin/components/*) ──
+
+describe("scanFrontendDomains — non-standard nested paths", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("detects pages under src/admin/pages/*/", async () => {
+    touch(path.join(tmp, "src/admin/pages/dashboard/page.tsx"));
+    touch(path.join(tmp, "src/admin/pages/dashboard/DashboardChart.tsx"));
+    touch(path.join(tmp, "src/admin/pages/settings/page.tsx"));
+
+    const stack = { frontend: "react", language: "typescript" };
+    const { frontendDomains } = await scanFrontendDomains(stack, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("dashboard"), "should detect dashboard from src/admin/pages/");
+    assert.ok(names.includes("settings"), "should detect settings from src/admin/pages/");
+  });
+
+  it("detects components under src/admin/components/*/", async () => {
+    touch(path.join(tmp, "src/admin/components/form/InputField.tsx"));
+    touch(path.join(tmp, "src/admin/components/form/SelectField.tsx"));
+    touch(path.join(tmp, "src/admin/components/table/DataTable.tsx"));
+    touch(path.join(tmp, "src/admin/components/table/TableHeader.tsx"));
+
+    const stack = { frontend: "react", language: "typescript" };
+    const { frontendDomains } = await scanFrontendDomains(stack, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("comp-form"), "should detect form from src/admin/components/");
+    assert.ok(names.includes("comp-table"), "should detect table from src/admin/components/");
+  });
+
+  it("detects FSD features under src/admin/features/*/", async () => {
+    touch(path.join(tmp, "src/admin/features/billing/ui/BillingCard.tsx"));
+    touch(path.join(tmp, "src/admin/features/billing/model/store.ts"));
+
+    const stack = { frontend: "react", language: "typescript" };
+    const { frontendDomains } = await scanFrontendDomains(stack, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("features/billing"), "should detect billing from src/admin/features/");
+  });
+});
+
+describe("countFrontendStats — non-standard paths", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("counts pages under src/admin/pages/", async () => {
+    touch(path.join(tmp, "src/admin/pages/settings/index.tsx"));
+    touch(path.join(tmp, "src/admin/pages/users/index.tsx"));
+
+    const stats = await countFrontendStats({ frontend: "react" }, tmp);
+    assert.ok(stats.pages >= 2, `should count nested pages, got ${stats.pages}`);
+  });
+});
+
 // ─── No frontend ────────────────────────────────────────────
 
 describe("scanFrontendDomains — no frontend", () => {

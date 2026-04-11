@@ -138,6 +138,11 @@ describe("selectTemplates", () => {
     assert.equal(t.backend, "python-fastapi");
   });
 
+  it("selects python-flask for Flask (not python-fastapi)", () => {
+    const t = selectTemplates({ language: "python", framework: "flask" });
+    assert.equal(t.backend, "python-flask");
+  });
+
   it("handles frontend-only project (no backend template without framework)", () => {
     const t = selectTemplates({ language: "typescript", frontend: "react" });
     assert.equal(t.backend, null);

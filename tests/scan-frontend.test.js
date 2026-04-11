@@ -349,34 +349,32 @@ describe("scanFrontendDomains — Fallback D (views/screens)", () => {
   beforeEach(() => { tmp = makeTmpDir(); });
   afterEach(() => cleanup(tmp));
 
-  it("detects from views/screens/containers/routes when A-C fail", async () => {
-    // No app/, pages/, features/, components/ — only views/screens
-    touch(path.join(tmp, "src/views/profile/ProfileView.tsx"));
-    touch(path.join(tmp, "src/views/profile/ProfileEdit.tsx"));
-    touch(path.join(tmp, "src/screens/home/HomeScreen.tsx"));
-    touch(path.join(tmp, "src/screens/home/HomeWidget.tsx"));
+  it("detects from containers/modules/domains when primary and A-C fail", async () => {
+    // No app/, pages/, views/, screens/, features/, components/ — only containers
     touch(path.join(tmp, "src/containers/checkout/CheckoutForm.tsx"));
     touch(path.join(tmp, "src/containers/checkout/CartSummary.tsx"));
+    touch(path.join(tmp, "src/containers/profile/ProfileCard.tsx"));
+    touch(path.join(tmp, "src/containers/profile/ProfileEdit.tsx"));
 
     const stack = { frontend: "react", language: "typescript" };
     const { frontendDomains } = await scanFrontendDomains(stack, tmp);
     const names = frontendDomains.map(d => d.name);
-    assert.ok(names.includes("profile"), "fallback D should detect profile from views/");
-    assert.ok(names.includes("home"), "fallback D should detect home from screens/");
     assert.ok(names.includes("checkout"), "fallback D should detect checkout from containers/");
+    assert.ok(names.includes("profile"), "fallback D should detect profile from containers/");
   });
 
-  it("skips auth/layout/utils/hooks directories", async () => {
-    touch(path.join(tmp, "src/views/auth/Login.tsx"));
-    touch(path.join(tmp, "src/views/auth/Register.tsx"));
-    touch(path.join(tmp, "src/views/layout/MainLayout.tsx"));
-    touch(path.join(tmp, "src/views/layout/Sidebar.tsx"));
+  it("skips layout/utils/hooks directories in fallback D", async () => {
+    // Only containers (no views/screens that would be caught by primary)
+    touch(path.join(tmp, "src/containers/layout/MainLayout.tsx"));
+    touch(path.join(tmp, "src/containers/layout/Sidebar.tsx"));
+    touch(path.join(tmp, "src/containers/utils/Helper.tsx"));
+    touch(path.join(tmp, "src/containers/utils/Formatter.tsx"));
 
     const stack = { frontend: "react", language: "typescript" };
     const { frontendDomains } = await scanFrontendDomains(stack, tmp);
     const names = frontendDomains.map(d => d.name);
-    assert.ok(!names.includes("auth"));
     assert.ok(!names.includes("layout"));
+    assert.ok(!names.includes("utils"));
   });
 });
 
@@ -447,6 +445,46 @@ describe("scanFrontendDomains — Vue", () => {
     const { frontendDomains } = await scanFrontendDomains(stack, tmp);
     const names = frontendDomains.map(d => d.name);
     assert.ok(names.includes("about"));
+  });
+});
+
+// ─── Vite SPA primary paths (src/views/*, src/screens/*, src/routes/*) ──
+
+describe("scanFrontendDomains — Vite SPA primary paths", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("detects domains from src/views/*/", async () => {
+    touch(path.join(tmp, "src/views/Dashboard/DashboardView.tsx"));
+    touch(path.join(tmp, "src/views/Dashboard/StatsCard.tsx"));
+    touch(path.join(tmp, "src/views/Settings/SettingsView.tsx"));
+
+    const stack = { frontend: "react", language: "typescript" };
+    const { frontendDomains } = await scanFrontendDomains(stack, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("Dashboard"), "should detect Dashboard from src/views/");
+    assert.ok(names.includes("Settings"), "should detect Settings from src/views/");
+  });
+
+  it("detects domains from src/screens/*/", async () => {
+    touch(path.join(tmp, "src/screens/Home/HomeScreen.tsx"));
+    touch(path.join(tmp, "src/screens/Home/HeroBanner.tsx"));
+
+    const stack = { frontend: "react", language: "typescript" };
+    const { frontendDomains } = await scanFrontendDomains(stack, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("Home"), "should detect Home from src/screens/");
+  });
+
+  it("detects domains from src/routes/*/", async () => {
+    touch(path.join(tmp, "src/routes/auth/LoginPage.tsx"));
+    touch(path.join(tmp, "src/routes/auth/RegisterPage.tsx"));
+
+    const stack = { frontend: "react", language: "typescript" };
+    const { frontendDomains } = await scanFrontendDomains(stack, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("auth"), "should detect auth from src/routes/");
   });
 });
 

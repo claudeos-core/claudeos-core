@@ -54,7 +54,8 @@ function selectTemplates(stack) {
   else if (stack.framework === "express") templates.backend = "node-express";
   else if (stack.framework === "fastify") templates.backend = "node-fastify";
   else if (stack.framework === "django") templates.backend = "python-django";
-  else if (stack.framework === "fastapi" || stack.framework === "flask") templates.backend = "python-fastapi";
+  else if (stack.framework === "fastapi") templates.backend = "python-fastapi";
+  else if (stack.framework === "flask") templates.backend = "python-flask";
   else if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework && stack.framework !== "vite") templates.backend = "node-express";
   else if (stack.language === "python" && stack.framework) templates.backend = "python-fastapi";
 

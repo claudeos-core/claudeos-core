@@ -372,7 +372,7 @@ async function cmdInit(parsedArgs) {
   log(`║   Domains analyzed:  ${pad(totalGroups + " groups", 29)}║`);
   log(`║   Analysis passes:   ${pad(pass1Files + " pass1 files", 29)}║`);
   log(`║   Output language:   ${pad(SUPPORTED_LANGS[lang] || lang, 29)}║`);
-  log(`║   Total time:       ${pad(formatElapsed(Date.now() - totalStart), 29)}║`);
+  log(`║   Total time:        ${pad(formatElapsed(Date.now() - totalStart), 29)}║`);
   log("║                                                    ║");
   log("║   Verify anytime:                                  ║");
   log("║   npx claudeos-core health                         ║");

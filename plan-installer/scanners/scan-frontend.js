@@ -54,7 +54,7 @@ async function scanFrontendDomains(stack, ROOT) {
 
   // ── Next.js/React/Vue ──
   if (stack.frontend === "nextjs" || stack.frontend === "react" || stack.frontend === "vue") {
-    // App Router / Pages Router domains (standard + monorepo apps/*/ + nested src/*/)
+    // App Router / Pages Router / SPA domains (standard + monorepo + Vite SPA paths)
     const allDirs = [
       ...await glob("{app,src/app}/*/", { cwd: ROOT }),
       ...await glob("{pages,src/pages}/*/", { cwd: ROOT }),
@@ -64,6 +64,8 @@ async function scanFrontendDomains(stack, ROOT) {
       ...await glob("{apps,packages}/*/src/pages/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
       // Non-standard nested page paths (e.g., src/admin/pages/*, src/dashboard/app/*)
       ...await glob("src/*/{app,pages}/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
+      // Vite SPA / CRA common paths (src/views/*, src/screens/*, src/routes/*)
+      ...await glob("src/{views,screens,routes}/*/", { cwd: ROOT, ignore: ["**/node_modules/**"] }),
     ];
     const skipPages = ["api", "_app", "_document", "fonts", "not-found", "error", "loading"];
     for (const dir of allDirs) {

@@ -4,11 +4,18 @@
 
 ### Added
 
-- **Java scanner unit tests** — New `tests/scan-java.test.js` with 17 tests covering all 5 patterns (A/B/C/D/E), supplementary scan, skip list, root package extraction, MyBatis XML detection, and full fallback
+- **Java scanner unit tests** — New `tests/scan-java.test.js` with 18 tests covering all 5 patterns (A/B/C/D/E), supplementary scan, skip list, root package extraction, MyBatis XML detection, DDD infrastructure/ detection, and full fallback
+- **Flask dedicated template** — New `pass-prompts/templates/python-flask/` with pass1/pass2/pass3 prompts tailored for Flask (Blueprint, @app.route, application factory, g/current_app, before_request, WTForms, Flask-SQLAlchemy, Flask-Login, Jinja2); Flask no longer shares python-fastapi template
+- **FastAPI/Flask flat project fallback** — `scan-python.js` now detects flat projects with `main.py` or `app.py` at root (or `app/main.py`) when no router files or subdomain structure exists; covers FastAPI official tutorial structure
+- **Vite SPA primary path scanning** — `scan-frontend.js` now detects `src/views/*/`, `src/screens/*/`, `src/routes/*/` in primary scan; Vite SPA projects no longer fall through to Fallback D
+- **296 tests** (287 → 296) — Added 9 new tests: Flask template selection, flat project fallback (5 cases), Vite SPA primary paths (3 cases)
 
 ### Fixed
 
 - **Java scanner Windows path normalization** — `scan-java.js` added `norm()` function and `.map(norm)` to 9 glob calls; regex matching failed on Windows backslash paths for Pattern E (DDD/Hexagonal), root package extraction, and supplementary scan
+- **Pattern E missing infrastructure/ detection** — `scan-java.js` Pattern E `mprGlob` now includes `{domain}/infrastructure/*.java` in addition to `adapter/out/{persistence,repository}/`
+- **Flask misusing FastAPI template** — `selectTemplates()` now routes `framework: "flask"` to dedicated `python-flask` instead of `python-fastapi`
+- **Completion banner alignment** — `Total time:` label spacing fixed to align with other rows
 
 ## [1.7.0] — 2026-04-11
 

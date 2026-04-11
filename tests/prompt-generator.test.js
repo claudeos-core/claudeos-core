@@ -434,3 +434,72 @@ describe("scanPythonDomains — Flask", () => {
     assert.ok(names.includes("auth"));
   });
 });
+
+// ─── Flat project fallback ─────────────────────────────────
+
+describe("scanPythonDomains — flat project fallback", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("detects flat FastAPI project with main.py at root", async () => {
+    touch(path.join(tmp, "main.py"));
+    touch(path.join(tmp, "models.py"));
+    touch(path.join(tmp, "schemas.py"));
+
+    const stack = { language: "python", framework: "fastapi" };
+    const { backendDomains } = await scanPythonDomains(stack, tmp);
+
+    assert.ok(backendDomains.length >= 1, "should detect at least one domain");
+    assert.equal(backendDomains[0].name, "app");
+    assert.ok(backendDomains[0].flat, "should be marked as flat");
+  });
+
+  it("detects flat FastAPI project with app.py at root", async () => {
+    touch(path.join(tmp, "app.py"));
+    touch(path.join(tmp, "database.py"));
+
+    const stack = { language: "python", framework: "fastapi" };
+    const { backendDomains } = await scanPythonDomains(stack, tmp);
+
+    assert.ok(backendDomains.length >= 1, "should detect from app.py");
+    assert.ok(backendDomains[0].flat);
+  });
+
+  it("detects flat project with main.py inside app/ directory", async () => {
+    touch(path.join(tmp, "app/main.py"));
+    touch(path.join(tmp, "app/database.py"));
+    touch(path.join(tmp, "app/schemas.py"));
+
+    const stack = { language: "python", framework: "fastapi" };
+    const { backendDomains } = await scanPythonDomains(stack, tmp);
+
+    assert.ok(backendDomains.length >= 1, "should detect from app/main.py");
+    assert.equal(backendDomains[0].name, "app");
+  });
+
+  it("does NOT trigger flat fallback when router files exist", async () => {
+    touch(path.join(tmp, "main.py"));
+    touch(path.join(tmp, "app/users/router.py"));
+    touch(path.join(tmp, "app/users/models.py"));
+
+    const stack = { language: "python", framework: "fastapi" };
+    const { backendDomains } = await scanPythonDomains(stack, tmp);
+
+    const names = backendDomains.map(d => d.name);
+    assert.ok(names.includes("users"), "should detect users from router");
+    assert.ok(!backendDomains.some(d => d.flat), "should NOT trigger flat fallback");
+  });
+
+  it("excludes setup.py and conftest.py from flat count", async () => {
+    touch(path.join(tmp, "main.py"));
+    touch(path.join(tmp, "setup.py"));
+    touch(path.join(tmp, "conftest.py"));
+
+    const stack = { language: "python", framework: "fastapi" };
+    const { backendDomains } = await scanPythonDomains(stack, tmp);
+
+    assert.ok(backendDomains.length >= 1);
+    assert.equal(backendDomains[0].totalFiles, 1, "should exclude setup.py and conftest.py");
+  });
+});

@@ -56,6 +56,27 @@ async function scanPythonDomains(stack, ROOT) {
         if (files.length > 0) backendDomains.push({ name, type: "backend", totalFiles: files.length });
       }
     }
+    // Flat project fallback: main.py or app.py at root or in app/ directory with no subdomain structure
+    if (backendDomains.filter(d => d.type === "backend").length === 0) {
+      const flatEntries = await glob("{main,app}.py", { cwd: ROOT, ignore: ["**/venv/**", "**/.venv/**"] });
+      if (flatEntries.length > 0) {
+        const allPy = await glob("*.py", { cwd: ROOT, ignore: ["**/venv/**", "**/.venv/**", "setup.py", "conftest.py"] });
+        if (allPy.length > 0) {
+          backendDomains.push({ name: "app", type: "backend", totalFiles: allPy.length, flat: true });
+        }
+      }
+      // Also check app/ directory with main.py but no subdirectories
+      if (backendDomains.filter(d => d.type === "backend").length === 0) {
+        const appMain = await glob("{app,src/app}/{main,app}.py", { cwd: ROOT, ignore: ["**/venv/**", "**/.venv/**"] });
+        if (appMain.length > 0) {
+          const dir = path.dirname(appMain[0]).replace(/\\/g, "/");
+          const appPy = await glob(`${dir}/*.py`, { cwd: ROOT });
+          if (appPy.length > 0) {
+            backendDomains.push({ name: path.basename(dir), type: "backend", totalFiles: appPy.length, flat: true });
+          }
+        }
+      }
+    }
   }
 
   return { backendDomains };

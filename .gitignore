@@ -6,3 +6,5 @@ package-lock.json
 _tmp_prompt*.md
 claudeos-core/
 CLAUDE.md
+.claude/
+/.claude/

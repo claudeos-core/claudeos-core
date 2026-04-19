@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.1] — 2026-04-19
+
+### Fixed
+
+- **CI tests failing on all OS/Node combinations** — `.gitignore` no longer excludes `package-lock.json`. The GitHub Actions workflow uses `actions/setup-node` with `cache: 'npm'` and `npm ci`, both of which require a committed lockfile; without it, all 6 matrix jobs (Ubuntu/macOS/Windows × Node 18/20) failed at the install step with `Dependencies lock file is not found`.
+
+### Changed
+
+- **GitHub Actions runner compatibility** — Bumped `actions/checkout@v4` → `@v5` and `actions/setup-node@v4` → `@v5` in `.github/workflows/test.yml`. The `@v4` tags ran on Node.js 20, which GitHub deprecated on 2025-09-19 (forced Node 24 transition on 2026-06-02, full removal on 2026-09-16). The `@v5` tags ship with Node 24 support and clear the deprecation warnings.
+
 ## [2.0.0] — 2026-04-19
 
 ### Added

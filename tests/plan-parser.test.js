@@ -138,6 +138,34 @@ describe("replaceFileBlock (shared)", () => {
     const content = '<file path="a.md">\nhello\n</file>';
     assert.equal(replaceFileBlock(content, "z.md", "new"), content);
   });
+
+  it("preserves $ special characters in newContent ($1, $&, $$, etc.) as literals", () => {
+    // Regression guard: the original implementation used a string replacement
+    // which interprets `$1`, `$&`, `$$` as back-references / specials.
+    // If a memory/rule/standard file documents regex syntax or shell PIDs,
+    // refresh would corrupt the content. The fix uses a replacement function.
+    const content = '<file path="doc.md">\nold\n</file>';
+
+    // Case 1: $1 (would have become the captured "opening group")
+    const r1 = replaceFileBlock(content, "doc.md", "price: $100 total");
+    assert.ok(r1.includes("price: $100 total"),
+      "$1-style sequences must be preserved literally, not expanded to capture groups");
+
+    // Case 2: $$ (would have collapsed to $)
+    const r2 = replaceFileBlock(content, "doc.md", "a$$b");
+    assert.ok(r2.includes("a$$b"),
+      "$$ must be preserved literally, not collapsed to $");
+
+    // Case 3: $& (whole-match back-reference)
+    const r3 = replaceFileBlock(content, "doc.md", "regex $& example");
+    assert.ok(r3.includes("regex $& example"),
+      "$& must be preserved literally, not expanded to the whole match");
+
+    // Case 4: $0, $9 (other numbered groups)
+    const r4 = replaceFileBlock(content, "doc.md", "refs $0 and $9 here");
+    assert.ok(r4.includes("refs $0 and $9 here"),
+      "$0/$9 must be preserved literally");
+  });
 });
 
 // ─── replaceCodeBlock ───────────────────────────────────────

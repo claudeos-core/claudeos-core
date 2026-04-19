@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [master, dev]
+  pull_request:
+    branches: [master, dev]
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['18', '20']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        # CLAUDEOS_SKIP_TRANSLATION=1 short-circuits memory-scaffold's translation
+        # path so CI doesn't need `claude` CLI installed/authenticated. The
+        # translation-dependent tests in lang-aware-fallback.test.js rely on
+        # this to assert their "throws on failure" contract deterministically.
+        # See lib/memory-scaffold.js translateIfNeeded().
+        env:
+          CLAUDEOS_SKIP_TRANSLATION: '1'
+        run: npm test

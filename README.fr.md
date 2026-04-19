@@ -6,7 +6,7 @@
 npx claudeos-core init
 ```
 
-ClaudeOS-Core lit votre codebase, extrait chaque pattern qu'il trouve et génère un ensemble complet de Standards, Rules, Skills et Guides adaptés à _votre_ projet. Ensuite, quand vous dites à Claude Code « Crée un CRUD pour les commandes », il produit du code qui correspond exactement à vos patterns existants.
+ClaudeOS-Core lit votre codebase, extrait chaque pattern qu'il y trouve et génère un ensemble complet de Standards, Rules, Skills et Guides adaptés à _votre_ projet. Ensuite, quand vous dites à Claude Code « Crée un CRUD pour les commandes », il produit du code qui correspond exactement à vos patterns existants.
 
 [🇺🇸 English](./README.md) · [🇰🇷 한국어](./README.ko.md) · [🇨🇳 中文](./README.zh-CN.md) · [🇯🇵 日本語](./README.ja.md) · [🇪🇸 Español](./README.es.md) · [🇻🇳 Tiếng Việt](./README.vi.md) · [🇮🇳 हिन्दी](./README.hi.md) · [🇷🇺 Русский](./README.ru.md) · [🇩🇪 Deutsch](./README.de.md)
 
@@ -14,57 +14,67 @@ ClaudeOS-Core lit votre codebase, extrait chaque pattern qu'il trouve et génèr
 
 ## Pourquoi ClaudeOS-Core ?
 
-> L'humain décrit le projet → Le LLM génère la documentation
+Tous les autres outils Claude Code fonctionnent ainsi :
 
-ClaudeOS-Core:
+> **Un humain décrit le projet → le LLM génère la documentation**
 
-> Le code analyse vos sources → Le code construit un prompt personnalisé → Le LLM génère la documentation → Le code vérifie la sortie
+ClaudeOS-Core fonctionne ainsi :
 
-### Le problème fondamental : les LLMs devinent. Le code confirme.
+> **Le code analyse vos sources → le code construit un prompt sur mesure → le LLM génère la documentation → le code vérifie la sortie**
 
-Quand vous demandez à Claude d'« analyser ce projet », il **devine** votre stack, ORM, structure de domaines.
+Ce n'est pas une petite différence. Voici pourquoi c'est important :
 
-**ClaudeOS-Core ne devine pas.** Claude Node.js:
+### Le problème fondamental : les LLMs devinent. Le code, non.
 
-- `build.gradle` / `package.json` / `pyproject.toml` → **confirmed**
-- directory scan → **confirmed**
-- Java 5 patterns, Kotlin CQRS/BFF, Next.js App Router/FSD → **classified**
-- domain groups → **split**
-- stack-specific prompt → **assembled**
+Quand vous demandez à Claude d'« analyser ce projet », il **devine** votre stack, votre ORM, votre structure de domaines.
+Il peut voir `spring-boot` dans votre `build.gradle` mais ne pas réaliser que vous utilisez MyBatis (et non JPA).
+Il peut détecter un répertoire `user/` sans comprendre que votre projet utilise le packaging layer-first (Pattern A), pas domain-first (Pattern B).
+
+**ClaudeOS-Core ne devine pas.** Avant même que Claude ne voie votre projet, le code Node.js a déjà :
+
+- Parsé `build.gradle` / `package.json` / `pyproject.toml` et **confirmé** votre stack, ORM, BD et gestionnaire de paquets
+- Scanné votre structure de répertoires et **confirmé** votre liste de domaines avec le nombre de fichiers
+- Classifié la structure de votre projet selon l'un des 5 patterns Java, Kotlin CQRS/BFF, ou Next.js App Router/FSD
+- Divisé les domaines en groupes de taille optimale qui rentrent dans la fenêtre de contexte de Claude
+- Assemblé un prompt spécifique au stack avec tous les faits confirmés injectés
+
+Au moment où Claude reçoit le prompt, il n'y a plus rien à deviner. Le stack est confirmé. Les domaines sont confirmés. Le pattern structurel est confirmé. Le seul travail de Claude est de générer une documentation qui correspond à ces **faits confirmés**.
 
 ### Le résultat
 
-Les autres outils produisent une documentation « généralement bonne ».
-ClaudeOS-Core produit une documentation qui sait que votre projet utilise `ApiResponse.ok()` (pas `ResponseEntity.success()`), que vos mappers MyBatis XML sont dans `src/main/resources/mybatis/mappers/` — parce qu'il a lu votre vrai code.
+Les autres outils produisent une documentation « globalement correcte ».
+ClaudeOS-Core produit une documentation qui sait que votre projet utilise `ApiResponse.ok()` (pas `ResponseEntity.success()`), que vos mappers MyBatis XML vivent dans `src/main/resources/mybatis/mappers/`, et que votre structure de packages est `com.company.module.{domain}.controller` — parce qu'il a lu votre code réel.
 
-### Before & After
+### Avant et après
 
-**Sans ClaudeOS-Core**:
+**Sans ClaudeOS-Core** — vous demandez à Claude Code de créer un CRUD Order :
 ```
-❌ JPA repository (MyBatis)
-❌ ResponseEntity.success() (ApiResponse.ok())
-❌ order/controller/ (controller/order/)
-→ 20 min fix per file
-```
-
-**Avec ClaudeOS-Core**:
-```
-✅ MyBatis mapper + XML (build.gradle)
-✅ ApiResponse.ok() (source code)
-✅ controller/order/ (Pattern A)
-→ immediate match
+❌ Utilise un repository style JPA (votre projet utilise MyBatis)
+❌ Crée ResponseEntity.success() (votre wrapper est ApiResponse.ok())
+❌ Place les fichiers dans order/controller/ (votre projet utilise controller/order/)
+❌ Génère des commentaires en anglais (votre équipe écrit des commentaires en français)
+→ Vous passez 20 minutes à corriger chaque fichier généré
 ```
 
-Cette différence s'accumule. 10 tâches/jour × 20 minutes économisées = **plus de 3 heures/jour**.
+**Avec ClaudeOS-Core** — `.claude/rules/` contient déjà vos patterns confirmés :
+```
+✅ Génère un mapper MyBatis + XML (détecté depuis build.gradle)
+✅ Utilise ApiResponse.ok() (extrait de votre vraie source)
+✅ Place les fichiers dans controller/order/ (Pattern A confirmé par le scan structurel)
+✅ Commentaires en français (--lang fr appliqué)
+→ Le code généré correspond immédiatement aux conventions de votre projet
+```
+
+Cette différence se cumule. 10 tâches/jour × 20 minutes économisées = **plus de 3 heures/jour**.
 
 ---
 
 ## Stacks Supportés
 
-| Stack | Détection | Profondeur d'Analyse |
+| Stack | Détection | Profondeur d'analyse |
 |---|---|---|
-| **Java / Spring Boot** | `build.gradle`, `pom.xml`, 5 patterns de paquets | 10 catégories, 59 sous-éléments |
-| **Kotlin / Spring Boot** | `build.gradle.kts`, kotlin plugin, `settings.gradle.kts`, CQRS/BFF auto-detect | 12 catégories, 95 sous-éléments |
+| **Java / Spring Boot** | `build.gradle`, `pom.xml`, 5 patterns de package | 10 catégories, 59 sous-éléments |
+| **Kotlin / Spring Boot** | `build.gradle.kts`, kotlin plugin, `settings.gradle.kts`, auto-détection CQRS/BFF | 12 catégories, 95 sous-éléments |
 | **Node.js / Express** | `package.json` | 9 catégories, 57 sous-éléments |
 | **Node.js / NestJS** | `package.json` (`@nestjs/core`) | 10 catégories, 68 sous-éléments |
 | **Next.js / React** | `package.json`, `next.config.*`, support FSD | 9 catégories, 55 sous-éléments |
@@ -75,47 +85,71 @@ Cette différence s'accumule. 10 tâches/jour × 20 minutes économisées = **pl
 | **Vite / React SPA** | `package.json`, `vite.config.*` | 9 catégories, 55 sous-éléments |
 | **Angular** | `package.json`, `angular.json` | 12 catégories, 78 sous-éléments |
 
-Détection automatique : langage et version, framework et version (y compris Vite comme framework SPA), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), base de données (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), gestionnaire de paquets (Gradle, Maven, npm, yarn, pnpm, pip, poetry), architecture (CQRS, BFF — détecté à partir des noms de modules), structure multi-module (depuis settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+Auto-détecté : langage et version, framework et version (y compris Vite en tant que framework SPA), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy, etc.), base de données (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), gestionnaire de paquets (Gradle, Maven, npm, yarn, pnpm, pip, poetry), architecture (CQRS, BFF — à partir des noms de modules), structure multi-module (depuis settings.gradle), monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
 
 **Vous n'avez rien à spécifier. Tout est détecté automatiquement.**
-
 
 ### Détection des Domaines Java (5 patterns avec fallback)
 
 | Priorité | Pattern | Structure | Exemple |
 |---|---|---|---|
-| A | Couche d'abord | `controller/{domain}/` | `controller/user/UserController.java` |
+| A | Layer d'abord | `controller/{domain}/` | `controller/user/UserController.java` |
 | B | Domaine d'abord | `{domain}/controller/` | `user/controller/UserController.java` |
-| D | Préfixe module | `{module}/{domain}/controller/` | `front/member/controller/MemberController.java` |
+| D | Préfixe de module | `{module}/{domain}/controller/` | `front/member/controller/MemberController.java` |
 | E | DDD/Hexagonal | `{domain}/adapter/in/web/` | `user/adapter/in/web/UserController.java` |
 | C | Plat | `controller/*.java` | `controller/UserController.java` → extrait `user` du nom de classe |
 
-Les domaines sans contrôleurs (service uniquement) sont aussi détectés via les répertoires `service/`, `dao/`, `aggregator/`, `facade/`, `usecase/`, `orchestrator/`, `mapper/`, `repository/`. Ignorés : `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2`, etc.
+Les domaines uniquement service (sans contrôleurs) sont également détectés via les répertoires `service/`, `dao/`, `aggregator/`, `facade/`, `usecase/`, `orchestrator/`, `mapper/`, `repository/`. Ignorés : `common`, `config`, `util`, `core`, `front`, `admin`, `v1`, `v2`, etc.
 
+### Détection des Domaines Kotlin Multi-Module
 
-### Détection des domaines Kotlin multi-modules
+Pour les projets Kotlin avec structure Gradle multi-module (ex : monorepo CQRS) :
 
-Pour les projets Kotlin avec structure Gradle multi-modules (ex : monorepo CQRS) :
-
-| Étape | Action | Exemple |
+| Étape | Ce que fait l'outil | Exemple |
 |---|---|---|
-| 1 | Scanner `settings.gradle.kts` pour les `include()` | 14 modules trouvés |
-| 2 | Détecter le type de module par son nom | `reservation-command-server` → type : `command` |
-| 3 | Extraire le domaine du nom du module | `reservation-command-server` → domaine : `reservation` |
-| 4 | Regrouper le même domaine entre modules | `reservation-command-server` + `common-query-server` → 1 domaine |
-| 5 | Détecter l'architecture | Modules `command` + `query` présents → CQRS |
+| 1 | Scanne `settings.gradle.kts` pour trouver les `include()` | Trouve 14 modules |
+| 2 | Détecte le type de module depuis le nom | `reservation-command-server` → type : `command` |
+| 3 | Extrait le domaine du nom de module | `reservation-command-server` → domaine : `reservation` |
+| 4 | Regroupe le même domaine à travers les modules | `reservation-command-server` + `common-query-server` → 1 domaine |
+| 5 | Détecte l'architecture | Contient modules `command` + `query` → CQRS |
 
-Types de modules supportés : `command`, `query`, `bff`, `integration`, `standalone`, `library`. Les bibliothèques partagées (`shared-lib`, `integration-lib`) sont détectées comme domaines spéciaux.
+Types de module supportés : `command`, `query`, `bff`, `integration`, `standalone`, `library`. Les bibliothèques partagées (`shared-lib`, `integration-lib`) sont détectées comme domaines spéciaux.
 
 ### Détection des Domaines Frontend
 
 - **App Router** : `app/{domain}/page.tsx` (Next.js)
 - **Pages Router** : `pages/{domain}/index.tsx`
 - **FSD (Feature-Sliced Design)** : `features/*/`, `widgets/*/`, `entities/*/`
-- **RSC/Client split** : Détecte le pattern `client.tsx`, suit la séparation Server/Client
-- **Chemins imbriqués non standard** : détection des pages, composants et couches FSD sous `src/*/pages/`, `src/*/components/`, `src/*/features/` (ex. `src/admin/pages/dashboard/`)
-- **Fallback config** : Détecte Next.js/Vite/Nuxt depuis les fichiers de config (support monorepo)
-- **Fallback répertoires profonds** : Pour les projets React/CRA/Vite/Vue/RN, scanne `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` à toute profondeur
+- **Split RSC/Client** : Détecte le pattern `client.tsx`, suit la séparation Server/Client des composants
+- **Chemins imbriqués non standards** : Détecte pages, components et couches FSD sous les chemins `src/*/` (ex : `src/admin/pages/dashboard/`, `src/admin/components/form/`, `src/admin/features/billing/`)
+- **Détection platform/tier-split (v2.0.0)** : Reconnaît les layouts `src/{platform}/{subapp}/` — `{platform}` peut être un mot-clé de device/cible (`desktop`, `pc`, `web`, `mobile`, `mc`, `mo`, `sp`, `tablet`, `tab`, `pwa`, `tv`, `ctv`, `ott`, `watch`, `wear`) ou un mot-clé de niveau d'accès (`admin`, `cms`, `backoffice`, `back-office`, `portal`). Émet un domaine par paire `(platform, subapp)` nommé `{platform}-{subapp}` avec des compteurs par domaine pour routes/components/layouts/hooks. Tourne simultanément sur Angular, Next.js, React et Vue (glob multi-extensions `{tsx,jsx,ts,js,vue}`). Nécessite ≥2 fichiers source par subapp pour éviter des domaines bruyants à 1 seul fichier.
+- **Split plateforme en monorepo (v2.0.0)** : Le scan de plateforme matche aussi `{apps,packages}/*/src/{platform}/{subapp}/` (Turborepo/pnpm workspace avec `src/`) et `{apps,packages}/{platform}/{subapp}/` (workspaces sans wrapper `src/`).
+- **Fallback E — fichier de routes (v2.0.0)** : Quand les scanners primaires + Fallbacks A–D renvoient tous 0, glob `**/routes/*.{tsx,jsx,ts,js,vue}` et regroupe par le nom du répertoire parent de `routes`. Capture les projets à routage par fichiers React Router (CRA/Vite + `react-router`) qui ne matchent ni `page.tsx` de Next.js ni les layouts FSD. Les noms de parent génériques (`src`, `app`, `pages`) sont filtrés.
+- **Fallback de config** : Détecte Next.js/Vite/Nuxt depuis les fichiers de config quand ils ne sont pas dans `package.json` (support monorepo)
+- **Fallback répertoire profond** : Pour les projets React/CRA/Vite/Vue/RN, scanne `**/components/*/`, `**/views/*/`, `**/screens/*/`, `**/containers/*/`, `**/pages/*/`, `**/routes/*/`, `**/modules/*/`, `**/domains/*/` à n'importe quelle profondeur
+- **Listes d'ignore partagées (v2.0.0)** : Tous les scanners partagent `BUILD_IGNORE_DIRS` (`node_modules`, `build`, `dist`, `out`, `.next`, `.nuxt`, `.svelte-kit`, `.angular`, `.turbo`, `.cache`, `.parcel-cache`, `coverage`, `storybook-static`, `.vercel`, `.netlify`) et `TEST_FILE_IGNORE` (spec/test/stories/e2e/cy + `__snapshots__`/`__tests__`) pour que les sorties de build et les fixtures de test ne gonflent pas les compteurs par domaine.
+
+### Overrides de scanner (v2.0.0)
+
+Déposez un `.claudeos-scan.json` optionnel à la racine de votre projet pour étendre les valeurs par défaut du scanner sans modifier le toolkit. Tous les champs sont **additifs** — les entrées utilisateur étendent les valeurs par défaut, ne les remplacent jamais :
+
+```json
+{
+  "frontendScan": {
+    "platformKeywords": ["kiosk"],
+    "skipSubappNames": ["legacy"],
+    "minSubappFiles": 3
+  }
+}
+```
+
+| Champ | Par défaut | But |
+|---|---|---|
+| `platformKeywords` | liste intégrée ci-dessus | Mots-clés `{platform}` supplémentaires pour le scan de plateforme (ex : `kiosk`, `vr`, `embedded`) |
+| `skipSubappNames` | répertoires structurels uniquement | Noms de subapp supplémentaires à exclure de l'émission de domaines du scan de plateforme |
+| `minSubappFiles` | `2` | Remplace le nombre minimum de fichiers requis avant qu'un subapp ne devienne un domaine |
+
+Fichier manquant ou JSON mal formé → retombe silencieusement aux valeurs par défaut (pas de crash). Usage typique : activer une abréviation courte (`adm`, `bo`) que la liste intégrée exclut comme trop ambiguë, ou augmenter `minSubappFiles` pour des monorepos bruyants.
 
 ---
 
@@ -124,14 +158,14 @@ Types de modules supportés : `command`, `query`, `bff`, `integration`, `standal
 ### Prérequis
 
 - **Node.js** v18+
-- **Claude Code CLI** (installé et authentifié)
+- **CLI Claude Code** (installée et authentifiée)
 
 ### Installation
 
 ```bash
 cd /your/project/root
 
-# Option A : npx (recommandé — aucune installation requise)
+# Option A : npx (recommandé — pas d'installation nécessaire)
 npx claudeos-core init
 
 # Option B : installation globale
@@ -145,16 +179,16 @@ npx claudeos-core init
 # Option D : git clone (pour développement/contribution)
 git clone https://github.com/claudeos-core/claudeos-core.git claudeos-core-tools
 
-# Multiplateforme (PowerShell, CMD, Bash, Zsh — tout terminal)
+# Cross-plateforme (PowerShell, CMD, Bash, Zsh — n'importe quel terminal)
 node claudeos-core-tools/bin/cli.js init
 
-# Linux/macOS uniquement (Bash uniquement)
+# Linux/macOS (Bash uniquement)
 bash claudeos-core-tools/bootstrap.sh
 ```
 
 ### Langue de sortie (10 langues)
 
-En exécutant `init` sans `--lang`, un sélecteur interactif apparaît (touches fléchées ou touches numériques) :
+Quand vous lancez `init` sans `--lang`, un sélecteur interactif apparaît — utilisez les flèches ou les touches numériques pour choisir :
 
 ```
 ╔══════════════════════════════════════════════════╗
@@ -162,34 +196,39 @@ En exécutant `init` sans `--lang`, un sélecteur interactif apparaît (touches 
 ╚══════════════════════════════════════════════════╝
 
   Les fichiers générés (CLAUDE.md, Standards, Rules,
-  Skills, Guides) seront rédigés en français.
+  Skills, Guides) seront écrits en français.
 
      1. en     — English
-     ...
+     2. ko     — 한국어 (Korean)
+     3. zh-CN  — 简体中文 (Chinese Simplified)
+     4. ja     — 日本語 (Japanese)
+     5. es     — Español (Spanish)
+     6. vi     — Tiếng Việt (Vietnamese)
+     7. hi     — हिन्दी (Hindi)
+     8. ru     — Русский (Russian)
   ❯  9. fr     — Français (French)
-     ...
+    10. de     — Deutsch (German)
 
   ↑↓ Move  1-0 Jump  Enter Select  ESC Cancel
 ```
 
-La description change dans la langue correspondante lors de la navigation. Pour passer le sélecteur :
+La description change vers la langue sélectionnée au fur et à mesure que vous naviguez. Pour sauter le sélecteur, passez directement `--lang` :
 
 ```bash
-npx claudeos-core init --lang fr    # Français
-npx claudeos-core init --lang en    # English
-npx claudeos-core init --lang ko    # 한국어
+npx claudeos-core init --lang ko    # Coréen
+npx claudeos-core init --lang ja    # Japonais
+npx claudeos-core init --lang en    # Anglais (par défaut)
 ```
 
-> **Note :** Ceci ne change que la langue des fichiers de documentation générés. L'analyse du code (Pass 1–2) s'exécute toujours en anglais ; seul le résultat généré (Pass 3) est écrit dans la langue choisie.
+> **Remarque :** Cela définit la langue uniquement pour les fichiers de documentation générés. L'analyse du code (Pass 1–2) tourne toujours en anglais ; la sortie générée (Pass 3) est écrite dans la langue choisie. Les exemples de code à l'intérieur des fichiers générés gardent la syntaxe de leur langage de programmation d'origine.
 
-C'est tout. Après 5–18 minutes, toute la documentation est générée et prête à l'emploi.
-Le CLI affiche une barre de progression avec pourcentage, temps écoulé et temps restant estimé pour chaque Pass.
+C'est tout. Après 5–20 minutes (Pass 1×N + Pass 2 + Pass 3 + Pass 4 memory scaffolding), toute la documentation est générée et prête à l'emploi. La CLI affiche une barre de progression avec pourcentage, temps écoulé et ETA pour chaque pass.
 
-### Installation Manuelle Étape par Étape
+### Installation Manuelle Pas à Pas
 
-Si vous souhaitez un contrôle total sur chaque phase — ou si le pipeline automatisé échoue à une étape — vous pouvez exécuter chaque étape manuellement. C'est également utile pour comprendre le fonctionnement interne de ClaudeOS-Core.
+Si vous voulez un contrôle total sur chaque phase — ou si le pipeline automatisé échoue à une étape — vous pouvez exécuter chaque étape manuellement. Cela sert également à comprendre le fonctionnement interne de ClaudeOS-Core.
 
-#### Step 1 : Cloner et installer les dépendances
+#### Étape 1 : Cloner et installer les dépendances
 
 ```bash
 cd /your/project/root
@@ -198,11 +237,11 @@ git clone https://github.com/claudeos-core/claudeos-core.git claudeos-core-tools
 cd claudeos-core-tools && npm install && cd ..
 ```
 
-#### Step 2 : Créer la structure des répertoires
+#### Étape 2 : Créer la structure de répertoires
 
 ```bash
-# Rules
-mkdir -p .claude/rules/{00.core,10.backend,20.frontend,30.security-db,40.infra,50.sync}
+# Rules (v2.0.0 : ajout de 60.memory)
+mkdir -p .claude/rules/{00.core,10.backend,20.frontend,30.security-db,40.infra,50.sync,60.memory}
 
 # Standards
 mkdir -p claudeos-core/standard/{00.core,10.backend-api,20.frontend-ui,30.security-db,40.infra,50.verification,90.optional}
@@ -210,51 +249,71 @@ mkdir -p claudeos-core/standard/{00.core,10.backend-api,20.frontend-ui,30.securi
 # Skills
 mkdir -p claudeos-core/skills/{00.shared,10.backend-crud/scaffold-crud-feature,20.frontend-page/scaffold-page-feature,50.testing,90.experimental}
 
-# Guide, Plan, Database, MCP, Generated
+# Guide, Plan, Database, MCP, Generated, Memory (v2.0.0 : ajout de memory)
 mkdir -p claudeos-core/guide/{01.onboarding,02.usage,03.troubleshooting,04.architecture}
-mkdir -p claudeos-core/{plan,database,mcp-guide,generated}
+mkdir -p claudeos-core/{plan,database,mcp-guide,generated,memory}
 ```
 
-#### Step 3 : Exécuter plan-installer (analyse du projet)
+#### Étape 3 : Lancer plan-installer (analyse du projet)
 
-Scanne votre projet, détecte le stack, trouve les domaines, les divise en groupes et génère les prompts.
+Cela scanne votre projet, détecte le stack, trouve les domaines, les divise en groupes et génère les prompts.
 
 ```bash
 node claudeos-core-tools/plan-installer/index.js
 ```
 
-**Sortie (`claudeos-core/generated/`) :**
+**Sortie (dans `claudeos-core/generated/`) :**
 - `project-analysis.json` — stack détecté, domaines, info frontend
-- `domain-groups.json` — groupes de domaines pour le Pass 1
+- `domain-groups.json` — groupes de domaines pour Pass 1
 - `pass1-backend-prompt.md` / `pass1-frontend-prompt.md` — prompts d'analyse
-- `pass2-prompt.md` — prompt de fusion
-- `pass3-prompt.md` — prompt de génération
+- `pass2-prompt.md` — prompt de merge
+- `pass3-prompt.md` — prompt de génération (emballé avec la directive `staging-override.md` — voir la note de l'Étape 6)
+- `pass4-prompt.md` — prompt de scaffolding memory L4 (v2.0.0 ; utilise le même `staging-override.md` pour les écritures de règles `60.memory/`)
 
-Vous pouvez inspecter ces fichiers pour vérifier la précision de la détection avant de continuer.
+Vous pouvez inspecter ces fichiers pour vérifier la précision de détection avant de continuer.
 
-#### Step 4 : Pass 1 — Analyse approfondie du code par groupe de domaines
+#### Étape 4 : Pass 1 — Analyse profonde du code (par groupe de domaines)
 
-Exécutez Pass 1 pour chaque groupe de domaines. Vérifiez `domain-groups.json` pour le nombre de groupes.
+Lancez Pass 1 pour chaque groupe de domaines. Consultez `domain-groups.json` pour connaître le nombre de groupes.
 
 ```bash
-# Check groups
+# Vérifier combien de groupes
 cat claudeos-core/generated/domain-groups.json | node -e "
   const g = JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));
   g.groups.forEach((g,i) => console.log('Group '+(i+1)+': ['+g.domains.join(', ')+'] ('+g.type+', ~'+g.estimatedFiles+' files)'));
 "
 
-# Run Pass 1 for group 1:
-cp claudeos-core/generated/pass1-backend-prompt.md /tmp/_pass1.md
-DOMAIN_LIST="user, order, product" PASS_NUM=1 \
-  perl -pi -e 's/\{\{DOMAIN_GROUP\}\}/$ENV{DOMAIN_LIST}/g; s/\{\{PASS_NUM\}\}/$ENV{PASS_NUM}/g' /tmp/_pass1.md
-cat /tmp/_pass1.md | claude -p --dangerously-skip-permissions
+# Lancer Pass 1 pour chaque groupe (remplacer les domaines et le numéro de groupe)
+# Note : v1.6.1+ utilise String.replace() de Node.js au lieu de perl — perl n'est
+# plus nécessaire, et la sémantique de fonction de remplacement empêche l'injection
+# regex des caractères $/&/$1 susceptibles d'apparaître dans les noms de domaine.
+#
+# Pour le groupe 1 :
+DOMAIN_LIST="user, order, product" PASS_NUM=1 node -e "
+  const fs = require('fs');
+  const tpl = fs.readFileSync('claudeos-core/generated/pass1-backend-prompt.md','utf-8');
+  const out = tpl
+    .replace(/\{\{DOMAIN_GROUP\}\}/g, () => process.env.DOMAIN_LIST)
+    .replace(/\{\{PASS_NUM\}\}/g, () => process.env.PASS_NUM);
+  process.stdout.write(out);
+" | claude -p --dangerously-skip-permissions
 
-# Pour les groupes frontend, utilisez pass1-frontend-prompt.md
+# Pour le groupe 2 (si présent) :
+DOMAIN_LIST="payment, system, delivery" PASS_NUM=2 node -e "
+  const fs = require('fs');
+  const tpl = fs.readFileSync('claudeos-core/generated/pass1-backend-prompt.md','utf-8');
+  const out = tpl
+    .replace(/\{\{DOMAIN_GROUP\}\}/g, () => process.env.DOMAIN_LIST)
+    .replace(/\{\{PASS_NUM\}\}/g, () => process.env.PASS_NUM);
+  process.stdout.write(out);
+" | claude -p --dangerously-skip-permissions
+
+# Pour les groupes frontend, remplacez pass1-backend-prompt.md → pass1-frontend-prompt.md
 ```
 
-**Vérifier :** `ls claudeos-core/generated/pass1-*.json` doit afficher un JSON par groupe.
+**Vérifier :** `ls claudeos-core/generated/pass1-*.json` devrait afficher un JSON par groupe.
 
-#### Step 5 : Pass 2 — Fusion des résultats d'analyse
+#### Étape 5 : Pass 2 — Merger les résultats d'analyse
 
 ```bash
 cat claudeos-core/generated/pass2-prompt.md \
@@ -263,87 +322,116 @@ cat claudeos-core/generated/pass2-prompt.md \
 
 **Vérifier :** `claudeos-core/generated/pass2-merged.json` doit exister avec 9+ clés de niveau supérieur.
 
-#### Step 6 : Pass 3 — Générer toute la documentation
+#### Étape 6 : Pass 3 — Générer toute la documentation
 
 ```bash
 cat claudeos-core/generated/pass3-prompt.md \
   | claude -p --dangerously-skip-permissions
 ```
 
-**Vérifier :** `CLAUDE.md` doit exister à la racine du projet.
+**Vérifier :** `CLAUDE.md` doit exister à la racine de votre projet, et le marqueur `claudeos-core/generated/pass3-complete.json` doit être écrit.
 
-#### Step 7 : Exécuter les outils de vérification
+> **Remarque (v2.0.0) :** Pass 3 écrit les fichiers de règles d'abord dans `claudeos-core/generated/.staged-rules/` car la politique de chemins sensibles de Claude Code bloque les écritures directes dans `.claude/`. Le pipeline automatisé (`npx claudeos-core init`) gère le déplacement automatiquement. Si vous exécutez cette étape manuellement, vous devrez déplacer l'arbre staged vous-même : `mv claudeos-core/generated/.staged-rules/* .claude/rules/` (en préservant les sous-chemins).
+
+#### Étape 7 : Pass 4 — Scaffolding memory
+
+```bash
+cat claudeos-core/generated/pass4-prompt.md \
+  | claude -p --dangerously-skip-permissions
+```
+
+**Vérifier :** `claudeos-core/memory/` doit contenir 4 fichiers (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`), `.claude/rules/60.memory/` doit contenir 4 fichiers de règles, `claudeos-core/plan/50.memory-master.md` doit exister, et `CLAUDE.md` doit désormais avoir une section `## Memory (L4)` ajoutée. Marqueur : `claudeos-core/generated/pass4-memory.json`.
+
+> **Remarque :** Si `claude -p` échoue ou si `pass4-prompt.md` est absent, le pipeline automatisé retombe sur un scaffold statique via `lib/memory-scaffold.js` (avec traduction pilotée par Claude quand `--lang` n'est pas l'anglais). Le fallback statique ne tourne qu'à l'intérieur de `npx claudeos-core init` — le mode manuel exige que Pass 4 réussisse.
+
+#### Étape 8 : Lancer les outils de vérification
 
 ```bash
 # Générer les métadonnées (requis avant les autres vérifications)
 node claudeos-core-tools/manifest-generator/index.js
 
-# Exécuter toutes les vérifications
+# Lancer toutes les vérifications
 node claudeos-core-tools/health-checker/index.js
 
-# Ou exécuter les vérifications individuellement :
-node claudeos-core-tools/plan-validator/index.js --check # Plan ↔ disk
-node claudeos-core-tools/sync-checker/index.js          # Sync status
-node claudeos-core-tools/content-validator/index.js     # Content quality
-node claudeos-core-tools/pass-json-validator/index.js   # JSON format
+# Ou lancer des vérifications individuelles :
+node claudeos-core-tools/plan-validator/index.js --check # Cohérence Plan ↔ disque
+node claudeos-core-tools/sync-checker/index.js          # Fichiers non enregistrés/orphelins
+node claudeos-core-tools/content-validator/index.js     # Vérifications qualité (incl. section memory/ [9/9])
+node claudeos-core-tools/pass-json-validator/index.js   # Vérifications JSON Pass 1–4 + marqueur de complétion
 ```
 
-#### Step 8 : Vérifier les résultats
+#### Étape 9 : Vérifier les résultats
 
 ```bash
+# Compter les fichiers générés
 find .claude claudeos-core -type f | grep -v node_modules | grep -v '/generated/' | wc -l
+
+# Regarder CLAUDE.md
 head -30 CLAUDE.md
+
+# Regarder un fichier standard
+cat claudeos-core/standard/00.core/01.project-overview.md | head -20
+
+# Regarder les règles
 ls .claude/rules/*/
 ```
 
-> **Conseil :** Si une étape échoue, vous pouvez relancer uniquement cette étape. Les résultats Pass 1/2 sont mis en cache — si `pass1-N.json` ou `pass2-merged.json` existe déjà, le pipeline automatisé les ignore. Utilisez `npx claudeos-core init --force` pour supprimer les résultats précédents et repartir de zéro.
+> **Astuce :** Si une étape échoue, vous pouvez corriger le problème et relancer uniquement cette étape. Les résultats de Pass 1/2 sont cachés — si `pass1-N.json` ou `pass2-merged.json` existe déjà, le pipeline automatisé les saute. Utilisez `npx claudeos-core init --force` pour supprimer les résultats précédents et repartir de zéro.
 
-### Commencez à Utiliser
+### Commencer à Utiliser
 
 ```
-# Dans Claude Code — parlez simplement de manière naturelle :
-"Crée un CRUD pour le domaine commandes"
-"Ajoute une API d'authentification utilisateur"
-"Refactorise ce code selon les patterns du projet"
+# Dans Claude Code — demandez simplement naturellement :
+« Crée un CRUD pour le domaine order »
+« Ajoute une API d'authentification utilisateur »
+« Refactorise ce code pour qu'il matche les patterns du projet »
 
 # Claude Code référence automatiquement vos Standards, Rules et Skills générés.
 ```
 
 ---
 
-## Comment ça Marche — Pipeline 3-Pass
+## Comment ça marche — Pipeline à 4 Passes
 
 ```
 npx claudeos-core init
     │
     ├── [1] npm install                    ← Dépendances (~10s)
-    ├── [2] Structure des répertoires      ← Création des dossiers (~1s)
+    ├── [2] Structure de répertoires       ← Créer les dossiers (~1s)
     ├── [3] plan-installer (Node.js)       ← Scan du projet (~5s)
-    │       ├── Auto-détection du stack (multi-stack)
-    │       ├── Extraction de la liste des domaines (tags : backend/frontend)
-    │       ├── Division en groupes de domaines (par type)
-    │       └── Sélection des prompts spécifiques au stack (par type)
+    │       ├── Auto-détecte le stack (multi-stack aware)
+    │       ├── Extrait la liste de domaines (tagged : backend/frontend)
+    │       ├── Divise en groupes de domaines (par type)
+    │       └── Sélectionne des prompts spécifiques au stack (par type)
     │
-    ├── [4] Pass 1 × N  (claude -p)       ← Analyse approfondie du code (~2-8 min)
-    │       ├── ⚙️ Groupes backend → prompt d'analyse backend
-    │       └── 🎨 Groupes frontend → prompt d'analyse frontend
+    ├── [4] Pass 1 × N  (claude -p)       ← Analyse profonde du code (~2-8min)
+    │       ├── ⚙️ Groupes backend → prompt spécifique backend
+    │       └── 🎨 Groupes frontend → prompt spécifique frontend
     │
-    ├── [5] Pass 2 × 1  (claude -p)       ← Fusion de l'analyse (~1 min)
-    │       └── Consolidation de TOUS les résultats Pass 1 (backend + frontend)
+    ├── [5] Pass 2 × 1  (claude -p)       ← Merge d'analyse (~1min)
+    │       └── Consolide TOUS les résultats de Pass 1 (backend + frontend)
     │
-    ├── [6] Pass 3 × 1  (claude -p)       ← Génération complète (~3-5 min)
+    ├── [6] Pass 3 × 1  (claude -p)       ← Génère tout (~3-5min)
     │       └── Prompt combiné (cibles backend + frontend)
     │
-    └── [7] Vérification                   ← Exécution auto du health checker
+    ├── [7] Pass 4 × 1  (claude -p)       ← Memory scaffolding (~30s)
+    │       ├── Seed memory/ (decision-log, failure-patterns, …)
+    │       ├── Génère les règles 60.memory/
+    │       ├── Ajoute la section « Memory (L4) » à CLAUDE.md
+    │       └── Construit le plan 50.memory-master.md
+    │
+    └── [8] Vérification                   ← Auto-exécute le health checker
 ```
 
-### Pourquoi 3 Pass ?
+### Pourquoi 4 Passes ?
 
-**Pass 1** est le seul pass qui lit votre code source. Il sélectionne des fichiers représentatifs par domaine et extrait les patterns sur 55–95 catégories d'analyse (par stack). Pour les grands projets, Pass 1 s'exécute plusieurs fois — une par groupe de domaines. Dans les projets multi-stack (ex : backend Java + frontend React), backend et frontend utilisent **des prompts d'analyse différents** adaptés à chaque stack.
+**Pass 1** est le seul pass qui lit votre code source. Il sélectionne des fichiers représentatifs par domaine et extrait des patterns à travers 55–95 catégories d'analyse (selon le stack). Pour les gros projets, Pass 1 tourne plusieurs fois — une par groupe de domaines. Dans les projets multi-stack (ex : Java backend + React frontend), les domaines backend et frontend utilisent des **prompts d'analyse différents** adaptés à chaque stack.
 
-**Pass 2** fusionne tous les résultats de Pass 1 en une analyse unifiée : patterns communs (100% partagés), patterns majoritaires (50%+ partagés), patterns spécifiques au domaine, anti-patterns par sévérité et préoccupations transversales (nommage, sécurité, BD, tests, journalisation, performance).
+**Pass 2** merge tous les résultats de Pass 1 en une analyse unifiée : patterns communs (100% partagés), patterns majoritaires (50%+ partagés), patterns spécifiques à un domaine, anti-patterns par sévérité et préoccupations transverses (naming, sécurité, BD, testing, logging, performance). Les résultats backend et frontend sont mergés ensemble.
 
-**Pass 3** prend l'analyse fusionnée et génère tout l'écosystème de fichiers. Il ne lit jamais le code source — uniquement le JSON d'analyse. En mode multi-stack, le prompt de génération combine les cibles backend et frontend pour générer les deux ensembles de standards en un seul pass.
+**Pass 3** prend l'analyse mergée et génère tout l'écosystème de fichiers (CLAUDE.md, règles, standards, skills, guides). Il ne lit jamais le code source — seulement le JSON d'analyse. En mode multi-stack, le prompt de génération combine les cibles backend et frontend pour que les deux ensembles de standards soient générés en un seul pass.
+
+**Pass 4** scaffolde la couche Memory L4 : fichiers persistants de connaissance d'équipe (decision-log, failure-patterns, politique de compaction, auto-rule-update) plus les règles `60.memory/` qui indiquent aux futures sessions quand et comment lire/écrire ces fichiers. La couche memory est ce qui permet à Claude Code d'accumuler des leçons entre les sessions au lieu de les redécouvrir à chaque fois. Quand `--lang` n'est pas l'anglais, le contenu statique de fallback est traduit via Claude avant d'être écrit.
 
 ---
 
@@ -355,203 +443,313 @@ your-project/
 ├── CLAUDE.md                          ← Point d'entrée Claude Code
 │
 ├── .claude/
-│   └── rules/                         ← Règles déclenchées par Glob
+│   └── rules/                         ← Règles déclenchées par glob
 │       ├── 00.core/
 │       ├── 10.backend/
 │       ├── 20.frontend/
 │       ├── 30.security-db/
 │       ├── 40.infra/
-│       └── 50.sync/                   ← Règles de rappel de synchronisation
+│       ├── 50.sync/                   ← Règles de rappel de sync
+│       └── 60.memory/                 ← Règles de scope on-demand de la memory L4 (v2.0.0)
 │
 ├── claudeos-core/                     ← Répertoire principal de sortie
-│   ├── generated/                     ← JSON d'analyse + prompts dynamiques
-│   ├── standard/                      ← Standards de code (15-19 fichiers)
+│   ├── generated/                     ← JSON d'analyse + prompts dynamiques + marqueurs de Pass (mettre en gitignore)
+│   │   ├── project-analysis.json      ← Info du stack (multi-stack aware)
+│   │   ├── domain-groups.json         ← Groupes avec type : backend/frontend
+│   │   ├── pass1-backend-prompt.md    ← Prompt d'analyse backend
+│   │   ├── pass1-frontend-prompt.md   ← Prompt d'analyse frontend (si détecté)
+│   │   ├── pass2-prompt.md            ← Prompt de merge
+│   │   ├── pass3-prompt.md            ← Prompt de génération (combiné)
+│   │   ├── pass4-prompt.md            ← Prompt de scaffolding memory (v2.0.0)
+│   │   ├── pass3-complete.json        ← Marqueur de complétion Pass 3 (skip au resume)
+│   │   ├── pass4-memory.json          ← Marqueur de complétion Pass 4 (skip au resume)
+│   │   ├── .i18n-cache-<lang>.json    ← Cache de traduction (non-anglais `--lang`)
+│   │   └── .staged-rules/             ← Répertoire de staging transitoire pour les écritures `.claude/rules/` (auto-déplacé + nettoyé)
+│   ├── standard/                      ← Standards de codage (15-19 fichiers)
+│   │   ├── 00.core/                   ← Vue d'ensemble, architecture, naming
+│   │   ├── 10.backend-api/            ← Patterns API (spécifiques au stack)
+│   │   ├── 20.frontend-ui/            ← Patterns frontend (si détecté)
+│   │   ├── 30.security-db/            ← Sécurité, schéma BD, utilitaires
+│   │   ├── 40.infra/                  ← Config, logging, CI/CD
+│   │   ├── 50.verification/           ← Vérification de build, testing
+│   │   └── 90.optional/               ← Conventions optionnelles (extras spécifiques au stack)
 │   ├── skills/                        ← Skills de scaffolding CRUD
-│   ├── guide/                         ← Onboarding, FAQ, dépannage (9 fichiers)
-│   ├── plan/                          ← Master Plans (sauvegarde/restauration)
+│   ├── guide/                         ← Onboarding, FAQ, troubleshooting (9 fichiers)
+│   ├── plan/                          ← Master plans (backup/restore)
 │   ├── database/                      ← Schéma BD, guide de migration
-│   └── mcp-guide/                     ← Guide d'intégration serveur MCP
+│   ├── mcp-guide/                     ← Guide d'intégration de serveur MCP
+│   └── memory/                        ← L4 : connaissance d'équipe (4 fichiers) — commitez-les
+│       ├── decision-log.md            ← Le « pourquoi » derrière les décisions de conception
+│       ├── failure-patterns.md        ← Erreurs récurrentes et fixes (auto-scoré — `npx claudeos-core memory score`)
+│       ├── compaction.md              ← Stratégie de compaction en 4 étapes (lancez `npx claudeos-core memory compact`)
+│       └── auto-rule-update.md        ← Propositions d'amélioration de règles (`npx claudeos-core memory propose-rules`)
 │
 └── claudeos-core-tools/               ← Ce toolkit (ne pas modifier)
 ```
 
-Chaque fichier de standard inclut des exemples ✅ corrects, des exemples ❌ incorrects et un tableau récapitulatif des règles — le tout dérivé de vos patterns de code réels, pas de templates génériques.
+Chaque fichier standard inclut ✅ des exemples corrects, ❌ des exemples incorrects et une table récapitulative des règles — tout dérivé des vrais patterns de votre code, pas de templates génériques.
+
+### Recommandations de gitignore
+
+**À commiter** (connaissance d'équipe — destinée au partage) :
+- `CLAUDE.md` — point d'entrée Claude Code
+- `.claude/rules/**` — règles auto-chargées
+- `claudeos-core/standard/**`, `skills/**`, `guide/**`, `database/**`, `mcp-guide/**`, `plan/**` — documentation générée
+- `claudeos-core/memory/**` — historique de décisions, patterns d'échec, propositions de règles
+
+**À NE PAS commiter** (artefacts de build régénérables) :
+
+```gitignore
+# ClaudeOS-Core — analyse générée et cache de traduction
+claudeos-core/generated/
+```
+
+Le répertoire `generated/` contient le JSON d'analyse (`pass1-*.json`, `pass2-merged.json`), les prompts (`pass1/2/3/4-prompt.md`), les marqueurs de complétion de Pass (`pass3-complete.json`, `pass4-memory.json`), le cache de traduction (`.i18n-cache-<lang>.json`) et le répertoire transitoire de staging (`.staged-rules/`) — tout reconstruisible en relançant `npx claudeos-core init`.
 
 ---
 
-## Auto-dimensionnement par Taille de Projet
+## Auto-scaling selon la Taille du Projet
 
-| Taille | Domaines | Exécutions Pass 1 | Total `claude -p` | Temps Estimé |
+| Taille | Domaines | Exécutions Pass 1 | Total `claude -p` | Temps est. |
 |---|---|---|---|---|
-| Petit | 1–4 | 1 | 3 | ~5 min |
-| Moyen | 5–8 | 2 | 4 | ~8 min |
-| Grand | 9–16 | 3–4 | 5–6 | ~12 min |
-| Très Grand | 17+ | 5+ | 7+ | ~18 min+ |
+| Petit | 1–4 | 1 | 4 (Pass 1 + 2 + 3 + 4) | ~5–6min |
+| Moyen | 5–8 | 2 | 5 | ~8–9min |
+| Grand | 9–16 | 3–4 | 6–7 | ~12–13min |
+| X-Grand | 17+ | 5+ | 8+ | ~18min+ |
 
-Pour les projets multi-stack (ex : Java + React), les domaines backend et frontend sont comptés ensemble. 6 backend + 4 frontend = 10 domaines, dimensionné comme « Grand ».
+Pass 4 (memory scaffolding) ajoute ~30s au-dessus des passes d'analyse. Pour les projets multi-stack (ex : Java + React), les domaines backend et frontend sont comptés ensemble. Un projet avec 6 domaines backend + 4 frontend = 10 au total, scaling en « Grand ».
 
 ---
 
 ## Outils de Vérification
 
-ClaudeOS-Core inclut 5 outils de vérification intégrés, exécutés automatiquement après la génération :
+ClaudeOS-Core inclut 5 outils de vérification intégrés qui tournent automatiquement après la génération :
 
 ```bash
-# Exécuter toutes les vérifications (recommandé)
+# Lancer toutes les vérifications d'un coup (recommandé)
 npx claudeos-core health
 
 # Commandes individuelles
 npx claudeos-core validate     # Comparaison Plan ↔ disque
-npx claudeos-core refresh      # Synchronisation Disque → Plan
-npx claudeos-core restore      # Restauration Plan → Disque
+npx claudeos-core refresh      # Sync Disque → Plan
+npx claudeos-core restore      # Restore Plan → Disque
+
+# Ou utiliser node directement (utilisateurs git clone)
+node claudeos-core-tools/health-checker/index.js
+node claudeos-core-tools/manifest-generator/index.js
+node claudeos-core-tools/plan-validator/index.js --check
+node claudeos-core-tools/sync-checker/index.js
 ```
 
-| Outil | Fonction |
+| Outil | Ce qu'il fait |
 |---|---|
-| **manifest-generator** | Construit les JSON de métadonnées (rule-manifest, sync-map, plan-manifest) |
-| **plan-validator** | Compare les blocs `<file>` du Master Plan avec le disque — 3 modes : check, refresh, restore |
-| **sync-checker** | Détecte les fichiers non enregistrés (sur disque mais pas dans le plan) et les entrées orphelines |
-| **content-validator** | Valide la qualité des fichiers — fichiers vides, exemples ✅/❌ manquants, sections requises |
-| **pass-json-validator** | Valide la structure JSON des Pass 1–3, clés requises et complétude des sections |
+| **manifest-generator** | Construit le JSON de métadonnées (rule-manifest, sync-map, plan-manifest) ; indexe 7 répertoires dont `memory/` (`totalMemory` dans summary) |
+| **plan-validator** | Compare les blocs `<file>` du Master Plan au disque — 3 modes : check, refresh, restore |
+| **sync-checker** | Détecte les fichiers non enregistrés (sur disque mais pas dans le plan) et les entrées orphelines — couvre 7 répertoires (ajout de `memory/` en v2.0.0) |
+| **content-validator** | Vérification qualité en 9 sections — fichiers vides, exemples ✅/❌ manquants, sections requises, plus intégrité du scaffold memory L4 (dates de headings de decision-log, champs requis de failure-pattern, parsing fence-aware) |
+| **pass-json-validator** | Valide la structure JSON de Pass 1–4 plus les marqueurs de complétion `pass3-complete.json` et `pass4-memory.json` |
 
 ---
 
 ## Comment Claude Code Utilise Votre Documentation
 
-Voici comment Claude Code lit effectivement la documentation générée par ClaudeOS-Core :
+ClaudeOS-Core génère une documentation que Claude Code lit réellement — voici comment :
 
-### Fichiers lus automatiquement
+### Ce que Claude Code lit automatiquement
 
 | Fichier | Quand | Garanti |
 |---|---|---|
-| `CLAUDE.md` | Au début de chaque conversation | Toujours |
-| `.claude/rules/00.core/*` | Lors de l'édition de fichiers (`paths: ["**/*"]`) | Toujours |
-| `.claude/rules/10.backend/*` | Lors de l'édition de fichiers (`paths: ["**/*"]`) | Toujours |
-| `.claude/rules/30.security-db/*` | Lors de l'édition de fichiers (`paths: ["**/*"]`) | Toujours |
-| `.claude/rules/40.infra/*` | Uniquement pour les fichiers config/infra (paths scopés) | Conditionnel |
-| `.claude/rules/50.sync/*` | Uniquement pour les fichiers claudeos-core (paths scopés) | Conditionnel |
+| `CLAUDE.md` | À chaque début de conversation | Toujours |
+| `.claude/rules/00.core/*` | Quand n'importe quel fichier est édité (`paths: ["**/*"]`) | Toujours |
+| `.claude/rules/10.backend/*` | Quand n'importe quel fichier est édité (`paths: ["**/*"]`) | Toujours |
+| `.claude/rules/20.frontend/*` | Quand un fichier frontend est édité (limité aux chemins component/page/style) | Conditionnel |
+| `.claude/rules/30.security-db/*` | Quand n'importe quel fichier est édité (`paths: ["**/*"]`) | Toujours |
+| `.claude/rules/40.infra/*` | Uniquement lors de l'édition de fichiers config/infra (chemins limités) | Conditionnel |
+| `.claude/rules/50.sync/*` | Uniquement lors de l'édition de fichiers claudeos-core (chemins limités) | Conditionnel |
+| `.claude/rules/60.memory/*` | Quand `claudeos-core/memory/*` est édité (limité aux chemins memory) — indique **comment** lire/écrire la couche memory on-demand | Conditionnel (v2.0.0) |
 
-### Fichiers lus à la demande via les références des règles
+### Ce que Claude Code lit on-demand via les références de règles
 
-Chaque fichier de règle lie son standard correspondant dans la section `## Reference`. Claude ne lit que le standard pertinent pour la tâche en cours :
+Chaque fichier de règle lie à son standard correspondant via une section `## Reference`. Claude lit uniquement le standard pertinent pour la tâche courante :
 
-- `claudeos-core/standard/**` — Patterns de code, exemples ✅/❌, conventions de nommage
-- `claudeos-core/database/**` — Schéma DB (pour requêtes, mappers, migrations)
+- `claudeos-core/standard/**` — patterns de codage, exemples ✅/❌, conventions de naming
+- `claudeos-core/database/**` — schéma BD (pour queries, mappers, migrations)
+- `claudeos-core/memory/**` (v2.0.0) — couche de connaissance d'équipe L4 ; **pas** auto-chargée (serait trop bruyante à chaque conversation). À la place, les règles `60.memory/*` indiquent à Claude *quand* Read ces fichiers : au début de session (skim du `decision-log.md` récent + `failure-patterns.md` à haute importance), et append-on-demand lors de décisions ou d'erreurs récurrentes.
 
-`00.standard-reference.md` sert de répertoire pour découvrir les standards sans règle correspondante.
+Le `00.standard-reference.md` sert d'annuaire de tous les fichiers standard pour découvrir des standards qui n'ont pas de règle correspondante.
 
-### Fichiers NON lus (économie de contexte)
+### Ce que Claude Code NE lit PAS (économise du contexte)
 
-Explicitement exclus par la section `DO NOT Read` de la règle standard-reference :
+Ces dossiers sont explicitement exclus via la section `DO NOT Read` de la règle standard-reference :
 
-| Dossier | Raison d'exclusion |
+| Dossier | Pourquoi exclu |
 |---|---|
-| `claudeos-core/plan/` | Sauvegardes Master Plan (~340Ko). Utilisez `npx claudeos-core refresh` pour synchroniser. |
-| `claudeos-core/generated/` | JSON de métadonnées build. Pas une référence de code. |
+| `claudeos-core/plan/` | Backups de Master Plan (~340KB). Utilisez `npx claudeos-core refresh` pour sync. |
+| `claudeos-core/generated/` | JSON de métadonnées de build, prompts, marqueurs de Pass, cache de traduction, `.staged-rules/`. Pas pour coder. |
 | `claudeos-core/guide/` | Guides d'onboarding pour humains. |
-| `claudeos-core/mcp-guide/` | Docs serveur MCP. Pas une référence de code. |
+| `claudeos-core/mcp-guide/` | Docs de serveur MCP. Pas pour coder. |
+| `claudeos-core/memory/` (auto-load) | **Auto-load désactivé** par design — gonflerait le contexte à chaque conversation. Lu on-demand via les règles `60.memory/*` à la place (ex : scan de début de session de `failure-patterns.md`). Commitez toujours ces fichiers. |
 
 ---
 
-## Flux de Travail Quotidien
+## Workflow Quotidien
 
-### Après l'Installation
+### Après l'installation
 
 ```
-# Utilisez Claude Code normalement — il référence vos standards automatiquement :
-"Crée un CRUD pour le domaine commandes"
-"Ajoute une API de mise à jour du profil utilisateur"
-"Refactorise ce code selon les patterns du projet"
+# Utilisez simplement Claude Code normalement — il référence vos standards automatiquement :
+« Crée un CRUD pour le domaine order »
+« Ajoute une API de mise à jour de profil utilisateur »
+« Refactorise ce code pour qu'il matche les patterns du projet »
 ```
 
-### Après Modification Manuelle des Standards
+### Après édition manuelle des Standards
 
 ```bash
-# Après avoir édité des fichiers standard ou rules :
+# Après avoir édité des fichiers de standards ou de règles :
 npx claudeos-core refresh
 
-# Vérifier la cohérence
+# Vérifiez que tout est cohérent
 npx claudeos-core health
 ```
 
-### Quand les Docs sont Corrompus
+### Quand les docs sont corrompues
 
 ```bash
-# Tout restaurer depuis le Master Plan
+# Restaurer tout depuis le Master Plan
 npx claudeos-core restore
 ```
+
+### Maintenance de la couche Memory (v2.0.0)
+
+La couche Memory L4 (`claudeos-core/memory/`) accumule la connaissance d'équipe à travers les sessions. Trois sous-commandes CLI la maintiennent en bonne santé :
+
+```bash
+# Compact : applique la politique de compaction en 4 étapes (à lancer périodiquement — ex : mensuellement)
+npx claudeos-core memory compact
+#   Étape 1 : résume les entrées anciennes (>30 jours, corps → une ligne)
+#   Étape 2 : merge les headings dupliqués (fréquence sommée, dernier fix conservé)
+#   Étape 3 : drop basse-importance + anciennes (importance <3 ET lastSeen >60 jours)
+#   Étape 4 : applique le plafond de 400 lignes par fichier (la plus ancienne basse-importance est supprimée en premier)
+
+# Score : re-classe les entrées de failure-patterns.md par importance
+npx claudeos-core memory score
+#   importance = round(frequency × 1.5 + recency × 5), plafonné à 10
+#   À lancer après avoir ajouté plusieurs nouveaux failure patterns
+
+# Propose-rules : fait remonter des candidats d'ajouts de règles depuis les échecs récurrents
+npx claudeos-core memory propose-rules
+#   Lit les entrées de failure-patterns.md avec frequency ≥ 3
+#   Calcule la confiance (sigmoïde sur evidence pondérée × multiplicateur d'anchor)
+#   Écrit les propositions dans memory/auto-rule-update.md (PAS auto-appliqué)
+#   Confiance ≥ 0.70 mérite une revue sérieuse ; accepter → éditer la règle + loguer la décision
+```
+
+Quand écrire dans memory (Claude le fait on-demand, mais vous pouvez aussi éditer manuellement) :
+- **`decision-log.md`** — ajoutez une nouvelle entrée quand vous choisissez entre des patterns concurrents, sélectionnez une bibliothèque, définissez une convention d'équipe ou décidez de NE PAS faire quelque chose. Append-only ; n'éditez jamais les entrées historiques.
+- **`failure-patterns.md`** — ajoutez à la **deuxième occurrence** d'une erreur récurrente ou d'une root cause non évidente. Les erreurs de première fois n'ont pas besoin d'entrée.
+- `compaction.md` et `auto-rule-update.md` — générés/gérés par les sous-commandes CLI ci-dessus ; ne pas éditer à la main.
 
 ### Intégration CI/CD
 
 ```yaml
 # Exemple GitHub Actions
 - run: npx claudeos-core validate
-# Code de sortie 1 bloque la PR
+# Exit code 1 bloque la PR
+
+# Optionnel : housekeeping mensuel de memory (workflow cron séparé)
+- run: npx claudeos-core memory compact
+- run: npx claudeos-core memory score
 ```
 
 ---
 
-## Quelle Différence ?
+## En Quoi Est-ce Différent ?
+
+### vs autres outils Claude Code
 
 | | ClaudeOS-Core | Everything Claude Code (50K+ ⭐) | Harness | specs-generator | Claude `/init` |
 |---|---|---|---|---|---|
-| **Approach** | Code analyzes first, then LLM generates | Pre-built config presets | LLM designs agent teams | LLM generates spec docs | LLM writes CLAUDE.md |
-| **Reads your source code** | ✅ Deterministic static analysis | ❌ | ❌ | ❌ (LLM reads) | ❌ (LLM reads) |
-| **Stack detection** | Code confirms (ORM, DB, build tool, pkg manager) | N/A (stack-agnostic) | LLM guesses | LLM guesses | LLM guesses |
-| **Domain detection** | Code confirms (Java 5 patterns, Kotlin CQRS, Next.js FSD) | N/A | LLM guesses | N/A | N/A |
-| **Same project → Same result** | ✅ Deterministic analysis | ✅ (static files) | ❌ (LLM varies) | ❌ (LLM varies) | ❌ (LLM varies) |
-| **Large project handling** | Domain group splitting (4 domains / 40 files per group) | N/A | No splitting | No splitting | Context window limit |
-| **Output** | CLAUDE.md + Rules + Standards + Skills + Guides + Plans (40-50+ files) | Agents + Skills + Commands + Hooks | Agents + Skills | 6 spec documents | CLAUDE.md (1 file) |
-| **Output location** | `.claude/rules/` (auto-loaded by Claude Code) | `.claude/` various | `.claude/agents/` + `.claude/skills/` | `.claude/steering/` + `specs/` | `CLAUDE.md` |
-| **Post-generation verification** | ✅ 5 automated validators | ❌ | ❌ | ❌ | ❌ |
-| **Multi-language output** | ✅ 10 languages | ❌ | ❌ | ❌ | ❌ |
-| **Multi-stack** | ✅ Backend + Frontend simultaneous | ❌ Stack-agnostic | ❌ | ❌ | Partial |
-| **Agent orchestration** | ❌ | ✅ 28 agents | ✅ 6 patterns | ❌ | ❌ |
+| **Approche** | Code analyse d'abord, puis LLM génère | Presets de config pré-construits | Le LLM conçoit des équipes d'agents | Le LLM génère des docs de spec | Le LLM écrit CLAUDE.md |
+| **Lit votre code source** | ✅ Analyse statique déterministe | ❌ | ❌ | ❌ (le LLM lit) | ❌ (le LLM lit) |
+| **Détection de stack** | Le code confirme (ORM, BD, build tool, pkg manager) | N/A (stack-agnostic) | Le LLM devine | Le LLM devine | Le LLM devine |
+| **Détection de domaines** | Le code confirme (Java 5 patterns, Kotlin CQRS, Next.js FSD) | N/A | Le LLM devine | N/A | N/A |
+| **Même projet → Même résultat** | ✅ Analyse déterministe | ✅ (fichiers statiques) | ❌ (le LLM varie) | ❌ (le LLM varie) | ❌ (le LLM varie) |
+| **Gestion des gros projets** | Split en groupes de domaines (4 domaines / 40 fichiers par groupe) | N/A | Pas de split | Pas de split | Limite de fenêtre de contexte |
+| **Sortie** | CLAUDE.md + Rules + Standards + Skills + Guides + Plans (40-50+ fichiers) | Agents + Skills + Commands + Hooks | Agents + Skills | 6 documents de spec | CLAUDE.md (1 fichier) |
+| **Emplacement de sortie** | `.claude/rules/` (auto-chargé par Claude Code) | `.claude/` divers | `.claude/agents/` + `.claude/skills/` | `.claude/steering/` + `specs/` | `CLAUDE.md` |
+| **Vérification post-génération** | ✅ 5 validateurs automatiques | ❌ | ❌ | ❌ | ❌ |
+| **Sortie multi-langue** | ✅ 10 langues | ❌ | ❌ | ❌ | ❌ |
+| **Multi-stack** | ✅ Backend + Frontend simultanés | ❌ Stack-agnostic | ❌ | ❌ | Partiel |
+| **Couche memory persistante** | ✅ L4 — decision log + failure patterns + propositions de règles auto-scorées (v2.0.0) | ❌ | ❌ | ❌ | ❌ |
+| **Orchestration d'agents** | ❌ | ✅ 28 agents | ✅ 6 patterns | ❌ | ❌ |
 
-### Key difference
+### La différence clé en une phrase
 
-**Other tools give Claude "generally good instructions." ClaudeOS-Core gives Claude "instructions extracted from your actual code."**
+**Les autres outils donnent à Claude « des instructions globalement correctes ». ClaudeOS-Core donne à Claude « des instructions extraites de votre code réel ».**
 
-### Complementary, not competing
+C'est pourquoi Claude Code arrête de générer du code JPA dans votre projet MyBatis,
+arrête d'utiliser `success()` quand votre codebase utilise `ok()`,
+et arrête de créer des répertoires `user/controller/` quand votre projet utilise `controller/user/`.
 
-ClaudeOS-Core: **project-specific rules**. Other tools: **agent orchestration**.
-Use both together.
+### Complémentaires, pas concurrents
+
+ClaudeOS-Core se concentre sur les **règles et standards spécifiques au projet**.
+Les autres outils se concentrent sur **l'orchestration d'agents et les workflows**.
+
+Vous pouvez utiliser ClaudeOS-Core pour générer les règles de votre projet, puis utiliser ECC ou Harness par-dessus pour les équipes d'agents et l'automatisation des workflows. Ils résolvent des problèmes différents.
 
 ---
+
 ## FAQ
 
 **Q : Est-ce que ça modifie mon code source ?**
-Non. Seuls `CLAUDE.md`, `.claude/rules/` et `claudeos-core/` sont créés. Votre code existant n'est jamais modifié.
+Non. Il crée uniquement `CLAUDE.md`, `.claude/rules/` et `claudeos-core/`. Votre code existant n'est jamais modifié.
 
 **Q : Combien ça coûte ?**
-Appelle `claude -p` 3–7 fois. C'est dans les limites d'utilisation normale de Claude Code.
+Il appelle `claude -p` 4–8 fois (Pass 1 × N + Pass 2 + Pass 3 + Pass 4). C'est dans l'usage normal de Claude Code. Quand `--lang` n'est pas l'anglais, le chemin de fallback statique peut invoquer quelques appels supplémentaires à `claude -p` pour traduire ; les résultats sont cachés dans `claudeos-core/generated/.i18n-cache-<lang>.json` pour que les exécutions suivantes les réutilisent.
 
-**Q : Faut-il commiter les fichiers générés dans Git ?**
-Recommandé. Votre équipe peut partager les mêmes standards Claude Code. Envisagez d'ajouter `claudeos-core/generated/` au `.gitignore` (le JSON d'analyse est regénérable).
+**Q : Dois-je commiter les fichiers générés dans Git ?**
+Oui, recommandé. Votre équipe peut partager les mêmes standards Claude Code. Pensez à ajouter `claudeos-core/generated/` à `.gitignore` (le JSON d'analyse est régénérable).
 
-**Q : Qu'en est-il des projets multi-stack (ex : backend Java + frontend React) ?**
-Entièrement supporté. ClaudeOS-Core auto-détecte les deux stacks, étiquette les domaines comme `backend` ou `frontend`, et utilise des prompts d'analyse spécifiques pour chacun. Pass 2 fusionne tout, et Pass 3 génère les standards backend et frontend en un seul pass.
+**Q : Qu'en est-il des projets stack mixte (ex : Java backend + React frontend) ?**
+Totalement supporté. ClaudeOS-Core auto-détecte les deux stacks, tagge les domaines comme `backend` ou `frontend`, et utilise des prompts d'analyse spécifiques au stack pour chacun. Pass 2 merge tout, et Pass 3 génère les standards backend et frontend en un seul pass.
 
-**Q : Fonctionne-t-il avec Turborepo / pnpm workspaces / Lerna ?**
-Oui. ClaudeOS-Core détecte `turbo.json`, `pnpm-workspace.yaml`, `lerna.json` ou `package.json#workspaces` et scanne automatiquement les `package.json` des sous-packages pour les dépendances framework/ORM/BD. Le scan de domaines couvre les patterns `apps/*/src/` et `packages/*/src/`. Exécutez depuis la racine du monorepo.
+**Q : Est-ce que ça marche avec les monorepos Turborepo / pnpm workspaces / Lerna ?**
+Oui. ClaudeOS-Core détecte `turbo.json`, `pnpm-workspace.yaml`, `lerna.json`, ou `package.json#workspaces` et scanne automatiquement les `package.json` des sous-packages pour les dépendances framework/ORM/BD. Le scan de domaines couvre les patterns `apps/*/src/` et `packages/*/src/`. Lancez depuis la racine du monorepo.
 
-**Q : Que se passe-t-il lors d'une ré-exécution ?**
-Si des résultats Pass 1/2 précédents existent, un prompt interactif vous permet de choisir : **Continue** (reprendre là où ça s'est arrêté) ou **Fresh** (tout supprimer et repartir de zéro). Utilisez `--force` pour ignorer le prompt et toujours repartir de zéro. Pass 3 est toujours ré-exécuté. Les versions précédentes peuvent être restaurées depuis les Master Plans.
+**Q : Que se passe-t-il en cas de re-lancement ?**
+Si des résultats précédents de Pass 1/2 existent, un prompt interactif vous laisse choisir : **Continue** (reprendre là où ça s'est arrêté) ou **Fresh** (tout supprimer et repartir de zéro). Utilisez `--force` pour sauter le prompt et toujours repartir de zéro. Pass 3 relance toujours. Les versions précédentes peuvent être restaurées depuis les Master Plans.
 
 **Q : NestJS a-t-il son propre template ou utilise-t-il celui d'Express ?**
-NestJS utilise un template dédié `node-nestjs` avec des catégories d'analyse spécifiques à NestJS : décorateurs `@Module`, `@Injectable`, `@Controller`, Guards, Pipes, Interceptors, conteneur DI, patterns CQRS et `Test.createTestingModule`. Les projets Express utilisent le template séparé `node-express`.
+NestJS utilise un template dédié `node-nestjs` avec des catégories d'analyse spécifiques à NestJS : decorators `@Module`, `@Injectable`, `@Controller`, Guards, Pipes, Interceptors, container DI, patterns CQRS et `Test.createTestingModule`. Les projets Express utilisent le template séparé `node-express`.
 
 **Q : Qu'en est-il des projets Vue / Nuxt ?**
-Vue/Nuxt utilise un template dédié `vue-nuxt` couvrant la Composition API, `<script setup>`, defineProps/defineEmits, les stores Pinia, `useFetch`/`useAsyncData`, les routes serveur Nitro et `@nuxt/test-utils`. Les projets Next.js/React utilisent le template `node-nextjs`.
+Vue/Nuxt utilise un template dédié `vue-nuxt` couvrant Composition API, `<script setup>`, defineProps/defineEmits, Pinia stores, `useFetch`/`useAsyncData`, routes serveur Nitro et `@nuxt/test-utils`. Les projets Next.js/React utilisent le template `node-nextjs`.
 
-**Q : Kotlin est-il supporté ?**
-Oui. ClaudeOS-Core détecte automatiquement Kotlin à partir de `build.gradle.kts` ou du plugin kotlin dans `build.gradle`. Il utilise un template dédié `kotlin-spring` avec une analyse spécifique à Kotlin (data classes, sealed classes, coroutines, fonctions d'extension, MockK, etc.).
+**Q : Supporte-t-il Kotlin ?**
+Oui. ClaudeOS-Core auto-détecte Kotlin depuis `build.gradle.kts` ou le plugin kotlin dans `build.gradle`. Il utilise un template dédié `kotlin-spring` avec une analyse spécifique Kotlin (data classes, sealed classes, coroutines, extension functions, MockK, etc.).
 
 **Q : Qu'en est-il de l'architecture CQRS / BFF ?**
-Entièrement supporté pour les projets Kotlin multi-modules. ClaudeOS-Core lit `settings.gradle.kts`, détecte les types de modules (command, query, bff, integration) à partir de leurs noms, et regroupe le même domaine à travers les modules Command/Query. Les standards générés incluent des règles séparées pour les command controllers vs query controllers, les patterns BFF/Feign et les conventions de communication inter-modules.
+Totalement supporté pour les projets Kotlin multi-module. ClaudeOS-Core lit `settings.gradle.kts`, détecte les types de module (command, query, bff, integration) depuis les noms de module, et regroupe le même domaine à travers les modules Command/Query. Les standards générés incluent des règles séparées pour command controllers vs query controllers, patterns BFF/Feign et conventions de communication inter-modules.
 
-**Q : Qu'en est-il des monorepos multi-modules Gradle ?**
-ClaudeOS-Core analyse tous les sous-modules (`**/src/main/kotlin/**/*.kt`) quelle que soit la profondeur d'imbrication. Les types de modules sont déduits des conventions de nommage (ex : `reservation-command-server` → domaine : `reservation`, type : `command`). Les bibliothèques partagées (`shared-lib`, `integration-lib`) sont également détectées.
+**Q : Qu'en est-il des monorepos Gradle multi-module ?**
+ClaudeOS-Core scanne tous les sous-modules (`**/src/main/kotlin/**/*.kt`) indépendamment de la profondeur d'imbrication. Les types de module sont inférés des conventions de naming (ex : `reservation-command-server` → domaine : `reservation`, type : `command`). Les bibliothèques partagées (`shared-lib`, `integration-lib`) sont également détectées.
+
+**Q : Qu'est-ce que la couche Memory L4 (v2.0.0) ? Dois-je commiter `claudeos-core/memory/` ?**
+Oui — **commitez toujours** `claudeos-core/memory/`. C'est une connaissance d'équipe persistante : `decision-log.md` enregistre le *pourquoi* des choix architecturaux (append-only), `failure-patterns.md` enregistre les erreurs récurrentes avec des scores d'importance pour que les futures sessions les évitent, `compaction.md` définit la politique de compaction en 4 étapes, et `auto-rule-update.md` collecte les propositions d'amélioration de règles générées par la machine. Contrairement aux règles (auto-chargées par chemin), les fichiers memory sont **on-demand** — Claude ne les lit que quand les règles `60.memory/*` le lui indiquent (ex : scan de début de session des échecs à haute importance). Cela maintient le coût de contexte bas tout en préservant la connaissance à long terme.
+
+**Q : Et si Pass 4 échoue ?**
+Le pipeline automatisé (`npx claudeos-core init`) a un fallback statique : si `claude -p` échoue ou si `pass4-prompt.md` est absent, il scaffolde la couche memory directement via `lib/memory-scaffold.js`. Quand `--lang` n'est pas l'anglais, le fallback statique **doit** traduire via la CLI `claude` — si ça échoue aussi, l'exécution s'avorte avec `InitError` (pas de fallback silencieux vers l'anglais). Relancez quand `claude` est authentifié, ou utilisez `--lang en` pour sauter la traduction. Les résultats de traduction sont cachés dans `claudeos-core/generated/.i18n-cache-<lang>.json` pour que les exécutions suivantes les réutilisent.
+
+**Q : Que font `memory compact` / `memory score` / `memory propose-rules` ?**
+Voir la section [Maintenance de la couche Memory](#maintenance-de-la-couche-memory-v200) ci-dessus. Version courte : `compact` lance la politique en 4 étapes (résumer anciennes, merger duplicats, drop basse-importance anciennes, appliquer plafond 400 lignes) ; `score` re-classe `failure-patterns.md` par importance (fréquence × récence) ; `propose-rules` fait remonter les candidats d'ajouts de règles depuis les échecs récurrents dans `auto-rule-update.md` (pas auto-appliqué — revoyez et acceptez/rejetez manuellement).
+
+**Q : Pourquoi `--force` (ou le mode resume « fresh ») supprime-t-il `.claude/rules/` ?**
+v2.0.0 a ajouté trois guards de silent-failure à Pass 3 (Guard 3 couvre deux variantes de sortie incomplète : H2 pour `guide/` et H1 pour `standard/skills/plan`). Guard 1 (« déplacement partiel de staged-rules ») et Guard 3 (« sortie incomplète — fichiers guide manquants/vides ou sentinel standard manquant / skills vide / plan vide ») ne dépendent pas des règles existantes, mais Guard 2 (« zéro règles détectées ») si — il se déclenche quand Claude a ignoré la directive `staging-override.md` et a tenté d'écrire directement dans `.claude/` (où la politique de chemins sensibles de Claude Code bloque). Des règles obsolètes d'une exécution précédente feraient que Guard 2 produise un faux négatif — donc `--force`/`fresh` efface `.claude/rules/` pour assurer une détection propre. **Les éditions manuelles des fichiers de règles seront perdues** sous `--force`/`fresh` ; sauvegardez d'abord si besoin.
+
+**Q : Qu'est-ce que `claudeos-core/generated/.staged-rules/` et pourquoi existe-t-il ?**
+La politique de chemins sensibles de Claude Code refuse les écritures directes dans `.claude/` depuis le sous-processus `claude -p` (même avec `--dangerously-skip-permissions`). v2.0.0 contourne cela en faisant que les prompts Pass 3/4 redirigent toutes les écritures `.claude/rules/` vers le répertoire de staging ; l'orchestrateur Node.js (qui n'est pas soumis à cette politique) déplace ensuite l'arbre staged dans `.claude/rules/` après chaque pass. C'est transparent pour l'utilisateur — le répertoire est auto-créé, auto-nettoyé et auto-déplacé. Si une exécution précédente a crashé en plein milieu du déplacement, la suivante efface le répertoire de staging avant de réessayer.
 
 ---
 
@@ -559,34 +757,36 @@ ClaudeOS-Core analyse tous les sous-modules (`**/src/main/kotlin/**/*.kt`) quell
 
 ```
 pass-prompts/templates/
-├── common/                  # En-tête/pied de page partagés
+├── common/                  # Header/footer partagés + pass4 + staging-override
 ├── java-spring/             # Java / Spring Boot
 ├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
 ├── node-express/            # Node.js / Express
 ├── node-nestjs/             # Node.js / NestJS (Module, DI, Guard, Pipe, Interceptor)
 ├── node-fastify/            # Node.js / Fastify
-├── node-nextjs/             # Next.js / React
+├── node-nextjs/             # Next.js / React (App Router, RSC)
+├── node-vite/               # Vite SPA (React, client-side routing, VITE_ env, Vitest)
 ├── vue-nuxt/                # Vue / Nuxt (Composition API, Pinia, Nitro)
 ├── angular/                 # Angular
 ├── python-django/           # Python / Django (DRF)
-└── python-fastapi/          # Python / FastAPI
+├── python-fastapi/          # Python / FastAPI
+└── python-flask/            # Python / Flask (Blueprint, app factory, Jinja2)
 ```
 
-`plan-installer` auto-détecte votre/vos stack(s) puis assemble des prompts spécifiques au type. NestJS et Vue/Nuxt utilisent des templates dédiés avec des catégories d'analyse spécifiques au framework (ex : `@Module`/`@Injectable`/Guards pour NestJS, `<script setup>`/Pinia/useFetch pour Vue). Pour les projets multi-stack, `pass1-backend-prompt.md` et `pass1-frontend-prompt.md` sont générés séparément, tandis que `pass3-prompt.md` combine les cibles de génération des deux stacks.
+`plan-installer` auto-détecte votre(vos) stack(s), puis assemble des prompts spécifiques au type. NestJS, Vue/Nuxt, Vite SPA et Flask utilisent chacun des templates dédiés avec des catégories d'analyse spécifiques au framework (ex : `@Module`/`@Injectable`/Guards pour NestJS ; `<script setup>`/Pinia/useFetch pour Vue ; client-side routing/`VITE_` env pour Vite ; Blueprint/`app.factory`/Flask-SQLAlchemy pour Flask). Pour les projets multi-stack, des `pass1-backend-prompt.md` et `pass1-frontend-prompt.md` séparés sont générés, tandis que `pass3-prompt.md` combine les cibles de génération des deux stacks. Pass 4 utilise le template partagé `common/pass4.md` (memory scaffolding) quel que soit le stack.
 
 ---
 
 ## Support Monorepo
 
-ClaudeOS-Core détecte automatiquement les configurations monorepo JS/TS et scanne les sous-packages pour les dépendances.
+ClaudeOS-Core auto-détecte les setups de monorepo JS/TS et scanne les sous-packages à la recherche de dépendances.
 
-**Marqueurs monorepo supportés** (auto-détectés) :
+**Marqueurs de monorepo supportés** (auto-détectés) :
 - `turbo.json` (Turborepo)
 - `pnpm-workspace.yaml` (pnpm workspaces)
 - `lerna.json` (Lerna)
 - `package.json#workspaces` (npm/yarn workspaces)
 
-**Exécutez depuis la racine du monorepo** — ClaudeOS-Core lit `apps/*/package.json` et `packages/*/package.json` pour découvrir les dépendances framework/ORM/BD dans les sous-packages :
+**Lancez depuis la racine du monorepo** — ClaudeOS-Core lit `apps/*/package.json` et `packages/*/package.json` pour découvrir les dépendances framework/ORM/BD entre sous-packages :
 
 ```bash
 cd my-monorepo
@@ -599,13 +799,13 @@ npx claudeos-core init
 - Dépendances de `packages/db/package.json` (ex : `drizzle-orm`) → ORM/BD
 - Chemins de workspace personnalisés depuis `pnpm-workspace.yaml` (ex : `services/*`)
 
-**Le scan de domaines couvre aussi les structures monorepo :**
+**Le scan de domaines couvre aussi les layouts monorepo :**
 - `apps/api/src/modules/*/` et `apps/api/src/*/` pour les domaines backend
 - `apps/web/app/*/`, `apps/web/src/app/*/`, `apps/web/pages/*/` pour les domaines frontend
-- `packages/*/src/*/` pour les domaines des packages partagés
+- `packages/*/src/*/` pour les domaines de packages partagés
 
 ```
-my-monorepo/                    ← Exécuter ici : npx claudeos-core init
+my-monorepo/                    ← Lancez ici : npx claudeos-core init
 ├── turbo.json                  ← Auto-détecté comme Turborepo
 ├── apps/
 │   ├── web/                    ← Next.js détecté depuis apps/web/package.json
@@ -620,31 +820,54 @@ my-monorepo/                    ← Exécuter ici : npx claudeos-core init
 └── package.json                ← { "workspaces": ["apps/*", "packages/*"] }
 ```
 
-> **Note :** Pour les monorepos Kotlin/Java, la détection multi-modules utilise `settings.gradle.kts` (voir [Détection des domaines Kotlin multi-modules](#détection-des-domaines-kotlin-multi-modules) ci-dessus) et ne nécessite pas de marqueurs monorepo JS.
+> **Remarque :** Pour les monorepos Kotlin/Java, la détection multi-module utilise `settings.gradle.kts` (voir [Détection des Domaines Kotlin Multi-Module](#détection-des-domaines-kotlin-multi-module) ci-dessus) et ne nécessite pas de marqueurs de monorepo JS.
 
-## Dépannage
+## Troubleshooting
 
-**"claude: command not found"** — Claude Code CLI n'est pas installé ou pas dans le PATH. Voir la [documentation Claude Code](https://code.claude.com/docs/en/overview).
+**« claude: command not found »** — La CLI Claude Code n'est pas installée ou pas dans le PATH. Voir [docs Claude Code](https://code.claude.com/docs/en/overview).
 
-**"npm install failed"** — La version de Node.js peut être trop ancienne. v18+ requis.
+**« npm install failed »** — La version de Node.js est peut-être trop basse. Requiert v18+.
 
-**"0 domains detected"** — La structure de votre projet peut être non standard. Consultez les patterns de détection dans la [documentation coréenne](./README.ko.md#트러블슈팅) pour votre stack.
+**« 0 domains detected »** — La structure de votre projet peut être non standard. Voir les patterns de détection ci-dessus pour votre stack.
 
-**« 0 domaines détectés » sur un projet Kotlin** — Vérifiez que `build.gradle.kts` (ou `build.gradle` avec le plugin kotlin) existe à la racine, et que les fichiers source sont sous `**/src/main/kotlin/`. Pour les projets multi-modules, `settings.gradle.kts` doit contenir des instructions `include()`. Les projets Kotlin mono-module (sans `settings.gradle`) sont également pris en charge — les domaines sont extraits de la structure des packages/classes sous `src/main/kotlin/`.
+**« 0 domains detected » sur projet Kotlin** — Assurez-vous que votre projet a `build.gradle.kts` (ou `build.gradle` avec plugin kotlin) à la racine, et que les fichiers source sont sous `**/src/main/kotlin/`. Pour les projets multi-module, assurez-vous que `settings.gradle.kts` contient des instructions `include()`. Les projets Kotlin single-module (sans `settings.gradle`) sont aussi supportés — les domaines sont extraits de la structure package/classe sous `src/main/kotlin/`.
 
-**« Langage détecté comme java au lieu de kotlin »** — ClaudeOS-Core vérifie d'abord le `build.gradle(.kts)` racine, puis les fichiers build des sous-modules. Assurez-vous qu'au moins un contient `kotlin("jvm")` ou `org.jetbrains.kotlin`.
+**« Language detected as java instead of kotlin »** — ClaudeOS-Core vérifie d'abord le `build.gradle(.kts)` racine, puis les fichiers build des sous-modules. Si le fichier de build racine utilise le plugin `java` sans `kotlin`, mais que les sous-modules utilisent Kotlin, l'outil vérifie jusqu'à 5 fichiers de build de sous-modules en fallback. Si toujours pas détecté, assurez-vous qu'au moins un `build.gradle.kts` contient `kotlin("jvm")` ou `org.jetbrains.kotlin`.
 
-**« CQRS non détecté »** — La détection d'architecture repose sur la présence des mots-clés `command` et `query` dans les noms de modules. Si vos modules utilisent des noms différents, vous pouvez ajuster manuellement les prompts générés.
+**« CQRS not detected »** — La détection d'architecture dépend du fait que les noms de module contiennent les mots-clés `command` et `query`. Si vos modules utilisent un naming différent (ex : `write-server`, `read-server`), l'architecture CQRS ne sera pas auto-détectée. Vous pouvez ajuster manuellement les prompts générés après l'exécution de plan-installer.
+
+**« Pass 3 produced 0 rule files under .claude/rules/ » (v2.0.0)** — Guard 2 s'est déclenché : Claude a ignoré la directive `staging-override.md` et a essayé d'écrire directement dans `.claude/`, où la politique de chemins sensibles de Claude Code bloque les écritures. Relancez avec `npx claudeos-core init --force`. Si l'erreur persiste, inspectez `claudeos-core/generated/pass3-prompt.md` pour vérifier que le bloc `staging-override.md` est en haut.
+
+**« Pass 3 finished but N rule file(s) could not be moved from staging » (v2.0.0)** — Guard 1 s'est déclenché : le déplacement depuis staging a heurté un file lock transitoire (typiquement antivirus Windows ou file-watcher). Le marqueur n'est PAS écrit, donc l'exécution `init` suivante réessaie Pass 3 automatiquement. Relancez simplement `npx claudeos-core init`.
+
+**« Pass 3 produced CLAUDE.md and rules but N/9 guide files are missing or empty » (v2.0.0)** — Guard 3 (H2) s'est déclenché : Claude a tronqué sa réponse au milieu après avoir écrit CLAUDE.md + règles mais avant de finir (ou de commencer) la section `claudeos-core/guide/` (9 fichiers attendus). Se déclenche aussi sur un fichier uniquement BOM ou uniquement whitespace (le heading a été écrit mais le corps a été tronqué). Sans ce guard, le marqueur de complétion serait quand même écrit, laissant `guide/` vide de façon permanente aux exécutions suivantes. Ici le marqueur n'est PAS écrit, donc l'exécution `init` suivante réessaie Pass 3 à partir des mêmes résultats de Pass 2. Si ça continue de se répéter, relancez avec `npx claudeos-core init --force` pour régénérer depuis zéro.
+
+**« Pass 3 finished but the following required output(s) are missing or empty » (v2.0.0)** — Guard 3 (H1) s'est déclenché : Claude a tronqué APRÈS `claudeos-core/guide/` mais avant (ou pendant) `claudeos-core/standard/`, `claudeos-core/skills/` ou `claudeos-core/plan/`. Exigences : (a) `standard/00.core/01.project-overview.md` existe et n'est pas vide (sentinel écrit par le prompt Pass 3 de chaque stack), (b) `skills/` a ≥1 `.md` non vide, (c) `plan/` a ≥1 `.md` non vide. `database/` et `mcp-guide/` sont intentionnellement exclus (certains stacks produisent légitimement zéro fichier). Même chemin de récupération que Guard 3 (H2) : relancez `init`, ou `--force` si ça persiste.
+
+**« pass2-merged.json exists but is malformed or incomplete (<5 top-level keys), re-running » (v2.0.0)** — Log info, pas une erreur. Au resume, `init` parse et valide désormais `pass2-merged.json` (≥5 clés de niveau supérieur requises, reflétant le seuil `INSUFFICIENT_KEYS` de `pass-json-validator`). Un squelette `{}` ou un JSON mal formé d'une exécution précédente crashée est automatiquement supprimé et Pass 2 est relancé. Pas d'action manuelle nécessaire — le pipeline s'auto-répare. Si ça récurre, inspectez `claudeos-core/generated/pass2-prompt.md` et réessayez avec `--force`.
+
+**« Static fallback failed while translating to lang='ko' » (v2.0.0)** — Quand `--lang` n'est pas l'anglais, Pass 4 / fallback statique / gap-fill requièrent tous la CLI `claude` pour traduire. Si la traduction échoue (CLI non authentifiée, timeout réseau, ou la validation stricte a rejeté la sortie : longueur <40%, code fences cassés, frontmatter perdu, etc.), l'exécution s'avorte plutôt que d'écrire silencieusement en anglais. Fix : assurez-vous que `claude` est authentifié, ou relancez avec `--lang en` pour sauter la traduction.
+
+**« pass4-memory.json exists but memory/ is empty » (v2.0.0)** — Une exécution précédente a écrit le marqueur mais l'utilisateur (ou un script de nettoyage) a supprimé `claudeos-core/memory/`. La CLI auto-détecte ce marqueur obsolète et relance Pass 4 au prochain `init`. Pas d'action manuelle nécessaire.
+
+**« pass4-memory.json exists but is malformed (missing passNum/memoryFiles) — re-running Pass 4 » (v2.0.0)** — Log info, pas une erreur. Le contenu du marqueur de Pass 4 est désormais validé (`passNum === 4` + array `memoryFiles` non vide), pas seulement son existence. Un échec partiel de Claude qui aurait émis quelque chose comme `{"error":"timeout"}` comme corps du marqueur était précédemment accepté comme succès pour toujours ; maintenant le marqueur est supprimé et Pass 4 est relancé automatiquement.
+
+**« Could not delete stale pass3-complete.json / pass4-memory.json » InitError (v2.0.0)** — `init` a détecté un marqueur obsolète (Pass 3 : CLAUDE.md a été supprimé extérieurement ; Pass 4 : memory/ vide ou corps de marqueur mal formé) et a tenté de le supprimer, mais l'appel `unlinkSync` a échoué — typiquement parce qu'un antivirus Windows ou un file-watcher (éditeur, indexeur IDE) retient le handle du fichier. Auparavant ceci était silencieusement ignoré, faisant que le pipeline sautait le pass et réutilisait le marqueur obsolète. Maintenant il échoue bruyamment. Fix : fermez tout éditeur/scanner AV qui pourrait avoir le fichier ouvert, puis relancez `npx claudeos-core init`.
+
+**« CLAUDEOS_SKIP_TRANSLATION=1 is set but --lang='ko' requires translation » InitError (v2.0.0)** — Vous avez la variable d'environnement réservée aux tests `CLAUDEOS_SKIP_TRANSLATION=1` définie dans votre shell (probablement un reste de setup CI/test) ET vous avez choisi un `--lang` non-anglais. Cette variable d'environnement court-circuite le chemin de traduction dont dépendent le fallback statique et le gap-fill de Pass 4 pour la sortie non-anglaise. `init` détecte le conflit au moment de la sélection de langue et s'avorte immédiatement (plutôt que de crasher en plein Pass 4 avec une erreur imbriquée confuse). Fix : soit `unset CLAUDEOS_SKIP_TRANSLATION` avant de lancer, soit utilisez `npx claudeos-core init --lang en`.
 
 ---
 
 ## Contribuer
 
-Les contributions sont les bienvenues ! Domaines où l'aide est la plus nécessaire :
+Les contributions sont les bienvenues ! Les domaines où l'aide est la plus nécessaire :
 
-- **Nouveaux templates de stack** — Ruby/Rails, Go/Gin, PHP/Laravel, Rust/Axum
-- **Support approfondi monorepo** — Racines de sous-projets séparées, détection de workspaces
-- **Couverture de tests** — Suite de tests en expansion (actuellement 269 tests couvrant tous les scanners, la détection de stack, le groupement de domaines, le parsing de plans, la génération de prompts, les sélecteurs CLI, la détection de monorepos, les outils de vérification et la détection Vite SPA)
+- **Nouveaux templates de stack** — Ruby/Rails, Go (Gin/Fiber/Echo), PHP (Laravel/Symfony), Rust (Axum/Actix), Svelte/SvelteKit, Remix
+- **Intégration IDE** — extension VS Code, plugin IntelliJ
+- **Templates CI/CD** — GitLab CI, CircleCI, exemples Jenkins (GitHub Actions déjà livré — voir `.github/workflows/test.yml`)
+- **Couverture de test** — Étendre la suite de tests (actuellement 489 tests à travers 24 fichiers de test couvrant scanners, stack detection, domain grouping, plan parsing, prompt generation, CLI selectors, monorepo detection, Vite SPA detection, outils de vérification, memory scaffold L4, validation de resume de Pass 2, Pass 3 Guards 1/2/3 (H1 sentinel + H2 BOM-aware empty-file + strict stale-marker unlink), validation du contenu du marqueur Pass 4 + rigueur du stale-marker unlink, guard d'env-skip de traduction + early fail-fast + workflow CI, déplacement de staged-rules, fallback lang-aware de traduction, et structure du template AI Work Rules)
+
+Voir [`CONTRIBUTING.md`](./CONTRIBUTING.md) pour la liste complète des domaines, le style de code, la convention de commit et le guide pas à pas pour ajouter un nouveau template de stack.
 
 ---
 

@@ -108,6 +108,151 @@ describe("content-validator", () => {
     // May still have warnings (guide files missing etc.) but CLAUDE.md error should not appear
     assert.ok(!r.output.includes("[MISSING] CLAUDE.md"), "should not report CLAUDE.md as missing");
   });
+
+  // ─── Memory structural validation (v2.0.0 memory-only additions) ───
+
+  it("flags MALFORMED_ENTRY when failure-patterns.md entry lacks required fields", () => {
+    // Minimal project — just enough to reach the memory check section
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    // All other expected memory files need to exist so we isolate the failure-patterns check
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"), "# Decision Log\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"), "# Compaction\n## Last Compaction\n(never)\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"), "# Auto Rule Update\n" + "x".repeat(60));
+    // Broken failure-patterns: entry without frequency / last seen / fix
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"),
+      "# Failure Patterns\n\n## broken-pattern\njust some random text with no fields at all here\n");
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    assert.ok(r.output.includes("MALFORMED_ENTRY"),
+      "should flag MALFORMED_ENTRY for missing fields");
+    assert.ok(r.output.includes("broken-pattern"),
+      "warning should reference the broken pattern id");
+  });
+
+  it("flags MISSING_MARKER when compaction.md lacks '## Last Compaction' section", () => {
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"), "# Decision Log\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"), "# Failure Patterns\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"), "# Auto Rule Update\n" + "x".repeat(60));
+    // compaction.md without `## Last Compaction` marker
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"),
+      "# Compaction Strategy\n\nSome body text but no Last Compaction section here.\n" + "x".repeat(60));
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    assert.ok(r.output.includes("MISSING_MARKER"),
+      "should flag MISSING_MARKER when `## Last Compaction` is absent");
+    assert.ok(r.output.includes("Last Compaction"),
+      "warning should mention the missing marker name");
+  });
+
+  it("passes structural validation when memory files are well-formed", () => {
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    // Well-formed memory files
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"),
+      "# Decision Log\n\n## 2026-04-17 — Initial architecture\n- Context: baseline\n- Decision: MyBatis\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"),
+      "# Failure Patterns\n\n## null-ptr\n- frequency: 3\n- last seen: 2026-04-17\n- Fix: null check\n");
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"),
+      "# Compaction Strategy\n\n## Last Compaction\n(never)\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"),
+      "# Auto Rule Update Proposals\n" + "x".repeat(60));
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    // No structural warnings for memory files (may have unrelated warnings for missing rules/skills/etc.)
+    assert.ok(!r.output.includes("MALFORMED_ENTRY"),
+      "well-formed entries should not trigger MALFORMED_ENTRY");
+    assert.ok(!r.output.includes("MISSING_MARKER"),
+      "compaction.md with marker should not trigger MISSING_MARKER");
+  });
+
+  it("accepts bold-markdown fields (**frequency**:, **last seen**:, **Fix**:)", () => {
+    // Regression guard: content-validator previously used `/\bfrequency\b\s*[:=]/i`
+    // which did NOT match `- **frequency**: 5` because ** separates the word
+    // from the colon. After `memory score` rewrites these fields with bold,
+    // content-validator would falsely flag the entry as MALFORMED.
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"), "# Decision Log\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"), "# Compaction\n## Last Compaction\n(never)\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"), "# Auto Rule Update\n" + "x".repeat(60));
+    // All fields in bold (as `memory score` writes them)
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"),
+      "# Failure Patterns\n\n## bold-fields\n- **frequency**: 5 _(auto-scored)_\n- **last seen**: 2026-04-17\n- **importance**: 8\n- **Fix**: apply the patch\n");
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    assert.ok(!r.output.includes("MALFORMED_ENTRY"),
+      "entries with bold-markdown fields must not be flagged as MALFORMED");
+  });
+
+  it("does not treat '## heading' inside fenced code blocks as a new entry", () => {
+    // Regression guard: content-validator split on every `## ` line, so a
+    // fenced code block containing example markdown headings would be
+    // parsed as multiple entries — the real entry appeared "missing fields"
+    // because its fields were "inherited" by a phantom entry from the code
+    // block. Fence-aware parsing prevents this.
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"), "# Decision Log\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"), "# Compaction\n## Last Compaction\n(never)\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"), "# Auto Rule Update\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"),
+      "# Failure Patterns\n\n## entry-with-codeblock\n- frequency: 3\n- last seen: 2026-04-17\n- Fix: use this config\n\n```yaml\n## example in code block\nkey: value\n```\n\nmore body\n");
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    assert.ok(!r.output.includes("MALFORMED_ENTRY"),
+      "entry with embedded code block must not be split into phantom entries");
+    assert.ok(!r.output.includes("example in code"),
+      "code block heading should not be reported as an entry");
+  });
+
+  it("requires Fix/solution as a field line, not any word containing 'fix'", () => {
+    // Regression guard: previous `/\bfix\b/i` matched any line mentioning
+    // 'fix' (e.g. "prefix the name to fix conflict"), so an entry missing
+    // a real `- Fix: ...` field would slip past validation. The new
+    // regex requires `^[-]* (fix|solution) [:=]` (field line format).
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"), "# Decision Log\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"), "# Compaction\n## Last Compaction\n(never)\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"), "# Auto Rule Update\n" + "x".repeat(60));
+    // Entry has verbose 'fix' word but NO field line — should now be flagged
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"),
+      "# Failure Patterns\n\n## fake-fix\n- frequency: 3\n- last seen: 2026-04-17\nWe tried to prefix the bean names to fix the conflict.\n");
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    assert.ok(r.output.includes("MALFORMED_ENTRY"),
+      "entry lacking real `- Fix:` field must be flagged despite 'fix' word in prose");
+    assert.ok(r.output.includes("fix/solution"),
+      "missing-fields list should name fix/solution");
+  });
+
+  it("decision-log.md: ignores '## YYYY-MM-DD' example inside code fence", () => {
+    // Regression guard: decision-log's heading check used to scan every
+    // `## ...` line, so a fenced markdown example in a decision's body
+    // would be compared against the ISO-date rule and flagged falsely.
+    writeFile(path.join(tmp, "CLAUDE.md"), "# Project\n## Role\nx\n## Build\nx\n## Run\nx\n## Standard\nx\n## Skills\nx\n\n" + "x".repeat(100));
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, "claudeos-core/generated/project-analysis.json"), JSON.stringify({ stack: { language: "java" }, lang: "en" }));
+    writeFile(path.join(tmp, "claudeos-core/memory/compaction.md"), "# Compaction\n## Last Compaction\n(never)\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/failure-patterns.md"), "# Failure Patterns\n" + "x".repeat(60));
+    writeFile(path.join(tmp, "claudeos-core/memory/auto-rule-update.md"), "# Auto Rule Update\n" + "x".repeat(60));
+    // Valid decision entry + a markdown fence showing syntax examples
+    writeFile(path.join(tmp, "claudeos-core/memory/decision-log.md"),
+      "# Decision Log\n\n## 2026-04-17 — Real decision\n- Context: example\n\nSyntax illustration:\n\n```markdown\n## Not a real entry heading\n- Context: example\n```\n" + "x".repeat(60));
+
+    const r = runTool(path.join(TOOLS_DIR, "content-validator/index.js"), tmp, true);
+    assert.ok(!r.output.includes("Not a real entry"),
+      "fenced example heading must not be flagged as malformed decision");
+  });
 });
 
 // ─── plan-validator ──────────────────────────────────────────

@@ -28,6 +28,7 @@ const TRACKED = [
   { dir: "claudeos-core/guide",     pfx: "guide"     },
   { dir: "claudeos-core/database",  pfx: "database"  },
   { dir: "claudeos-core/mcp-guide", pfx: "mcp-guide" },
+  { dir: "claudeos-core/memory",    pfx: "memory"    },
 ];
 
 function rel(p) {

@@ -1,0 +1,453 @@
+/**
+ * Pass 3 post-generation guards (init.js).
+ *
+ * Three guards protect against silent failures:
+ *
+ *   Guard 1 (partial move): if staged-rules move had failed entries, throw —
+ *     don't write pass3-complete.json. Next `init` run re-executes Pass 3.
+ *
+ *   Guard 2 (zero rules): if .claude/rules/ has 0 files after the move,
+ *     Claude likely ignored the staging-override directive. Throw — don't
+ *     write the marker.
+ *
+ *   Guard 3 (incomplete guide): if any of the 9 expected guide files are
+ *     missing, Claude truncated mid-response. Throw — don't write the marker,
+ *     otherwise the project is stuck with empty guide/ permanently (content-
+ *     validator errors are non-fatal at step [8]).
+ *
+ * All three run AFTER the staged-rules move, BEFORE the marker write.
+ * We reproduce the guard conditions inline (rather than spawning init) to
+ * avoid needing a real Claude CLI in the test env.
+ */
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+const { moveStagedRules, countFilesRecursive } = require("../lib/staged-rules");
+const { EXPECTED_GUIDE_FILES } = require("../lib/expected-guides");
+const { findMissingOutputs, hasNonEmptyMdRecursive } = require("../lib/expected-outputs");
+
+function tmpDir() { return fs.mkdtempSync(path.join(os.tmpdir(), "p3g-")); }
+function cleanup(d) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_e) {} }
+
+// Reproduce the guard logic inline, matching init.js Pass 3.
+function checkPass3Guards(projectRoot, moveResult) {
+  if (moveResult.failed > 0) {
+    throw new Error(
+      `Pass 3 finished but ${moveResult.failed} rule file(s) could not be moved from staging.`
+    );
+  }
+  const ruleCount = countFilesRecursive(path.join(projectRoot, ".claude/rules"));
+  if (ruleCount === 0) {
+    throw new Error("Pass 3 produced 0 rule files under .claude/rules/.");
+  }
+  const guideDir = path.join(projectRoot, "claudeos-core/guide");
+  const missing = EXPECTED_GUIDE_FILES.filter(g => {
+    const fp = path.join(guideDir, g);
+    if (!fs.existsSync(fp)) return true;
+    // Strip BOM before trim — String.trim doesn't remove U+FEFF. Mirrors
+    // the real init.js Guard 3 check.
+    try { return fs.readFileSync(fp, "utf-8").replace(/^\uFEFF/, "").trim().length === 0; }
+    catch (_e) { return true; }
+  });
+  if (missing.length > 0) {
+    const err = new Error(
+      `Pass 3 produced CLAUDE.md and rules but ${missing.length}/${EXPECTED_GUIDE_FILES.length} guide files are missing or empty.`
+    );
+    err.missing = missing;
+    throw err;
+  }
+  // H1: extended output validation (standard/, skills/, plan/).
+  const missingOutputs = findMissingOutputs(projectRoot);
+  if (missingOutputs.length > 0) {
+    const err = new Error(
+      `Pass 3 finished but the following required output(s) are missing or empty: ${missingOutputs.join("; ")}`
+    );
+    err.missingOutputs = missingOutputs;
+    throw err;
+  }
+  return true;
+}
+
+function writeGuides(root, list) {
+  for (const rel of list) {
+    const full = path.join(root, "claudeos-core/guide", rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, "# stub");
+  }
+}
+
+function writeExtraOutputs(root) {
+  // Minimum content to satisfy H1 (standard sentinel + skills md + plan md).
+  const standardPath = path.join(root, "claudeos-core/standard/00.core/01.project-overview.md");
+  fs.mkdirSync(path.dirname(standardPath), { recursive: true });
+  fs.writeFileSync(standardPath, "# Project Overview\n\nBody.\n");
+  const skillsPath = path.join(root, "claudeos-core/skills/00.shared/MANIFEST.md");
+  fs.mkdirSync(path.dirname(skillsPath), { recursive: true });
+  fs.writeFileSync(skillsPath, "# Skills Manifest\n\nList.\n");
+  const planPath = path.join(root, "claudeos-core/plan/10.standard-master.md");
+  fs.mkdirSync(path.dirname(planPath), { recursive: true });
+  fs.writeFileSync(planPath, "# Standard Master\n\nPlan body.\n");
+}
+
+function setupPassingBase(d) {
+  const rulesRoot = path.join(d, ".claude/rules/00.core");
+  fs.mkdirSync(rulesRoot, { recursive: true });
+  fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+  writeGuides(d, EXPECTED_GUIDE_FILES);
+  writeExtraOutputs(d);
+}
+
+test("guard 1: partial move failure → throws, no marker written", () => {
+  const d = tmpDir();
+  try {
+    // Simulate a move result with one failure
+    const moveResult = { moved: 2, failed: 1, files: ["a.md", "b.md"], errors: ["c.md: EBUSY"], skipped: false };
+    assert.throws(
+      () => checkPass3Guards(d, moveResult),
+      /could not be moved from staging/
+    );
+  } finally { cleanup(d); }
+});
+
+test("guard 2: zero rules after clean move → throws", () => {
+  const d = tmpDir();
+  try {
+    // Clean move result, but .claude/rules/ is empty (Claude ignored override)
+    const moveResult = { moved: 0, failed: 0, files: [], errors: [], skipped: true };
+    fs.mkdirSync(path.join(d, ".claude/rules"), { recursive: true });
+    assert.throws(
+      () => checkPass3Guards(d, moveResult),
+      /0 rule files under \.claude\/rules/
+    );
+  } finally { cleanup(d); }
+});
+
+test("all guards pass when move succeeded, rules exist, and all guide files exist", () => {
+  const d = tmpDir();
+  try {
+    setupPassingBase(d);
+    const moveResult = { moved: 1, failed: 0, files: ["00.core/00.standard-reference.md"], errors: [], skipped: false };
+    assert.doesNotThrow(() => checkPass3Guards(d, moveResult));
+  } finally { cleanup(d); }
+});
+
+function captureThrow(fn) {
+  try { fn(); } catch (e) {
+    // Wrap non-Error throws so downstream assertions on .message/.missing
+    // don't explode with "cannot read property of undefined". Copies known
+    // init.js-enriched fields (missing, missingOutputs) if present.
+    if (e instanceof Error) return e;
+    const wrapped = new Error(String(e));
+    if (e && typeof e === "object") {
+      if (e.missing !== undefined) wrapped.missing = e.missing;
+      if (e.missingOutputs !== undefined) wrapped.missingOutputs = e.missingOutputs;
+    }
+    return wrapped;
+  }
+  throw new Error("expected function to throw but it did not");
+}
+
+test("guard 3: empty guide/ after rules succeed → throws (the real-world bug)", () => {
+  const d = tmpDir();
+  try {
+    // Rules are fine, but guide/ is empty (Claude truncated mid-response).
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    fs.mkdirSync(path.join(d, "claudeos-core/guide"), { recursive: true });
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /guide files are missing or empty/);
+    assert.equal(err.missing.length, 9, "all 9 guide files should be reported missing");
+  } finally { cleanup(d); }
+});
+
+test("guard 3: partial guide/ generation → throws with exact missing list", () => {
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    // Write only the first 6 of 9 — Claude truncated after 02.usage section.
+    writeGuides(d, EXPECTED_GUIDE_FILES.slice(0, 6));
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /3\/9 guide files are missing or empty/);
+    assert.deepEqual(err.missing, EXPECTED_GUIDE_FILES.slice(6));
+  } finally { cleanup(d); }
+});
+
+test("guard 3 (H2): empty guide file (heading only, truncated body) → throws", () => {
+  // Claude sometimes writes a heading like "# 01. Overview" and truncates
+  // before the body. The file exists but trim-length is 0 after the heading
+  // is reset to empty. Previously Guard 3 passed (fileExists=true) but
+  // content-validator flagged EMPTY as a non-fatal error → user saw
+  // "✅ Complete" on a broken project. H2 widens Guard 3 to reject empty.
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    // Overwrite one guide as empty, another as whitespace-only.
+    fs.writeFileSync(path.join(d, "claudeos-core/guide", EXPECTED_GUIDE_FILES[0]), "");
+    fs.writeFileSync(path.join(d, "claudeos-core/guide", EXPECTED_GUIDE_FILES[3]), "   \n\n\t  \n");
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /2\/9 guide files are missing or empty/);
+    assert.deepEqual(err.missing.sort(), [EXPECTED_GUIDE_FILES[0], EXPECTED_GUIDE_FILES[3]].sort());
+  } finally { cleanup(d); }
+});
+
+test("guard 3 (H2): BOM-only file is treated as empty (String.trim doesn't strip U+FEFF)", () => {
+  // Regression: naive `.trim().length === 0` accepts a BOM-only file as
+  // non-empty because U+FEFF isn't in Unicode White_Space. Without the
+  // explicit BOM strip, Guard 3 would accept a 3-byte BOM-only file (a
+  // common artifact when Claude or an editor prepends a byte-order mark
+  // to an empty write) as legitimate output.
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    // Write BOM-only content to one guide file
+    const bomFile = path.join(d, "claudeos-core/guide", EXPECTED_GUIDE_FILES[2]);
+    fs.writeFileSync(bomFile, "\uFEFF", "utf-8");
+    // Write BOM + whitespace to another
+    const bomWsFile = path.join(d, "claudeos-core/guide", EXPECTED_GUIDE_FILES[5]);
+    fs.writeFileSync(bomWsFile, "\uFEFF   \n\t  \n", "utf-8");
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /2\/9 guide files are missing or empty/);
+    assert.deepEqual(err.missing.sort(), [EXPECTED_GUIDE_FILES[2], EXPECTED_GUIDE_FILES[5]].sort());
+  } finally { cleanup(d); }
+});
+
+test("H1: standard/00.core/01.project-overview.md missing → throws", () => {
+  // guide/ is complete but standard sentinel is missing (Claude truncated
+  // after guide/ but before standard/). H1 must catch this.
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    writeExtraOutputs(d);
+    // Remove only the standard sentinel
+    fs.unlinkSync(path.join(d, "claudeos-core/standard/00.core/01.project-overview.md"));
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /01\.project-overview\.md.*not created/);
+    assert.equal(err.missingOutputs.length, 1);
+  } finally { cleanup(d); }
+});
+
+test("H1: skills/ has no .md files → throws", () => {
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    writeExtraOutputs(d);
+    // Wipe skills/ (dir stays but empty)
+    const skillsDir = path.join(d, "claudeos-core/skills");
+    fs.rmSync(skillsDir, { recursive: true, force: true });
+    fs.mkdirSync(skillsDir, { recursive: true });
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /skills\/.*no non-empty/);
+  } finally { cleanup(d); }
+});
+
+test("H1: plan/ has no .md files → throws", () => {
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    writeExtraOutputs(d);
+    // Wipe plan/ (dir stays but empty)
+    const planDir = path.join(d, "claudeos-core/plan");
+    fs.rmSync(planDir, { recursive: true, force: true });
+    fs.mkdirSync(planDir, { recursive: true });
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /plan\/.*no non-empty/);
+  } finally { cleanup(d); }
+});
+
+test("H1: all 3 extra outputs missing → reports each in single error", () => {
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    // Do NOT call writeExtraOutputs — all three must be reported missing
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.equal(err.missingOutputs.length, 3, "standard, skills, plan all missing");
+    assert.ok(err.missingOutputs.some(m => m.includes("project-overview.md")));
+    assert.ok(err.missingOutputs.some(m => m.includes("skills/")));
+    assert.ok(err.missingOutputs.some(m => m.includes("plan/")));
+  } finally { cleanup(d); }
+});
+
+test("H1: empty .md in skills does NOT satisfy the check (matches H2 semantics)", () => {
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    writeExtraOutputs(d);
+    // Replace the only skills .md with an empty file
+    const skillsFile = path.join(d, "claudeos-core/skills/00.shared/MANIFEST.md");
+    fs.writeFileSync(skillsFile, "   \n\t\n");
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.match(err.message, /skills\/.*no non-empty/);
+  } finally { cleanup(d); }
+});
+
+test("H1: hasNonEmptyMdRecursive helper — returns false for empty dir", () => {
+  const d = tmpDir();
+  try {
+    fs.mkdirSync(path.join(d, "empty-dir"), { recursive: true });
+    assert.equal(hasNonEmptyMdRecursive(path.join(d, "empty-dir")), false);
+    // Non-existent path also returns false (no throw)
+    assert.equal(hasNonEmptyMdRecursive(path.join(d, "does-not-exist")), false);
+    // Nested non-empty .md → true
+    const nested = path.join(d, "nested/a/b");
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, "file.md"), "# has content");
+    assert.equal(hasNonEmptyMdRecursive(path.join(d, "nested")), true);
+  } finally { cleanup(d); }
+});
+
+test("H1: hasNonEmptyMdRecursive treats BOM-only files as empty", () => {
+  // Same BOM concern as H2 — U+FEFF isn't in Unicode White_Space so a naive
+  // trim-based check would accept a 3-byte BOM-only file as non-empty.
+  const d = tmpDir();
+  try {
+    const bomDir = path.join(d, "bom-only");
+    fs.mkdirSync(bomDir, { recursive: true });
+    fs.writeFileSync(path.join(bomDir, "a.md"), "\uFEFF", "utf-8");
+    fs.writeFileSync(path.join(bomDir, "b.md"), "\uFEFF  \n\t", "utf-8");
+    assert.equal(
+      hasNonEmptyMdRecursive(bomDir),
+      false,
+      "directory with only BOM/whitespace .md files must be treated as empty",
+    );
+    // Add a real non-empty file alongside — should flip to true
+    fs.writeFileSync(path.join(bomDir, "c.md"), "\uFEFF# real content\n", "utf-8");
+    assert.equal(
+      hasNonEmptyMdRecursive(bomDir),
+      true,
+      "BOM prefix on a file with real content should still be detected as non-empty",
+    );
+  } finally { cleanup(d); }
+});
+
+test("guard 3: guide dir itself missing → throws (not silently passes)", () => {
+  const d = tmpDir();
+  try {
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "00.standard-reference.md"), "# ref\n");
+    // Deliberately do not mkdir claudeos-core/guide
+    const moveResult = { moved: 1, failed: 0, files: [], errors: [], skipped: false };
+    const err = captureThrow(() => checkPass3Guards(d, moveResult));
+    assert.equal(err.missing.length, 9);
+  } finally { cleanup(d); }
+});
+
+test("shared list: exactly 9 files across 4 sections, all .md", () => {
+  assert.equal(EXPECTED_GUIDE_FILES.length, 9);
+  for (const g of EXPECTED_GUIDE_FILES) {
+    assert.match(g, /^(01\.onboarding|02\.usage|03\.troubleshooting|04\.architecture)\//);
+    assert.ok(g.endsWith(".md"));
+  }
+});
+
+test("Pass 3 stale-marker unlink surfaces as InitError (consistent with Pass 4)", () => {
+  // Round 3 consistency fix: Pass 3's stale-marker cleanup previously did
+  // `try { unlinkSync } catch (_e) { ignore }`. On Windows file-lock, the
+  // stale marker would persist and the subsequent fileExists check would
+  // accept it → silent skip → same bug class as the Pass 4 fix. Now Pass 3
+  // throws InitError with an actionable "file locked" message.
+  const initSrc = fs.readFileSync(
+    path.join(__dirname, "../bin/commands/init.js"),
+    "utf-8",
+  );
+  // The Pass 3 stale-marker block must NOT swallow unlink errors silently.
+  assert.doesNotMatch(
+    initSrc,
+    /treating marker as stale[\s\S]{0,200}catch\s*\(_e\)\s*\{\s*\/\*\s*ignore\s*\*\/\s*\}/,
+    "Pass 3 stale-marker cleanup must not silently swallow unlink errors",
+  );
+  // It must throw InitError with the "locked" guidance (symmetric with Pass 4 dropStalePass4Marker).
+  assert.ok(
+    initSrc.includes("Could not delete stale pass3-complete.json"),
+    "Pass 3 unlink failure must throw with 'Could not delete stale pass3-complete.json' InitError",
+  );
+});
+
+test("content-validator imports the shared list (no re-duplication)", () => {
+  // Regression: before lib/expected-guides.js the list was duplicated in
+  // init.js and content-validator. Guard this so future edits can't silently
+  // re-hardcode the list and drift.
+  const cv = fs.readFileSync(
+    path.join(__dirname, "../content-validator/index.js"),
+    "utf-8",
+  );
+  assert.ok(
+    cv.includes('require("../lib/expected-guides")'),
+    "content-validator must import the shared list",
+  );
+  const overviewHits = (cv.match(/01\.overview\.md/g) || []).length;
+  assert.equal(overviewHits, 0, "guide filenames must not be re-hardcoded in content-validator");
+});
+
+test("guard 1 fires even when some files did move (partial success is still failure)", () => {
+  const d = tmpDir();
+  try {
+    // Some files moved, but one failed. Guard 1 must still fire.
+    const rulesRoot = path.join(d, ".claude/rules/00.core");
+    fs.mkdirSync(rulesRoot, { recursive: true });
+    fs.writeFileSync(path.join(rulesRoot, "a.md"), "");
+    const moveResult = { moved: 10, failed: 1, files: [], errors: ["bad.md: EACCES"], skipped: false };
+    assert.throws(() => checkPass3Guards(d, moveResult), /could not be moved/);
+  } finally { cleanup(d); }
+});
+
+test("integration: moveStagedRules + guards on a fully successful staging", () => {
+  const d = tmpDir();
+  try {
+    // Stage three rule files
+    const stagingRoot = path.join(d, "claudeos-core/generated/.staged-rules");
+    fs.mkdirSync(path.join(stagingRoot, "00.core"), { recursive: true });
+    fs.mkdirSync(path.join(stagingRoot, "10.backend"), { recursive: true });
+    fs.writeFileSync(path.join(stagingRoot, "00.core/00.standard-reference.md"), "# ref\n");
+    fs.writeFileSync(path.join(stagingRoot, "00.core/01.foo.md"), "# foo\n");
+    fs.writeFileSync(path.join(stagingRoot, "10.backend/01.bar.md"), "# bar\n");
+    // Guide files + standard/skills/plan outputs must also exist for all guards to pass
+    writeGuides(d, EXPECTED_GUIDE_FILES);
+    writeExtraOutputs(d);
+
+    const result = moveStagedRules(d);
+    assert.equal(result.moved, 3);
+    assert.equal(result.failed, 0);
+
+    // All guards (1, 2, 3, H1, H2) pass
+    assert.doesNotThrow(() => checkPass3Guards(d, result));
+    assert.equal(countFilesRecursive(path.join(d, ".claude/rules")), 3);
+  } finally { cleanup(d); }
+});

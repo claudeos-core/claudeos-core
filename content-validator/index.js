@@ -12,6 +12,7 @@
  *   - All 9 guide files are generated
  *   - Skills orchestrator + sub-skills exist
  *   - database/, mcp-guide/ files are generated
+ *   - memory files follow expected entry structure
  *
  * Usage: npx claudeos-core <cmd> or node claudeos-core-tools/content-validator/index.js
  */
@@ -20,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const { glob } = require("glob");
 const { updateStaleReport } = require("../lib/stale-report");
+const { EXPECTED_GUIDE_FILES } = require("../lib/expected-guides");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const RULES_DIR = path.join(ROOT, ".claude/rules");
@@ -29,7 +31,10 @@ const GUIDE_DIR = path.join(ROOT, "claudeos-core/guide");
 const PLAN_DIR = path.join(ROOT, "claudeos-core/plan");
 const DB_DIR = path.join(ROOT, "claudeos-core/database");
 const MCP_DIR = path.join(ROOT, "claudeos-core/mcp-guide");
+const MEMORY_DIR = path.join(ROOT, "claudeos-core/memory");
 const GEN_DIR = path.join(ROOT, "claudeos-core/generated");
+
+const EXPECTED_MEMORY = ["decision-log.md", "failure-patterns.md", "compaction.md", "auto-rule-update.md"];
 
 function rel(p) { return path.relative(ROOT, p).replace(/\\/g, "/"); }
 
@@ -69,7 +74,7 @@ async function main() {
   };
 
   // ─── 1. CLAUDE.md ──────────────────────────────────────
-  console.log("  [1/8] CLAUDE.md...");
+  console.log("  [1/9] CLAUDE.md...");
   const claudeMd = path.join(ROOT, "CLAUDE.md");
   if (!fs.existsSync(claudeMd)) {
     errors.push({ file: "CLAUDE.md", type: "MISSING", msg: "CLAUDE.md does not exist" });
@@ -95,7 +100,7 @@ async function main() {
   }
 
   // ─── 2. .claude/rules/** ───────────────────────────────
-  console.log("  [2/8] .claude/rules/...");
+  console.log("  [2/9] .claude/rules/...");
   if (fs.existsSync(RULES_DIR)) {
     const ruleFiles = await glob("**/*.md", { cwd: RULES_DIR, absolute: true });
     for (const f of ruleFiles) {
@@ -121,7 +126,7 @@ async function main() {
   }
 
   // ─── 3. claudeos-core/standard/** ─────────────────────
-  console.log("  [3/8] claudeos-core/standard/...");
+  console.log("  [3/9] claudeos-core/standard/...");
   if (fs.existsSync(STANDARD_DIR)) {
     const stdFiles = await glob("**/*.md", { cwd: STANDARD_DIR, absolute: true });
     for (const f of stdFiles) {
@@ -194,7 +199,7 @@ async function main() {
   }
 
   // ─── 4. claudeos-core/skills/** ────────────────────────
-  console.log("  [4/8] claudeos-core/skills/...");
+  console.log("  [4/9] claudeos-core/skills/...");
   if (fs.existsSync(SKILLS_DIR)) {
     const skillFiles = await glob("**/*.md", { cwd: SKILLS_DIR, absolute: true });
     checked += skillFiles.length;
@@ -215,18 +220,8 @@ async function main() {
   }
 
   // ─── 5. claudeos-core/guide/** ─────────────────────────
-  console.log("  [5/8] claudeos-core/guide/...");
-  const expectedGuides = [
-    "01.onboarding/01.overview.md",
-    "01.onboarding/02.quickstart.md",
-    "01.onboarding/03.glossary.md",
-    "02.usage/01.faq.md",
-    "02.usage/02.real-world-examples.md",
-    "02.usage/03.do-and-dont.md",
-    "03.troubleshooting/01.troubleshooting.md",
-    "04.architecture/01.file-map.md",
-    "04.architecture/02.pros-and-cons.md",
-  ];
+  console.log("  [5/9] claudeos-core/guide/...");
+  const expectedGuides = EXPECTED_GUIDE_FILES;
   if (fs.existsSync(GUIDE_DIR)) {
     for (const g of expectedGuides) {
       const gp = path.join(GUIDE_DIR, g);
@@ -246,7 +241,7 @@ async function main() {
   }
 
   // ─── 6. claudeos-core/plan/** ──────────────────────────
-  console.log("  [6/8] claudeos-core/plan/...");
+  console.log("  [6/9] claudeos-core/plan/...");
   if (fs.existsSync(PLAN_DIR)) {
     const planFiles = await glob("*.md", { cwd: PLAN_DIR, absolute: true });
     for (const f of planFiles) {
@@ -270,7 +265,7 @@ async function main() {
   }
 
   // ─── 7. claudeos-core/database/** ──────────────────────
-  console.log("  [7/8] claudeos-core/database/...");
+  console.log("  [7/9] claudeos-core/database/...");
   if (fs.existsSync(DB_DIR)) {
     const dbFiles = await glob("**/*.md", { cwd: DB_DIR, absolute: true });
     checked += dbFiles.length;
@@ -289,7 +284,7 @@ async function main() {
   }
 
   // ─── 8. claudeos-core/mcp-guide/** ─────────────────────
-  console.log("  [8/8] claudeos-core/mcp-guide/...");
+  console.log("  [8/9] claudeos-core/mcp-guide/...");
   if (fs.existsSync(MCP_DIR)) {
     const mcpFiles = await glob("**/*.md", { cwd: MCP_DIR, absolute: true });
     checked += mcpFiles.length;
@@ -305,6 +300,107 @@ async function main() {
     console.log(`    ${mcpFiles.length} files`);
   } else {
     warnings.push({ file: "claudeos-core/mcp-guide/", type: "MISSING", msg: "mcp-guide directory not found" });
+  }
+
+  // ─── 9. claudeos-core/memory/ (L4) ─────────────────────
+  console.log("  [9/9] claudeos-core/memory/...");
+  if (fs.existsSync(MEMORY_DIR)) {
+    for (const name of EXPECTED_MEMORY) {
+      const fp = path.join(MEMORY_DIR, name);
+      checked++;
+      if (!fs.existsSync(fp)) {
+        errors.push({ file: `claudeos-core/memory/${name}`, type: "MISSING", msg: "Memory file not scaffolded" });
+        continue;
+      }
+      const c = fs.readFileSync(fp, "utf-8");
+      if (c.trim().length === 0) {
+        errors.push({ file: `claudeos-core/memory/${name}`, type: "EMPTY", msg: "Empty memory file" });
+        continue;
+      }
+      if (c.trim().length < 50) {
+        warnings.push({ file: `claudeos-core/memory/${name}`, type: "TOO_SHORT", msg: `Memory file too short (${c.trim().length} chars)` });
+      }
+
+      // ─── Structural validation (v2 — prevents silent failures in memory CLI) ───
+      if (name === "decision-log.md") {
+        // Entries must start with `## YYYY-MM-DD — <title>` format when present.
+        // Empty (header-only) seed is allowed.
+        // Fence-aware: ignore `## ...` lines inside ```...``` / ~~~...~~~ so
+        // example markdown inside a decision's body text isn't flagged.
+        const lines = c.split("\n");
+        const entryHeadings = [];
+        let inFence = false;
+        const FENCE_RE = /^(```|~~~)/;
+        for (const line of lines) {
+          if (FENCE_RE.test(line)) { inFence = !inFence; continue; }
+          if (!inFence && /^##\s+.+$/.test(line)) entryHeadings.push(line);
+        }
+        for (const h of entryHeadings) {
+          if (!/^##\s+\d{4}-\d{2}-\d{2}/.test(h)) {
+            warnings.push({
+              file: `claudeos-core/memory/${name}`,
+              type: "MALFORMED_ENTRY",
+              msg: `Heading does not start with ISO date: ${h.slice(0, 60)}`,
+            });
+          }
+        }
+      } else if (name === "failure-patterns.md") {
+        // Each entry should have frequency + last seen + fix/solution fields.
+        // Parse entries and flag any that miss required fields (warning, not error).
+        // Fence-aware: ignore `## ...` lines inside ```...``` or ~~~...~~~
+        // so example markdown inside a Fix body is not treated as an entry.
+        const lines = c.split("\n");
+        let curId = null;
+        let curBody = [];
+        const entries = [];
+        let inFence = false;
+        const FENCE_RE = /^(```|~~~)/;
+        for (const line of lines) {
+          if (FENCE_RE.test(line)) inFence = !inFence;
+          if (!inFence && /^##\s+/.test(line)) {
+            if (curId !== null) entries.push({ id: curId, body: curBody.join("\n") });
+            curId = line.replace(/^##\s+/, "").trim();
+            curBody = [];
+          } else if (curId !== null) {
+            curBody.push(line);
+          }
+        }
+        if (curId !== null) entries.push({ id: curId, body: curBody.join("\n") });
+        for (const e of entries) {
+          // Accept both plain (`- frequency:`) and bold (`- **frequency**:`)
+          // markdown — the memory CLI's parseField matches both since v2.0.
+          const hasFreq = /\b(?:frequency|count)\*{0,2}\s*[:=]/i.test(e.body);
+          const hasLastSeen = /\blast\s*seen\*{0,2}\s*[:=]?/i.test(e.body) || /^\d{4}-\d{2}-\d{2}/.test(e.id);
+          // Fix/solution must appear as a field line, not just any word —
+          // otherwise a verbose line containing "fix" or "prefix" would
+          // falsely satisfy the check.
+          const hasFix = /^\s*-\s*\*{0,2}\s*(?:fix|solution)\*{0,2}\s*[:=]/im.test(e.body);
+          const missing = [];
+          if (!hasFreq) missing.push("frequency");
+          if (!hasLastSeen) missing.push("last seen");
+          if (!hasFix) missing.push("fix/solution");
+          if (missing.length > 0) {
+            warnings.push({
+              file: `claudeos-core/memory/${name}`,
+              type: "MALFORMED_ENTRY",
+              msg: `Entry "${e.id.slice(0, 40)}" missing: ${missing.join(", ")} (memory CLI may skip it)`,
+            });
+          }
+        }
+      } else if (name === "compaction.md") {
+        // CLI-parsed marker `## Last Compaction` must exist (memory compact looks for it).
+        if (!c.includes("## Last Compaction")) {
+          warnings.push({
+            file: `claudeos-core/memory/${name}`,
+            type: "MISSING_MARKER",
+            msg: "`## Last Compaction` section missing (memory compact will append instead of update)",
+          });
+        }
+      }
+    }
+    console.log(`    ${EXPECTED_MEMORY.filter(n => fs.existsSync(path.join(MEMORY_DIR, n))).length} of ${EXPECTED_MEMORY.length} expected files exist`);
+  } else {
+    warnings.push({ file: "claudeos-core/memory/", type: "MISSING", msg: "memory directory not found (run pass 4)" });
   }
 
   // ─── Output results ─────────────────────────────────────────

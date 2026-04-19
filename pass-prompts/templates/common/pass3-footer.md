@@ -13,6 +13,22 @@ Examples of violations:
 - Assuming React Query exists because Orval was detected (inference is NOT detection)
 When in doubt, omit. Missing content is fixable; hallucinated content erodes trust.
 
+CRITICAL — No Domain-Specific Hardcoding:
+All generated documentation in claudeos-core/standard/, .claude/rules/, and claudeos-core/skills/
+MUST use generic, reusable patterns — NEVER hardcode project-specific domain names, table names,
+URL paths, or class names as examples.
+Use placeholder patterns instead:
+- Table names: `{prefix}_{table_name}` not a specific table like `user_account`
+- URL paths: `{domain}/{resource}` not a specific path like `/notice/getList`
+- DTO names: `{Action}{Entity}ReqDto` not a specific class like `GetNoticeListReqDto`
+- Domain keys: `{DOMAIN_KEY}` not a specific code like `NOTICE`
+Allowed exceptions:
+- Project-wide common fields that appear across ALL domains (e.g., audit columns, base classes)
+- Framework/infrastructure names (e.g., `BaseEntity`, `SecurityConfig`)
+- Listing existing domain names only when explaining how to ADD NEW ones (configuration examples)
+Reason: These documents are project-wide COMMON rules. If specific domain names appear,
+developers working on other domains may ignore the rules as irrelevant to them.
+
 CRITICAL — Skill Orchestrator Completeness:
 The orchestrator file (e.g., 01.scaffold-page-feature.md, 01.scaffold-crud-feature.md)
 MUST list ALL sub-skill files in its execution order table with no gaps.

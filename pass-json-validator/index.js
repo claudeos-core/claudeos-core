@@ -69,7 +69,7 @@ async function main() {
   }
 
   // ─── 1. project-analysis.json ──────────────────────────
-  console.log("  [1/4] project-analysis.json...");
+  console.log("  [1/5] project-analysis.json...");
   const pa = validateJson(
     path.join(GEN_DIR, "project-analysis.json"),
     ["analyzedAt", "stack", "domains", "frontend", "summary"],
@@ -96,7 +96,7 @@ async function main() {
   }
 
   // ─── 2. domain-groups.json ─────────────────────────────
-  console.log("  [2/4] domain-groups.json...");
+  console.log("  [2/5] domain-groups.json...");
   const dg = validateJson(
     path.join(GEN_DIR, "domain-groups.json"),
     ["generatedAt", "totalDomains", "totalGroups", "groups"],
@@ -111,7 +111,7 @@ async function main() {
   }
 
   // ─── 3. pass1-*.json ──────────────────────────────────
-  console.log("  [3/4] pass1-*.json...");
+  console.log("  [3/5] pass1-*.json...");
   const pass1JsonFiles = await glob("pass1-*.json", { cwd: GEN_DIR, absolute: true });
   if (pass1JsonFiles.length === 0) {
     warnings.push({ file: "pass1-*.json", type: "NO_FILES", msg: "No pass1 JSON found (not yet executed?)" });
@@ -135,7 +135,7 @@ async function main() {
   }
 
   // ─── 4. pass2-merged.json ─────────────────────────────
-  console.log("  [4/4] pass2-merged.json...");
+  console.log("  [4/5] pass2-merged.json...");
   const p2path = path.join(GEN_DIR, "pass2-merged.json");
   if (!fs.existsSync(p2path)) {
     warnings.push({ file: "pass2-merged.json", type: "NO_FILE", msg: "Not yet generated (Pass 2 not executed?)" });
@@ -264,6 +264,44 @@ async function main() {
         console.log(`    ✅ Structure validation passed (${keys.length} keys, ${emptyCount} empty values)`);
       }
     }
+  }
+
+  // ─── 5a. pass3-complete.json (optional) ──────────────────
+  console.log("  [5a/5] pass3-complete.json (optional)...");
+  const p3path = path.join(GEN_DIR, "pass3-complete.json");
+  if (fs.existsSync(p3path)) {
+    const p3 = validateJson(p3path, ["completedAt"], ["backfilled", "reason"]);
+    if (p3) {
+      if (typeof p3.completedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(p3.completedAt)) {
+        warnings.push({ file: "pass3-complete.json", type: "INVALID_TIMESTAMP", msg: `completedAt should be ISO 8601 (got ${JSON.stringify(p3.completedAt)})` });
+      } else {
+        console.log(`    ✅ completedAt=${p3.completedAt}${p3.backfilled ? " (backfilled)" : ""}`);
+      }
+    }
+  } else {
+    console.log("    ⏭️  not present (Pass 3 not yet run)");
+  }
+
+  // ─── 5b. pass4-memory.json (optional) ─────────────
+  console.log("  [5b/5] pass4-memory.json (optional)...");
+  const p4path = path.join(GEN_DIR, "pass4-memory.json");
+  if (fs.existsSync(p4path)) {
+    const p4 = validateJson(p4path,
+      ["analyzedAt", "passNum", "memoryFiles"],
+      ["planFiles", "ruleFiles", "seededDecisions", "fallback"]
+    );
+    if (p4) {
+      if (typeof p4.passNum !== "number" || p4.passNum !== 4) {
+        errors.push({ file: "pass4-memory.json", type: "INVALID_PASS_NUM", msg: `passNum must be number 4 (got ${JSON.stringify(p4.passNum)})` });
+      }
+      if (!Array.isArray(p4.memoryFiles) || p4.memoryFiles.length !== 4) {
+        errors.push({ file: "pass4-memory.json", type: "INVALID_MEMORY", msg: `memoryFiles must be an array of 4 paths (got ${Array.isArray(p4.memoryFiles) ? p4.memoryFiles.length : typeof p4.memoryFiles})` });
+      } else {
+        console.log(`    ✅ passNum=${p4.passNum}, memory=${p4.memoryFiles.length}${p4.fallback ? " (fallback)" : ""}`);
+      }
+    }
+  } else {
+    warnings.push({ file: "pass4-memory.json", type: "NO_FILE", msg: "Not yet generated (Pass 4 not executed?)" });
   }
 
   // ─── Output results ─────────────────────────────────────────

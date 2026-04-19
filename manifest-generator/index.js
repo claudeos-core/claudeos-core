@@ -31,6 +31,7 @@ const DIRS = {
   guide:    path.join(ROOT, "claudeos-core/guide"),
   database: path.join(ROOT, "claudeos-core/database"),
   mcpGuide: path.join(ROOT, "claudeos-core/mcp-guide"),
+  memory:   path.join(ROOT, "claudeos-core/memory"),
 };
 
 function rel(p) {
@@ -84,6 +85,7 @@ async function main() {
   const mf = {
     generatedAt: new Date().toISOString(),
     rules: [], standards: [], skills: [], guides: [], database: [], mcpGuide: [],
+    memory: [],
   };
 
   const scanTargets = [
@@ -93,6 +95,7 @@ async function main() {
     ["guides",   DIRS.guide],
     ["database", DIRS.database],
     ["mcpGuide", DIRS.mcpGuide],
+    ["memory",   DIRS.memory],
   ];
 
   for (const [key, dir] of scanTargets) {
@@ -117,8 +120,10 @@ async function main() {
     totalGuides:    mf.guides.length,
     totalDatabase:  mf.database.length,
     totalMcpGuide:  mf.mcpGuide.length,
+    totalMemory:    mf.memory.length,
     total: mf.rules.length + mf.standards.length + mf.skills.length +
-           mf.guides.length + mf.database.length + mf.mcpGuide.length,
+           mf.guides.length + mf.database.length + mf.mcpGuide.length +
+           mf.memory.length,
   };
   fs.writeFileSync(path.join(GEN, "rule-manifest.json"), JSON.stringify(mf, null, 2));
   console.log(`  ✅ rule-manifest.json — ${mf.summary.total} files indexed`);

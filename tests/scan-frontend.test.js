@@ -545,6 +545,412 @@ describe("countFrontendStats — non-standard paths", () => {
   });
 });
 
+// ─── Platform-root pattern (Block A) ────────────────────────
+
+describe("scanFrontendDomains — platform-root pattern", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("detects src/{platform}/{subapp}/ as `{platform}-{subapp}` domain", async () => {
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/components/Header.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/layouts/Main.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/hooks/useSession.ts"));
+    touch(path.join(tmp, "src/desktop/shop/App.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const d = frontendDomains.find(x => x.name === "desktop-shop");
+    assert.ok(d, `expected domain 'desktop-shop', got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.platform, "desktop");
+    assert.equal(d.subapp, "shop");
+    assert.equal(d.routes, 2);
+    assert.equal(d.components, 1);
+    assert.equal(d.layouts, 1);
+    assert.equal(d.hooks, 1);
+    assert.equal(d.totalFiles, 6);
+  });
+
+  it("handles multiple platforms sharing the same subapp name", async () => {
+    touch(path.join(tmp, "src/desktop/store/routes/Main.tsx"));
+    touch(path.join(tmp, "src/desktop/store/routes/Product.tsx"));
+    touch(path.join(tmp, "src/mobile/store/routes/Main.tsx"));
+    touch(path.join(tmp, "src/mobile/store/routes/Product.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("desktop-store"), `missing desktop-store in: ${names.join(", ")}`);
+    assert.ok(names.includes("mobile-store"), `missing mobile-store in: ${names.join(", ")}`);
+  });
+
+  it("detects 2-letter platform abbreviations (pc, mc, sp)", async () => {
+    touch(path.join(tmp, "src/pc/admin/routes/Users.tsx"));
+    touch(path.join(tmp, "src/pc/admin/routes/Roles.tsx"));
+    touch(path.join(tmp, "src/mc/admin/routes/Users.tsx"));
+    touch(path.join(tmp, "src/mc/admin/routes/Roles.tsx"));
+    touch(path.join(tmp, "src/sp/console/routes/Dashboard.tsx"));
+    touch(path.join(tmp, "src/sp/console/routes/Metrics.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("pc-admin"), `missing pc-admin in: ${names.join(", ")}`);
+    assert.ok(names.includes("mc-admin"), `missing mc-admin in: ${names.join(", ")}`);
+    assert.ok(names.includes("sp-console"), `missing sp-console in: ${names.join(", ")}`);
+  });
+
+  it("skips generic infrastructure subapp names (assets, common, shared, utils)", async () => {
+    touch(path.join(tmp, "src/desktop/assets/icon.tsx"));
+    touch(path.join(tmp, "src/desktop/common/helper.tsx"));
+    touch(path.join(tmp, "src/desktop/shared/types.ts"));
+    touch(path.join(tmp, "src/desktop/utils/format.ts"));
+    touch(path.join(tmp, "src/desktop/lib/x.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    for (const skipped of ["desktop-assets", "desktop-common", "desktop-shared", "desktop-utils", "desktop-lib"]) {
+      assert.ok(!names.includes(skipped), `should not emit ${skipped}, got: ${names.join(", ")}`);
+    }
+  });
+
+  it("allows `store` as subapp name (e-commerce projects)", async () => {
+    // `store` is NOT a structural/framework name, so it's a legitimate
+    // subapp name for e-commerce projects.
+    touch(path.join(tmp, "src/desktop/store/routes/Cart.tsx"));
+    touch(path.join(tmp, "src/desktop/store/routes/Checkout.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("desktop-store"), `desktop-store should be emitted, got: ${names.join(", ")}`);
+  });
+
+  it("detects access-tier platforms (admin, cms) with their subapps", async () => {
+    touch(path.join(tmp, "src/admin/console/routes/Users.tsx"));
+    touch(path.join(tmp, "src/admin/console/components/Nav.tsx"));
+    touch(path.join(tmp, "src/cms/editor/routes/Page.tsx"));
+    touch(path.join(tmp, "src/cms/editor/routes/Media.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("admin-console"), `admin-console should be emitted, got: ${names.join(", ")}`);
+    assert.ok(names.includes("cms-editor"), `cms-editor should be emitted, got: ${names.join(", ")}`);
+  });
+
+  it("`adm` is NOT a platform keyword (too ambiguous in isolation)", async () => {
+    touch(path.join(tmp, "src/adm/dashboard/routes/Home.tsx"));
+    touch(path.join(tmp, "src/adm/dashboard/routes/Settings.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("adm-dashboard"), `adm should not produce platform domain, got: ${names.join(", ")}`);
+  });
+
+  it("single-file subapp is skipped (noise floor)", async () => {
+    // A single .tsx file inside a platform/subapp is almost always accidental.
+    touch(path.join(tmp, "src/desktop/loner/solo.tsx"));
+    // Meanwhile, a 2-file sibling is kept.
+    touch(path.join(tmp, "src/desktop/real/routes/A.tsx"));
+    touch(path.join(tmp, "src/desktop/real/routes/B.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("desktop-loner"), `1-file subapp should be suppressed, got: ${names.join(", ")}`);
+    assert.ok(names.includes("desktop-real"), `2+ files should pass threshold, got: ${names.join(", ")}`);
+  });
+
+  it("platform scan coexists with components/* scan", async () => {
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+    // components scan requires >= 2 .tsx/.jsx/.vue files per dir.
+    touch(path.join(tmp, "src/components/my-button/MyButton.tsx"));
+    touch(path.join(tmp, "src/components/my-button/MyButtonIcon.tsx"));
+    touch(path.join(tmp, "src/components/my-modal/MyModal.tsx"));
+    touch(path.join(tmp, "src/components/my-modal/MyModalBody.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("desktop-shop"), `missing desktop-shop in: ${names.join(", ")}`);
+    assert.ok(names.includes("comp-my-button"), `missing comp-my-button in: ${names.join(", ")}`);
+    assert.ok(names.includes("comp-my-modal"), `missing comp-my-modal in: ${names.join(", ")}`);
+  });
+
+  it("unknown platform keyword does not match", async () => {
+    touch(path.join(tmp, "src/backend/foo/routes/x.tsx"));
+    touch(path.join(tmp, "src/backend/foo/routes/y.tsx"));
+    touch(path.join(tmp, "src/server/bar/routes/y.tsx"));
+    touch(path.join(tmp, "src/server/bar/routes/z.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("backend-foo"), `unexpected backend-foo in: ${names.join(", ")}`);
+    assert.ok(!names.includes("server-bar"), `unexpected server-bar in: ${names.join(", ")}`);
+  });
+
+  it("also runs for Angular projects", async () => {
+    // Angular uses .ts/.component.ts — platform scan globs {tsx,jsx,ts,js,vue}
+    // so Angular files are captured by this shared (framework-agnostic) scanner.
+    touch(path.join(tmp, "src/desktop/shop/routes/home.component.ts"));
+    touch(path.join(tmp, "src/desktop/shop/routes/cart.component.ts"));
+    touch(path.join(tmp, "src/desktop/shop/components/header.component.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "angular" }, tmp);
+    const d = frontendDomains.find(x => x.name === "desktop-shop");
+    assert.ok(d, `angular platform scan should emit desktop-shop, got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.routes, 2);
+    assert.equal(d.components, 1);
+  });
+
+  it("detects platform split in monorepo workspace (apps/<workspace>/src/<platform>/<subapp>/)", async () => {
+    // Typical Turborepo/pnpm workspace structure
+    touch(path.join(tmp, "apps/web-app/src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "apps/web-app/src/desktop/shop/routes/Cart.tsx"));
+    touch(path.join(tmp, "apps/web-app/src/mobile/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "apps/web-app/src/mobile/shop/routes/Cart.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("desktop-shop"), `monorepo desktop-shop should be emitted, got: ${names.join(", ")}`);
+    assert.ok(names.includes("mobile-shop"), `monorepo mobile-shop should be emitted, got: ${names.join(", ")}`);
+  });
+
+  it("detects monorepo layout without src/ wrapper (packages/<platform>/<subapp>/)", async () => {
+    // Some monorepos put platform at the workspace level directly under packages/
+    touch(path.join(tmp, "packages/desktop/admin/routes/Dashboard.tsx"));
+    touch(path.join(tmp, "packages/desktop/admin/routes/Users.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("desktop-admin"), `packages/<platform>/<subapp>/ should be detected, got: ${names.join(", ")}`);
+  });
+
+  it("realistic Angular layout: platform-split module with services/modules/pipes", async () => {
+    // Mimics a real Angular CLI project: angular.json + tsconfig + app modules
+    // under a platform root, with typical Angular file conventions.
+    touch(path.join(tmp, "angular.json"));
+    touch(path.join(tmp, "tsconfig.json"));
+    touch(path.join(tmp, "src/desktop/console/console.module.ts"));
+    touch(path.join(tmp, "src/desktop/console/console-routing.module.ts"));
+    touch(path.join(tmp, "src/desktop/console/routes/dashboard.component.ts"));
+    touch(path.join(tmp, "src/desktop/console/routes/dashboard.component.html"));
+    touch(path.join(tmp, "src/desktop/console/routes/users.component.ts"));
+    touch(path.join(tmp, "src/desktop/console/components/nav.component.ts"));
+    touch(path.join(tmp, "src/desktop/console/services/auth.service.ts"));
+    touch(path.join(tmp, "src/desktop/console/services/api.service.ts"));
+    touch(path.join(tmp, "src/desktop/console/guards/auth.guard.ts"));
+    touch(path.join(tmp, "src/desktop/console/pipes/format.pipe.ts"));
+    // test files should be excluded by TEST_FILE_IGNORE
+    touch(path.join(tmp, "src/desktop/console/routes/dashboard.component.spec.ts"));
+    touch(path.join(tmp, "src/desktop/console/services/auth.service.spec.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "angular" }, tmp);
+    const d = frontendDomains.find(x => x.name === "desktop-console");
+    assert.ok(d, `realistic Angular layout should emit desktop-console, got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.routes, 2, "routes should count 2 (excluding .spec.ts)");
+    assert.equal(d.components, 1, "components should count nav.component.ts");
+    // totalFiles excludes .html (not in {tsx,jsx,ts,js,vue}) AND excludes .spec.ts
+    // So we count: console.module.ts + console-routing.module.ts + dashboard.ts +
+    // users.ts + nav.ts + auth.service.ts + api.service.ts + auth.guard.ts + format.pipe.ts = 9
+    assert.equal(d.totalFiles, 9, `totalFiles should be 9, got ${d.totalFiles}`);
+  });
+
+  it("also runs for Vue/Nuxt projects", async () => {
+    touch(path.join(tmp, "src/mobile/shop/routes/Home.vue"));
+    touch(path.join(tmp, "src/mobile/shop/routes/Cart.vue"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "vue" }, tmp);
+    const d = frontendDomains.find(x => x.name === "mobile-shop");
+    assert.ok(d, `vue platform scan should emit mobile-shop, got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.routes, 2);
+  });
+
+  it("ignores build output / cache dirs (.next, .turbo, coverage, storybook-static, etc.)", async () => {
+    // Real source under platform root
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+    // Various build/cache dirs that must be excluded
+    touch(path.join(tmp, "src/desktop/shop/.next/build/chunk.js"));
+    touch(path.join(tmp, "src/desktop/shop/.nuxt/dist/client.js"));
+    touch(path.join(tmp, "src/desktop/shop/.angular/cache/compiled.ts"));
+    touch(path.join(tmp, "src/desktop/shop/.turbo/node-modules/leftover.ts"));
+    touch(path.join(tmp, "src/desktop/shop/coverage/lcov-report/prettify.js"));
+    touch(path.join(tmp, "src/desktop/shop/storybook-static/assets/iframe.js"));
+    touch(path.join(tmp, "src/desktop/shop/out/static/chunk.js"));
+    touch(path.join(tmp, "src/desktop/shop/.vercel/output/server.js"));
+    touch(path.join(tmp, "src/desktop/shop/.cache/parcel/bundle.js"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const d = frontendDomains.find(x => x.name === "desktop-shop");
+    assert.ok(d, `desktop-shop should still be detected, got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.totalFiles, 2, `build/cache files must not inflate count, got ${d.totalFiles}`);
+  });
+
+  it("ignores test file variants (spec/test/stories/e2e/cy/snapshots)", async () => {
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+    // Various test file variants that must be excluded
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.spec.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.test.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.stories.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.e2e.ts"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.cy.ts"));
+    touch(path.join(tmp, "src/desktop/shop/__snapshots__/Home.tsx.snap.ts"));
+    touch(path.join(tmp, "src/desktop/shop/__tests__/Home.helper.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const d = frontendDomains.find(x => x.name === "desktop-shop");
+    assert.ok(d, `desktop-shop should still be detected, got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.totalFiles, 2, `test files must not inflate count, got ${d.totalFiles}`);
+  });
+
+  it("primary + platform scan do NOT double-count the same dir", async () => {
+    // Create a structure where both the components/* scan AND the platform
+    // scan could theoretically fire. The SKIP list (containing "components"
+    // at the subapp level) prevents duplication: the components scan emits
+    // `comp-{name}`, and the platform scan sees `subapp=components` → skip.
+    touch(path.join(tmp, "src/desktop/components/my-widget/A.tsx"));
+    touch(path.join(tmp, "src/desktop/components/my-widget/B.tsx"));
+    // Also a real platform/subapp pair that should emit cleanly
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    // components scan: emits comp-my-widget (via src/*/components/*)
+    assert.ok(names.includes("comp-my-widget"), `missing comp-my-widget in: ${names.join(", ")}`);
+    // platform scan: must NOT also emit `desktop-components` for the same files
+    assert.ok(!names.includes("desktop-components"), `should not double-emit components as desktop-components, got: ${names.join(", ")}`);
+    // platform scan for the real subapp
+    assert.ok(names.includes("desktop-shop"), `missing desktop-shop in: ${names.join(", ")}`);
+  });
+
+  it("`.claudeos-scan.json` adds custom platform keywords", async () => {
+    fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), JSON.stringify({
+      frontendScan: { platformKeywords: ["kiosk"] },
+    }));
+    touch(path.join(tmp, "src/kiosk/register/routes/Checkout.tsx"));
+    touch(path.join(tmp, "src/kiosk/register/routes/Payment.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("kiosk-register"), `custom platform kiosk should be honored, got: ${names.join(", ")}`);
+  });
+
+  it("`.claudeos-scan.json` adds custom skip subapp names", async () => {
+    fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), JSON.stringify({
+      frontendScan: { skipSubappNames: ["legacy"] },
+    }));
+    touch(path.join(tmp, "src/desktop/legacy/routes/OldPage.tsx"));
+    touch(path.join(tmp, "src/desktop/legacy/routes/OldList.tsx"));
+    touch(path.join(tmp, "src/desktop/modern/routes/NewPage.tsx"));
+    touch(path.join(tmp, "src/desktop/modern/routes/NewList.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("desktop-legacy"), `legacy should be skipped via override, got: ${names.join(", ")}`);
+    assert.ok(names.includes("desktop-modern"), `modern subapp should still emit`);
+  });
+
+  it("`.claudeos-scan.json` overrides minSubappFiles threshold", async () => {
+    fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), JSON.stringify({
+      frontendScan: { minSubappFiles: 3 },
+    }));
+    touch(path.join(tmp, "src/desktop/small/routes/A.tsx"));
+    touch(path.join(tmp, "src/desktop/small/routes/B.tsx"));
+    touch(path.join(tmp, "src/desktop/large/routes/A.tsx"));
+    touch(path.join(tmp, "src/desktop/large/routes/B.tsx"));
+    touch(path.join(tmp, "src/desktop/large/routes/C.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("desktop-small"), `2-file subapp should be below threshold=3, got: ${names.join(", ")}`);
+    assert.ok(names.includes("desktop-large"), `3-file subapp should pass threshold=3`);
+  });
+
+  it("malformed `.claudeos-scan.json` falls back to defaults", async () => {
+    fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), "{ not valid json");
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("desktop-shop"), `defaults should apply on malformed config, got: ${names.join(", ")}`);
+  });
+
+  it("detects deeply nested files under a platform subapp (Windows path regression)", async () => {
+    // Regression: glob returns backslash paths without trailing slash on
+    // Windows; the pattern `${dir}**/*.tsx` only matched 1 level deep
+    // (foo/X.tsx) but not nested paths (foo/routes/X.tsx). dirGlobPrefix
+    // now ensures `${dir}/**/*.tsx` is used, matching any depth.
+    touch(path.join(tmp, "src/desktop/shop/App.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/index.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/routes/nested/Deep.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/components/ui/Button.tsx"));
+    touch(path.join(tmp, "src/desktop/shop/components/form/Field.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const d = frontendDomains.find(x => x.name === "desktop-shop");
+    assert.ok(d, `desktop-shop should be detected with nested files`);
+    assert.equal(d.totalFiles, 6, `all nested files should be counted, got ${d.totalFiles}`);
+  });
+
+  it("empty subapp dir (no source files) produces no domain", async () => {
+    fs.mkdirSync(path.join(tmp, "src/desktop/empty-app"), { recursive: true });
+    touch(path.join(tmp, "src/desktop/real-app/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/real-app/routes/Cart.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("desktop-empty-app"), `empty app should not produce domain`);
+    assert.ok(names.includes("desktop-real-app"), `real-app should produce domain`);
+  });
+});
+
+// ─── Deep routes-file fallback (Block B / Fallback E) ───────
+
+describe("scanFrontendDomains — Fallback E (deep routes file)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("extracts domain from routes parent dir when primary returns 0", async () => {
+    touch(path.join(tmp, "packages/main-app/routes/Login.tsx"));
+    touch(path.join(tmp, "packages/main-app/routes/Home.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const d = frontendDomains.find(x => x.name === "main-app");
+    assert.ok(d, `expected 'main-app', got: ${frontendDomains.map(x => x.name).join(", ")}`);
+    assert.equal(d.routes, 2);
+    assert.equal(d.totalFiles, 2);
+  });
+
+  it("skips generic parent names (src, app, pages)", async () => {
+    touch(path.join(tmp, "deeply/nested/src/routes/Home.tsx"));
+    touch(path.join(tmp, "deeply/nested/app/routes/Home.tsx"));
+    touch(path.join(tmp, "deeply/nested/pages/routes/Home.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(!names.includes("src"), `should not emit 'src' domain in: ${names.join(", ")}`);
+    assert.ok(!names.includes("app"), `should not emit 'app' domain in: ${names.join(", ")}`);
+    assert.ok(!names.includes("pages"), `should not emit 'pages' domain in: ${names.join(", ")}`);
+  });
+
+  it("does NOT fire when primary returns domains", async () => {
+    // components/* scan returns 1 domain → fallback chain should not run
+    touch(path.join(tmp, "src/components/my-widget/A.tsx"));
+    touch(path.join(tmp, "src/components/my-widget/B.tsx"));
+    // also add a routes/ structure that would match fallback E
+    touch(path.join(tmp, "other-app/routes/X.tsx"));
+    touch(path.join(tmp, "other-app/routes/Y.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("comp-my-widget"), `should include comp-my-widget`);
+    assert.ok(!names.includes("other-app"), `fallback E should not fire when primary populated: got ${names.join(", ")}`);
+  });
+});
+
 // ─── No frontend ────────────────────────────────────────────
 
 describe("scanFrontendDomains — no frontend", () => {

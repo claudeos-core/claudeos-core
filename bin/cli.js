@@ -5,12 +5,13 @@
  *
  * Node.js replacement for bootstrap.sh with cross-platform support.
  * Usage:
- *   npx claudeos-core init --lang ko  ← Run 3-Pass pipeline (Korean output)
+ *   npx claudeos-core init --lang ko  ← Run 4-Pass pipeline (Korean output)
  *   npx claudeos-core init            ← Interactive language selection
  *   npx claudeos-core health          ← Run health checker
  *   npx claudeos-core validate        ← Run plan validator (--check)
  *   npx claudeos-core restore         ← Restore from Master Plan
  *   npx claudeos-core refresh         ← Sync disk → Plan
+ *   npx claudeos-core memory <sub>    ← L4 memory (compact/score/propose-rules)
  *   npx claudeos-core --help          ← Show help
  *
  * Also works when cloned directly:
@@ -20,6 +21,7 @@
 const path = require("path");
 const { TOOLS_DIR, PROJECT_ROOT, log, run, readFile } = require("./lib/cli-utils");
 const { cmdInit, InitError } = require("./commands/init");
+const { cmdMemory } = require("./commands/memory");
 
 // Set env var so sub-tools (plan-installer, etc.) correctly resolve the project root
 process.env.CLAUDEOS_ROOT = PROJECT_ROOT;
@@ -50,11 +52,12 @@ Usage:
   claudeos-core <command>
 
 Commands:
-  init        Run the full 3-Pass pipeline (analyze → merge → generate)
-  health      Run all verification tools (health checker)
-  validate    Check Plan ↔ disk consistency
-  refresh     Sync disk changes → Master Plan
-  restore     Restore all files from Master Plan
+  init               Run the full 4-Pass pipeline (analyze → merge → generate → memory scaffold)
+  health             Run all verification tools (health checker)
+  validate           Check Plan ↔ disk consistency
+  refresh            Sync disk changes → Master Plan
+  restore            Restore all files from Master Plan
+  memory <sub>       L4 memory:  compact | score | propose-rules
 
 Options:
   --lang CODE Output language for generated files (required for init)
@@ -122,6 +125,7 @@ const commands = {
   validate: cmdValidate,
   restore: cmdRestore,
   refresh: cmdRefresh,
+  memory: () => cmdMemory(parsedArgs),
 };
 
 if (!commands[command]) {

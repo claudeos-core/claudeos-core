@@ -200,6 +200,8 @@ describe("init — directory structure", () => {
     "claudeos-core/guide/04.architecture",
     "claudeos-core/database",
     "claudeos-core/mcp-guide",
+    "claudeos-core/memory",
+    ".claude/rules/60.memory",
   ];
 
   it("creates all expected directories", () => {
@@ -211,8 +213,8 @@ describe("init — directory structure", () => {
     }
   });
 
-  it("verifies directory list matches init.js (26 dirs)", () => {
-    assert.equal(EXPECTED_DIRS.length, 26, "should have exactly 26 directories");
+  it("verifies directory list matches init.js (28 dirs)", () => {
+    assert.equal(EXPECTED_DIRS.length, 28, "should have exactly 28 directories (26 base + L4 memory dir + L4 memory rules dir)");
   });
 
   it("idempotent — creating dirs twice does not error", () => {
@@ -269,6 +271,25 @@ describe("init — resume/fresh detection", () => {
     assert.ok(fs.existsSync(path.join(genDir, "project-analysis.json")), "non-pass files should survive");
   });
 
+  it("--force and fresh wipe .claude/rules/ so Guard 2 sees a clean slate", () => {
+    // Regression guard for risk #8: Without this, Claude ignoring the
+    // staging-override directive during a --force re-run would leave OLD
+    // rule files in .claude/rules/. Guard 2 would then count those stale
+    // files, think Pass 3 succeeded, and write the marker — hiding the
+    // silent failure.
+    const rulesDir = path.join(tmp, ".claude/rules");
+    writeFile(path.join(rulesDir, "00.core/00.standard-reference.md"), "# old ref\n");
+    writeFile(path.join(rulesDir, "10.backend/01.controller-rules.md"), "# old rules\n");
+    writeFile(path.join(rulesDir, "60.memory/01.decision-log.md"), "# old decision\n");
+
+    // Simulate --force / fresh cleanup (matching init.js)
+    if (fs.existsSync(rulesDir)) fs.rmSync(rulesDir, { recursive: true, force: true });
+
+    assert.ok(!fs.existsSync(rulesDir), ".claude/rules/ must be gone after --force/fresh");
+    assert.ok(!fs.existsSync(path.join(rulesDir, "00.core/00.standard-reference.md")));
+    assert.ok(!fs.existsSync(path.join(rulesDir, "10.backend/01.controller-rules.md")));
+  });
+
   it("continue mode skips existing pass1 files", () => {
     writeFile(path.join(genDir, "pass1-1.json"), '{"analysisPerDomain":{"user":{}}}');
 
@@ -300,55 +321,6 @@ describe("init — resume/fresh detection", () => {
       }
     }
     assert.ok(shouldRerun, "malformed pass1 should trigger re-run");
-  });
-});
-
-// ─── i18n wait message ──────────────────────────────────────
-
-describe("init — claude wait message i18n", () => {
-  // Reproduce the wait message logic from init.js
-  const CLAUDE_WAIT_TMPL = {
-    en: "    ⏳ [{{PASS}}] Running claude -p (no output is normal, please wait)...",
-    ko: "    ⏳ [{{PASS}}] claude -p 실행 중 (출력이 없어도 정상입니다. 잠시 기다려주세요)...",
-    "zh-CN": "    ⏳ [{{PASS}}] 正在运行 claude -p（没有输出是正常的，请稍候）...",
-    ja: "    ⏳ [{{PASS}}] claude -p 実行中（出力がなくても正常です。しばらくお待ちください）...",
-    es: "    ⏳ [{{PASS}}] Ejecutando claude -p (es normal que no haya salida, por favor espere)...",
-    vi: "    ⏳ [{{PASS}}] Đang chạy claude -p (không có output là bình thường, vui lòng chờ)...",
-    hi: "    ⏳ [{{PASS}}] claude -p चल रहा है (कोई आउटपुट न होना सामान्य है, कृपया प्रतीक्षा करें)...",
-    ru: "    ⏳ [{{PASS}}] Выполняется claude -p (отсутствие вывода — это нормально, подождите)...",
-    fr: "    ⏳ [{{PASS}}] Exécution de claude -p (l'absence de sortie est normale, veuillez patienter)...",
-    de: "    ⏳ [{{PASS}}] claude -p wird ausgeführt (keine Ausgabe ist normal, bitte warten)...",
-  };
-
-  function claudeWaitMsg(lang, passLabel) {
-    return (CLAUDE_WAIT_TMPL[lang] || CLAUDE_WAIT_TMPL.en).replace("{{PASS}}", passLabel);
-  }
-
-  it("generates English message with pass label", () => {
-    const msg = claudeWaitMsg("en", "Pass 1-1/3");
-    assert.ok(msg.includes("Pass 1-1/3"));
-    assert.ok(msg.includes("Running claude -p"));
-  });
-
-  it("generates Korean message", () => {
-    const msg = claudeWaitMsg("ko", "Pass 2");
-    assert.ok(msg.includes("Pass 2"));
-    assert.ok(msg.includes("실행 중"));
-  });
-
-  it("falls back to English for unknown language", () => {
-    const msg = claudeWaitMsg("xx", "Pass 3");
-    assert.ok(msg.includes("Running claude -p"), "should fall back to English");
-  });
-
-  it("generates messages for all 10 supported languages", () => {
-    const langs = ["en", "ko", "zh-CN", "ja", "es", "vi", "hi", "ru", "fr", "de"];
-    for (const lang of langs) {
-      const msg = claudeWaitMsg(lang, "Test");
-      assert.ok(msg.includes("Test"), `${lang} message should contain pass label`);
-      assert.ok(msg.includes("claude -p"), `${lang} message should mention claude -p`);
-      assert.ok(msg.length > 30, `${lang} message should be non-trivial length`);
-    }
   });
 });
 

@@ -38,7 +38,7 @@
     "validate": "node bin/cli.js validate",
     "refresh": "node bin/cli.js refresh",
     "restore": "node bin/cli.js restore",
-    "test": "node --test tests/*.test.js",
+    "test": "node --test",
     "test:health": "node health-checker/index.js"
   },
   "keywords": [

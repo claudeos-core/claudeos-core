@@ -5,6 +5,7 @@
 ### Fixed
 
 - **CI tests failing on all OS/Node combinations** — `.gitignore` no longer excludes `package-lock.json`. The GitHub Actions workflow uses `actions/setup-node` with `cache: 'npm'` and `npm ci`, both of which require a committed lockfile; without it, all 6 matrix jobs (Ubuntu/macOS/Windows × Node 18/20) failed at the install step with `Dependencies lock file is not found`.
+- **`npm test` script not cross-platform** — Changed `node --test tests/*.test.js` → `node --test` in `package.json`. The `*.test.js` glob was expanded by `sh` on Linux/macOS but left literal by `cmd.exe` on Windows runners, causing `Could not find 'D:\a\...\tests\*.test.js'` on all 3 Windows matrix jobs. The `node --test` built-in auto-discovery matches `**/*.test.{cjs,mjs,js}` from cwd (skipping `node_modules`), independent of shell globbing.
 
 ### Changed
 

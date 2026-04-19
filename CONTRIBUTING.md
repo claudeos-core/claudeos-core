@@ -42,7 +42,7 @@ npm test   # 489 tests, ~2s
 
 ## Testing
 
-- **Runner:** built-in Node test runner (`node --test tests/*.test.js`), no Jest/Mocha dependency.
+- **Runner:** built-in Node test runner (`node --test`), no Jest/Mocha dependency.
 - **Current:** 489 tests across 24 files. CI runs the full matrix (ubuntu × windows × macOS × Node 18/20).
 - **Offline / no `claude` CLI:** the 5 tests in `tests/lang-aware-fallback.test.js` assert that translation throws when Claude is unavailable. The test file sets `process.env.CLAUDEOS_SKIP_TRANSLATION = "1"` at module top to make this deterministic regardless of CLI availability. CI also sets it at the job level in `.github/workflows/test.yml`.
 - **Adding new tests:** prefer a dedicated file (`tests/your-feature.test.js`). Use `os.tmpdir()` + `fs.rmSync(dir, {recursive: true, force: true})` cleanup, consistent with existing suites (see `tests/pass3-guards.test.js` for the canonical pattern).

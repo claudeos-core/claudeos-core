@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.2] — 2026-04-20
+
+### Fixed
+
+- **Upgrade-path silent-skip regression for pre-v2.0.0 projects** — `npx claudeos-core health` permanently reported `content-validator: fail` with 9 × MISSING guide errors on projects that had been initialized on a pre-v2.0.0 release and then upgraded. Pass 3 wrote `pass3-complete.json` before the Pass 3 output-completeness guards (H1/H2) existed, so the marker was valid-looking on disk even though `claudeos-core/guide/` (and sometimes `standard/00.core/01.project-overview.md`, `skills/`, or `plan/`) had never been populated. On subsequent runs, `init.js` observed the marker + an existing CLAUDE.md, skipped Pass 3, and never regenerated the missing outputs — leaving the project in a stuck-fail state that only `--force` (which wipes `.claude/rules/` and loses manual edits) could recover. The Pass 3 stale-marker branch in `bin/commands/init.js` previously only detected externally-deleted CLAUDE.md; it now also drops the marker when any entry in `lib/expected-guides.js` is missing/BOM-aware-empty or when `findMissingOutputs()` (`lib/expected-outputs.js`) flags a missing standard sentinel / `skills/` / `plan/`. Mirrors the existing `dropStalePass4Marker` pattern (symmetric helper `dropStalePass3Marker` added) and reuses the same "unlink failure surfaces as `InitError` with Windows AV/file-lock guidance" contract so the recovery itself can't silently regress. Recovery is one-shot: next `init` re-runs Pass 3, which populates the missing outputs and writes a fresh marker gated by the v2.0.0 H1/H2 guards.
+
+### Added
+
+- **`tests/pass3-marker.test.js`** — Six new cases covering the stale-detection branches: (a) missing guide dir → drop, (b) single BOM-only guide file → drop, (c) guides present but `skills/` gone → drop, (d) guides present but standard sentinel missing → drop, (e) complete state preserves marker, (f) `init.js` source-parity tripwire asserting `dropStalePass3Marker` + both `EXPECTED_GUIDE_FILES` and `findMissingOutputs` references appear in the stale-check region (guards against refactors silently regressing to v2.0.1 behavior).
+
 ## [2.0.1] — 2026-04-19
 
 ### Fixed

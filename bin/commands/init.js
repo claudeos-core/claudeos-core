@@ -461,16 +461,28 @@ async function cmdInit(parsedArgs) {
     }
   }
 
-  // Stale marker detection: if marker exists but CLAUDE.md was deleted externally,
-  // treat marker as stale and re-run (user clearly wants regeneration).
+  // Stale marker detection (Pass 3). Drops the marker and re-runs Pass 3 if
+  // any of the following is true:
+  //   (a) CLAUDE.md was deleted externally (original check),
+  //   (b) any of EXPECTED_GUIDE_FILES is missing or BOM-aware empty,
+  //   (c) any entry in expected-outputs (standard sentinel / skills / plan) is
+  //       missing or empty.
   //
-  // Unlink is surfaced as InitError on failure (symmetric with Pass 4
-  // dropStalePass4Marker). Silently ignoring the error would leave the stale
-  // marker in place, and the `if (fileExists(pass3Marker))` check below would
-  // accept it — skipping Pass 3 while CLAUDE.md is still missing. That
-  // silent-skip is the exact bug class this audit round closes.
-  if (fileExists(pass3Marker) && !fileExists(claudeMdPath)) {
-    log("    ⚠️  pass3-complete.json exists but CLAUDE.md is missing — treating marker as stale, re-running Pass 3");
+  // (b) and (c) were previously only enforced as Pass 3 post-generation Guards
+  // 3 (H2/H1), which gate marker *creation* on fresh runs. Projects that were
+  // initialized on a pre-v2.0.0 release (before those guards existed) can end
+  // up with a marker on disk even though guide/ or standard/skills/plan are
+  // empty. Without this stale check, such projects hit a permanent
+  // content-validator fail loop because init sees the marker and skips Pass 3
+  // forever. This mirrors the Pass 4 dropStalePass4Marker pattern below.
+  //
+  // Unlink is surfaced as InitError on failure (symmetric with Pass 4).
+  // Silently ignoring the error would leave the stale marker in place, and
+  // the `if (fileExists(pass3Marker))` check below would accept it — skipping
+  // Pass 3 while outputs are still incomplete. That silent-skip is the exact
+  // bug class this audit round closes.
+  function dropStalePass3Marker(reasonLog) {
+    log(reasonLog);
     try { fs.unlinkSync(pass3Marker); } catch (e) {
       log(`    ❌ Failed to delete stale pass3-complete.json: ${e.code || e.message}`);
       throw new InitError(
@@ -478,6 +490,32 @@ async function cmdInit(parsedArgs) {
         `    The file is likely locked by another process (Windows antivirus or a file-watcher).\n` +
         `    Close any editor/AV scanner holding the file and re-run \`npx claudeos-core init\`.`
       );
+    }
+  }
+  if (fileExists(pass3Marker)) {
+    if (!fileExists(claudeMdPath)) {
+      dropStalePass3Marker("    ⚠️  pass3-complete.json exists but CLAUDE.md is missing — treating marker as stale, re-running Pass 3");
+    } else {
+      const guideDirForStale = path.join(PROJECT_ROOT, "claudeos-core/guide");
+      const staleMissingGuides = EXPECTED_GUIDE_FILES.filter(g => {
+        const fp = path.join(guideDirForStale, g);
+        if (!fileExists(fp)) return true;
+        try {
+          return fs.readFileSync(fp, "utf-8").replace(/^\uFEFF/, "").trim().length === 0;
+        } catch (_e) { return true; }
+      });
+      if (staleMissingGuides.length > 0) {
+        dropStalePass3Marker(
+          `    ⚠️  pass3-complete.json exists but ${staleMissingGuides.length}/${EXPECTED_GUIDE_FILES.length} guide files are missing or empty — treating marker as stale, re-running Pass 3`
+        );
+      } else {
+        const staleMissingOutputs = findMissingOutputs(PROJECT_ROOT);
+        if (staleMissingOutputs.length > 0) {
+          dropStalePass3Marker(
+            `    ⚠️  pass3-complete.json exists but ${staleMissingOutputs.length} required output(s) are missing or empty — treating marker as stale, re-running Pass 3`
+          );
+        }
+      }
     }
   }
 

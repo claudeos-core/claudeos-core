@@ -167,6 +167,157 @@ test("fresh/--force gate: backfill guard must NOT fire when wasFreshClean is tru
   fs.rmSync(d, { recursive: true, force: true });
 });
 
+// ─── Pass 3 stale-marker recovery (v2.0.2) ──────────────────────────────
+// Projects initialized before v2.0.0 could end up with a valid-looking
+// pass3-complete.json marker on disk even though guide/ or standard/skills/
+// plan/ were empty — the output-completeness guards only existed starting in
+// v2.0.0. Without stale-detection on these outputs, `init` forever skips
+// Pass 3 on those projects and `health` forever fails. The recovery is a
+// direct mirror of the Pass 4 `dropStalePass4Marker` pattern.
+
+const { EXPECTED_GUIDE_FILES } = require("../lib/expected-guides");
+const { findMissingOutputs } = require("../lib/expected-outputs");
+
+function setupValidPass3Outputs(d) {
+  const G = path.join(d, "claudeos-core/generated");
+  fs.mkdirSync(G, { recursive: true });
+  const marker = path.join(G, "pass3-complete.json");
+  fs.writeFileSync(marker, JSON.stringify({ completedAt: new Date().toISOString() }, null, 2));
+  fs.writeFileSync(path.join(d, "CLAUDE.md"), "# Project");
+  // All 9 guide files with non-empty content
+  const guideDir = path.join(d, "claudeos-core/guide");
+  for (const rel of EXPECTED_GUIDE_FILES) {
+    const fp = path.join(guideDir, rel);
+    fs.mkdirSync(path.dirname(fp), { recursive: true });
+    fs.writeFileSync(fp, "# " + rel);
+  }
+  // Expected outputs: standard sentinel + skills + plan
+  const coreDir = path.join(d, "claudeos-core/standard/00.core");
+  fs.mkdirSync(coreDir, { recursive: true });
+  fs.writeFileSync(path.join(coreDir, "01.project-overview.md"), "# overview");
+  const skillsDir = path.join(d, "claudeos-core/skills/10.backend-crud");
+  fs.mkdirSync(skillsDir, { recursive: true });
+  fs.writeFileSync(path.join(skillsDir, "orchestrator.md"), "# skill");
+  const planDir = path.join(d, "claudeos-core/plan");
+  fs.mkdirSync(planDir, { recursive: true });
+  fs.writeFileSync(path.join(planDir, "10.standard-master.md"), "# plan");
+  return { marker, guideDir };
+}
+
+// Replicates init.js Pass 3 stale-marker logic. Mirrors the production code
+// in bin/commands/init.js so these tests stay meaningful even if the init
+// module isn't importable in a pure unit context (it runs side-effects on load).
+function runPass3StaleCheck(d) {
+  const marker = path.join(d, "claudeos-core/generated/pass3-complete.json");
+  const claudeMd = path.join(d, "CLAUDE.md");
+  if (!fs.existsSync(marker)) return { dropped: false, reason: null };
+  if (!fs.existsSync(claudeMd)) {
+    fs.unlinkSync(marker);
+    return { dropped: true, reason: "claude-md-missing" };
+  }
+  const guideDir = path.join(d, "claudeos-core/guide");
+  const missingGuides = EXPECTED_GUIDE_FILES.filter(g => {
+    const fp = path.join(guideDir, g);
+    if (!fs.existsSync(fp)) return true;
+    try {
+      return fs.readFileSync(fp, "utf-8").replace(/^\uFEFF/, "").trim().length === 0;
+    } catch (_e) { return true; }
+  });
+  if (missingGuides.length > 0) {
+    fs.unlinkSync(marker);
+    return { dropped: true, reason: "guides-missing", count: missingGuides.length };
+  }
+  const missingOutputs = findMissingOutputs(d);
+  if (missingOutputs.length > 0) {
+    fs.unlinkSync(marker);
+    return { dropped: true, reason: "outputs-missing", count: missingOutputs.length };
+  }
+  return { dropped: false, reason: null };
+}
+
+test("stale pass3 marker: CLAUDE.md present but guide files missing → drop marker", () => {
+  const d = tmpDir();
+  const { marker, guideDir } = setupValidPass3Outputs(d);
+  // Remove all guide files to simulate pre-v2.0.0 project state
+  fs.rmSync(guideDir, { recursive: true, force: true });
+
+  const result = runPass3StaleCheck(d);
+  assert.equal(result.dropped, true);
+  assert.equal(result.reason, "guides-missing");
+  assert.ok(!fs.existsSync(marker), "marker should be removed when guides are missing");
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("stale pass3 marker: one guide file BOM-only-empty → drop marker", () => {
+  const d = tmpDir();
+  const { marker, guideDir } = setupValidPass3Outputs(d);
+  // BOM-only file (3 bytes, no real content) — content-validator treats as empty
+  fs.writeFileSync(path.join(guideDir, EXPECTED_GUIDE_FILES[0]), "\uFEFF");
+
+  const result = runPass3StaleCheck(d);
+  assert.equal(result.dropped, true);
+  assert.equal(result.reason, "guides-missing");
+  assert.equal(result.count, 1);
+  assert.ok(!fs.existsSync(marker));
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("stale pass3 marker: guides present but skills/ empty → drop marker", () => {
+  const d = tmpDir();
+  const { marker } = setupValidPass3Outputs(d);
+  // Remove skills/ to simulate post-guide truncation
+  fs.rmSync(path.join(d, "claudeos-core/skills"), { recursive: true, force: true });
+
+  const result = runPass3StaleCheck(d);
+  assert.equal(result.dropped, true);
+  assert.equal(result.reason, "outputs-missing");
+  assert.ok(!fs.existsSync(marker));
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("stale pass3 marker: guides present but standard sentinel missing → drop marker", () => {
+  const d = tmpDir();
+  const { marker } = setupValidPass3Outputs(d);
+  fs.unlinkSync(path.join(d, "claudeos-core/standard/00.core/01.project-overview.md"));
+
+  const result = runPass3StaleCheck(d);
+  assert.equal(result.dropped, true);
+  assert.equal(result.reason, "outputs-missing");
+  assert.ok(!fs.existsSync(marker));
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("valid pass3 marker: CLAUDE.md + all guides + all outputs present → preserve", () => {
+  const d = tmpDir();
+  const { marker } = setupValidPass3Outputs(d);
+
+  const result = runPass3StaleCheck(d);
+  assert.equal(result.dropped, false);
+  assert.ok(fs.existsSync(marker), "complete project state must preserve marker");
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("init.js source parity: dropStalePass3Marker helper + guide-stale + outputs-stale branches present", () => {
+  // Guard against refactors that accidentally drop the stale-check branches
+  // added in v2.0.2. If the helper or either sub-branch disappears from
+  // init.js, the runtime behavior silently regresses to v2.0.1 (permanent
+  // skip on pre-v2.0.0 projects) — this test is the tripwire.
+  const src = fs.readFileSync(path.join(__dirname, "..", "bin/commands/init.js"), "utf-8");
+  assert.ok(src.includes("dropStalePass3Marker"),
+    "init.js must define the dropStalePass3Marker helper (symmetric with dropStalePass4Marker)");
+  assert.ok(src.includes("EXPECTED_GUIDE_FILES"),
+    "init.js must use EXPECTED_GUIDE_FILES in the stale-check branch");
+  assert.ok(src.includes("findMissingOutputs"),
+    "init.js must use findMissingOutputs in the stale-check branch");
+  // Also guarantee both helpers are invoked from the stale-check region
+  // (not just from Guard 3 after Pass 3 runs).
+  const staleRegionMatch = src.match(/dropStalePass3Marker[\s\S]*?completedSteps\+\+/);
+  assert.ok(staleRegionMatch, "dropStalePass3Marker must appear before the Pass 3 skip/run branch");
+  const region = staleRegionMatch[0];
+  assert.ok(region.includes("EXPECTED_GUIDE_FILES") && region.includes("findMissingOutputs"),
+    "stale-check region must reference both guide files and expected outputs");
+});
+
 test("--force equivalent: unlinking all *.json in generated/ clears markers", () => {
   const d = tmpDir();
   const G = path.join(d, "claudeos-core/generated");

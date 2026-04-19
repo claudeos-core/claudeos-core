@@ -1,6 +1,6 @@
 {
   "name": "claudeos-core",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Auto-generate Claude Code documentation from your actual source code — Standards, Rules, Skills, and Guides tailored to your project",
   "main": "bin/cli.js",
   "bin": {

@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.1.1] — 2026-04-20
+
+Docs-only maintenance release. No runtime behavior or API changes.
+
+### Changed
+
+- **README: dropped `What's New in v2.1.0` section** from all 10 language
+  READMEs (`README.md`, `README.ko.md`, `README.ja.md`, `README.zh-CN.md`,
+  `README.es.md`, `README.vi.md`, `README.hi.md`, `README.ru.md`,
+  `README.fr.md`, `README.de.md`). Post-release cleanup — the section's
+  job is done once the release ships, and the same content is preserved
+  in `CHANGELOG.md` for anyone who wants the historical detail.
+
+- **README: dropped the `Real production case: 18-domain admin frontend
+  (2026-04-20)` subsection** under _Auto-scaling by Project Size_ across
+  all 10 language READMEs. The per-stage breakdown table (9 rows) and its
+  surrounding prose are removed. The trailing empirical reference in the
+  FAQ "What is Pass 3 split mode" answer (the `Empirically verified up
+  to 18 domains × 101 files × 102 minutes …` sentence with its now-dead
+  link) is also removed so no orphan reference remains.
+
+### Notes
+
+- Each README drops ~33 lines; total net change across translations is
+  ~330 lines removed. No code, tests, prompts, or generated artifacts
+  are touched — `npm pack` contents are identical to v2.1.0 apart from
+  the README files and `package.json`/`package-lock.json` version bump.
+
+---
+
 ## [2.1.0] — 2026-04-20
 
 This release addresses the primary cause of `Prompt is too long` failures in

@@ -12,20 +12,6 @@ ClaudeOS-Core आपका कोडबेस पढ़ता है, हर प
 
 ---
 
-## v2.1.0 में नया क्या है
-
-v2.1.0 मध्यम-से-बड़े प्रोजेक्ट्स पर `Prompt is too long` विफलताओं को हटाने के लिए Pass 3 को फिर से डिज़ाइन करता है। पहले, एक सिंगल Pass 3 कॉल को पूरे डॉक्यूमेंटेशन ट्री को एक साथ emit करना होता था — `CLAUDE.md`, rules, standards, skills, और guides के बीच दर्जनों फ़ाइलें — और संचित आउटपुट ~5 डोमेन के बाद विश्वसनीय रूप से context window को पार कर जाता था। यह फ़िक्स संरचनात्मक है, prompt tweak नहीं:
-
-- **Pass 3 split mode** (हमेशा सक्रिय) — Pass 3 को क्रमिक `claude -p` कॉल्स में तोड़ दिया गया है (`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`)। हर stage एक **नए context window** के साथ शुरू होता है, इसलिए प्रोजेक्ट आकार की परवाह किए बिना output-accumulation overflow अब संरचनात्मक रूप से असंभव है।
-- **Stages के बीच fact sheet** — Stage `3a` Pass 2 विश्लेषण को एक बार पढ़ता है और उसे 5–10 KB के `pass3a-facts.md` में distil करता है। बाद के सभी stages 100–500 KB `pass2-merged.json` को दोबारा पढ़ने के बजाय इस fact sheet को reference करते हैं, जिससे नए contexts के बीच cross-file consistency संरक्षित रहती है।
-- **Batch sub-division** (≥16 डोमेन पर automatic) — Stages 3b/3c को आगे 15 डोमेन प्रति batch में विभाजित किया जाता है, जिससे हर stage का output ~50 फ़ाइलें से नीचे रहता है। 18-डोमेन React 19 + Vite 6 admin frontend **102 मिनट में 101 फ़ाइलें 8 stages पर जेनरेट, शून्य overflow विफलता** के साथ पूर्ण (वास्तविक production run, 2026-04-20)।
-- **Master plan generation हटाया गया** — `claudeos-core/plan/*-master.md` फ़ाइलें अब जेनरेट नहीं होतीं। Master plans एक आंतरिक backup थे जिन्हें Claude Code runtime पर नहीं पढ़ता था, और Pass 3d में उन्हें aggregate करना overflow का एक प्रमुख कारण था। इसके बजाय backup/restore के लिए `git` का उपयोग करें।
-- **Pass 4 gap-fill: `skills/00.shared/MANIFEST.md`** — यदि Pass 3c skill registry को omit कर देता है (skill-sparse प्रोजेक्ट्स), तो Pass 4 अब स्वतः एक stub बनाता है ताकि `.claude/rules/50.sync/03.skills-sync.md` कभी dangling फ़ाइल को न point करे।
-
-कुछ छोटे फ़िक्स: `memory --help` अब memory subcommand help दिखाता है (पहले top-level दिखता था); `memory score` अब duplicate `importance` लाइनें नहीं छोड़ता; `memory compact` summary markers अब proper markdown list items हैं। पूरी जानकारी: [CHANGELOG.md](./CHANGELOG.md)।
-
----
-
 ## ClaudeOS-Core क्यों?
 
 हर दूसरा Claude Code टूल ऐसे काम करता है:
@@ -591,24 +577,6 @@ Stage count सूत्र (batch होने पर): `1 (3a) + 1 (3b-core) +
 
 Pass 4 (memory scaffolding) ऊपर से ~30 सेकंड से 5 मिनट जोड़ता है, इस पर निर्भर करता है कि Claude-driven generation या static fallback चलता है। Multi-stack प्रोजेक्ट्स (जैसे Java + React) के लिए, backend और frontend डोमेन एक साथ गिने जाते हैं। 6 backend + 4 frontend डोमेन वाला प्रोजेक्ट = 10 कुल = मध्यम tier।
 
-### वास्तविक production केस: 18-डोमेन admin frontend (2026-04-20)
-
-18 डोमेन और 6 डोमेन समूहों वाले एक React 19 + Vite 6 + TypeScript admin frontend ने **102 मिनट में 101 फ़ाइलें जेनरेट के साथ** end-to-end पूरा किया। Stage breakdown:
-
-| Stage | फ़ाइलें | समय | फ़ाइलें/मिनट |
-|---|---|---|---|
-| `3a` (fact extraction) | 1 (`pass3a-facts.md`) | 8m 44s | — |
-| `3b-core` (CLAUDE.md + common) | 24 | 22m 10s | 1.1 |
-| `3b-1` (15 डोमेन) | 30 | 10m 6s | **3.0** |
-| `3b-2` (3 डोमेन) | 6 | 4m 34s | 1.3 |
-| `3c-core` (guides + shared) | 11 | 8m 31s | 1.3 |
-| `3c-1` (15 डोमेन) | 8 | 5m 11s | **1.5** |
-| `3c-2` (3 डोमेन) | 3 | 3m 50s | 0.8 |
-| `3d-aux` (database + mcp) | 3 | 2m 52s | 1.0 |
-| Pass 4 | 12 | 5m 36s | 2.1 |
-
-Throughput batched domain stages (3b-1: 3.0 फ़ाइलें/मिनट बनाम 3b-core: 1.1 फ़ाइलें/मिनट) पर उल्लेखनीय रूप से अधिक है क्योंकि fresh-context stages tight, repeatable per-domain patterns से लाभ उठाते हैं। सत्यापन all-green: `plan-validator`, `sync-checker`, `content-validator`, `pass-json-validator` — शून्य overflow विफलता, शून्य truncation।
-
 ---
 
 ## सत्यापन टूल्स
@@ -810,8 +778,7 @@ ClaudeOS-Core **प्रोजेक्ट-विशिष्ट rules और s
 यह 4 passes में `claude -p` को कई बार कॉल करता है। v2.1.0 split mode में, Pass 3 अकेले प्रोजेक्ट आकार के आधार पर 4–14+ stages में विस्तारित होता है ([ऑटो-स्केलिंग](#प्रोजेक्ट-आकार-द्वारा-ऑटो-स्केलिंग) देखें)। एक विशिष्ट छोटा प्रोजेक्ट (1–15 डोमेन) कुल 8–9 `claude -p` कॉल्स का उपयोग करता है; एक 18-डोमेन प्रोजेक्ट 11 का उपयोग करता है; एक 60-डोमेन प्रोजेक्ट 15–17 का उपयोग करता है। हर stage fresh context window के साथ चलता है — per-call token cost वास्तव में single-call Pass 3 से कम है, क्योंकि किसी भी stage को पूरे फ़ाइल tree को एक context में रखना नहीं पड़ता। जब `--lang` गैर-अंग्रेज़ी होता है, तो static fallback path अनुवाद के लिए कुछ अतिरिक्त `claude -p` कॉल invoke कर सकता है; परिणाम `claudeos-core/generated/.i18n-cache-<lang>.json` में cached होते हैं ताकि बाद के runs उन्हें पुनः उपयोग करें। यह सामान्य Claude Code उपयोग के भीतर है।
 
 **Q: Pass 3 split mode क्या है और इसे v2.1.0 में क्यों जोड़ा गया?**
-v2.1.0 से पहले, Pass 3 एक सिंगल `claude -p` कॉल बनाता था जिसे पूरे जेनरेट किए गए फ़ाइल tree (`CLAUDE.md`, standards, rules, skills, guides — आमतौर पर 30–60 फ़ाइलें) को एक response में emit करना होता था। यह छोटे प्रोजेक्ट्स पर काम करता था लेकिन ~5 डोमेन पर विश्वसनीय रूप से `Prompt is too long` output-accumulation विफलताओं को hit करता था। विफलता input size से predictable नहीं थी — यह इस पर निर्भर करती थी कि हर जेनरेट की गई फ़ाइल कितनी verbose हो, और एक ही प्रोजेक्ट को intermittently strike कर सकती थी। Split mode समस्या को संरचनात्मक रूप से bypass करता है: Pass 3 को क्रमिक stages (`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`) में तोड़ दिया गया है, हर एक fresh context window के साथ एक अलग `claude -p` कॉल। Cross-stage consistency `pass3a-facts.md` द्वारा संरक्षित होती है, एक 5–10 KB distilled fact sheet जिसे हर बाद का stage `pass2-merged.json` को दोबारा पढ़ने के बजाय reference करता है। `pass3-complete.json` marker एक `groupsCompleted` array carry करता है ताकि `3c-2` के दौरान crash `3c-2` से resume हो (not `3a` से), token cost को दोगुना करने से बचाते हुए। 18 डोमेन × 101 फ़ाइलें × 102 मिनट तक शून्य overflow के साथ empirically verified — वास्तविक production breakdown के लिए [ऑटो-स्केलिंग](#प्रोजेक्ट-आकार-द्वारा-ऑटो-स्केलिंग) देखें।
-
+v2.1.0 से पहले, Pass 3 एक सिंगल `claude -p` कॉल बनाता था जिसे पूरे जेनरेट किए गए फ़ाइल tree (`CLAUDE.md`, standards, rules, skills, guides — आमतौर पर 30–60 फ़ाइलें) को एक response में emit करना होता था। यह छोटे प्रोजेक्ट्स पर काम करता था लेकिन ~5 डोमेन पर विश्वसनीय रूप से `Prompt is too long` output-accumulation विफलताओं को hit करता था। विफलता input size से predictable नहीं थी — यह इस पर निर्भर करती थी कि हर जेनरेट की गई फ़ाइल कितनी verbose हो, और एक ही प्रोजेक्ट को intermittently strike कर सकती थी। Split mode समस्या को संरचनात्मक रूप से bypass करता है: Pass 3 को क्रमिक stages (`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`) में तोड़ दिया गया है, हर एक fresh context window के साथ एक अलग `claude -p` कॉल। Cross-stage consistency `pass3a-facts.md` द्वारा संरक्षित होती है, एक 5–10 KB distilled fact sheet जिसे हर बाद का stage `pass2-merged.json` को दोबारा पढ़ने के बजाय reference करता है। `pass3-complete.json` marker एक `groupsCompleted` array carry करता है ताकि `3c-2` के दौरान crash `3c-2` से resume हो (not `3a` से), token cost को दोगुना करने से बचाते हुए।
 **Q: क्या मुझे जेनरेट की गई फ़ाइलों को Git पर commit करना चाहिए?**
 हाँ, अनुशंसित। आपकी टीम समान Claude Code standards साझा कर सकती है। `claudeos-core/generated/` को `.gitignore` में जोड़ने पर विचार करें (विश्लेषण JSON पुनर्जेनरेट करने योग्य है)।
 

@@ -1,5 +1,183 @@
 # Changelog
 
+## [2.1.0] — 2026-04-20
+
+This release addresses the primary cause of `Prompt is too long` failures in
+Pass 3 on large multi-module projects. The fix is structural: Pass 3 is
+re-architected into multiple sequential `claude -p` calls with fresh context
+each, so output-accumulation overflow is no longer possible regardless of
+project size.
+
+### Added
+
+- **Phase 1 "Read Once, Extract Facts" prompt block** (always on). A new
+  common block `pass-prompts/templates/common/pass3-phase1.md` is prepended
+  to every generated `pass3-prompt.md`. It instructs Claude to read
+  `pass2-merged.json` exactly once into a compact in-context fact table and
+  reference that table for all subsequent file generation. The block defines
+  five rules:
+  - **Rule A** — Reference the fact table, don't re-read pass2-merged.json.
+  - **Rule B** — Idempotent file writing (skip if target exists with real
+    content), making Pass 3 safely re-runnable after interruption.
+  - **Rule C** — Cross-file consistency enforced via the fact table as
+    single source of truth.
+  - **Rule D** — Output conciseness: one line (`[WRITE]`/`[SKIP]`) between
+    file writes, no restating the fact table, no echoing file content.
+    Addresses output-accumulation overflow where verbose narration between
+    30-50 files adds 15-30K tokens of pure accumulation.
+  - **Rule E** — Batch idempotent check: one `Glob` at PHASE 2 start
+    instead of per-target `Read` calls.
+
+- **`pass3-context.json` slim summary builder** (always on). A new file
+  `claudeos-core/generated/pass3-context.json` is built after Pass 2 from
+  `project-analysis.json` plus `pass2-merged.json` signals (size, top-level
+  keys). Stays under 5 KB even for large projects vs. `pass2-merged.json`
+  which can exceed 500 KB. Pass 3 prompts reference this as the preferred
+  entry point, falling back to `pass2-merged.json` only for specific
+  details (response wrapper method, util class FQN, MyBatis mapper path).
+  Emits a warning when `pass2-merged.json` exceeds 300 KB.
+
+- **Batch sub-division for large projects** (automatic, ≥16 domains).
+  Stages 3b and 3c are sub-divided into batches of 15 domains each,
+  preceded by dedicated `3b-core` / `3c-core` stages that handle
+  project-wide common files. Ensures no single stage generates more than
+  ~50 files, keeping output within the empirical safe range on projects
+  up to 100+ domains. Batch count is `ceil(totalDomains / 15)`; domain
+  order comes from `domain-groups.json` (size-balanced by plan-installer).
+
+- **Split-mode partial marker protection**. `pass3-complete.json` gains
+  `mode: "split"` and `groupsCompleted` array. A run that completes 3a+3b
+  and crashes during 3c leaves a partial marker; on re-run, the stale-check
+  detects the partial-marker shape and defers to the split runner's resume
+  logic instead of deleting the marker — otherwise the run would restart
+  from 3a and double the token cost.
+
+- **7 regression tests** pinning the master plan no-op contract
+  (`tests/master-plan-removal.test.js`).
+
+- **`scaffoldSkillsManifest` gap-fill for Pass 4**. Auto-creates
+  `claudeos-core/skills/00.shared/MANIFEST.md` with a minimal stub if
+  Pass 3c omits it (the stack pass3.md templates list it among targets but
+  without REQUIRED marking, so skill-sparse projects sometimes ended up
+  with `.claude/rules/50.sync/03.skills-sync.md` pointing at a
+  non-existent file). Idempotent: skips if the file already has real
+  content (>20 chars).
+
+### Changed
+
+- **Pass 3 now always runs in split mode.** Each stage starts with a fresh
+  context window; cross-stage consistency is preserved by `pass3a-facts.md`.
+  No user-facing configuration — applies to every `npx claudeos-core init`
+  run automatically.
+
+  Stage structure:
+  - **3a** — Read analysis files once, write `pass3a-facts.md` (5-10 KB
+    distilled fact sheet).
+  - **3b** — Generate `CLAUDE.md`, `standard/`, and `.claude/rules/`.
+    Sub-divided into `3b-core` + `3b-1..N` on projects with ≥16 domains.
+  - **3c** — Generate `skills/` and `guide/`. Sub-divided into `3c-core`
+    + `3c-1..N` on projects with ≥16 domains.
+  - **3d-aux** — Generate `database/` + `mcp-guide/` stubs.
+
+  Single-batch projects keep flat `"3b"`/`"3c"` marker names
+  (backward-compatible); multi-batch projects use `"3b-core"`, `"3b-1"`,
+  etc. Resume works at stage granularity.
+
+- **Stage count by project size** (1–15 domains: 4 stages; 16–30: 8; 31–45:
+  10; 46–60: 12; 61–75: 14; 91–105: 18).
+
+- `package-lock.json` synced to `2.1.0`. The v2.0.2 release had a stale
+  lockfile at `2.0.0` which caused `npm ci` to fail lockfile integrity
+  checks.
+
+### Removed
+
+- **Master plan generation** (`claudeos-core/plan/*-master.md` files).
+  Master plans were an internal tool backup not consumed by Claude Code
+  at runtime, and aggregating many files in a single Pass 3d session was
+  a primary source of `Prompt is too long` failures on mid-sized projects.
+  Claude Code runtime is unaffected — it reads `CLAUDE.md` + `rules/`
+  directly. Use `git` for backup/restore instead.
+
+- **Pass 3d sub-stages `3d-standard` / `3d-rules` / `3d-skills` /
+  `3d-guide`**. Only `3d-aux` (database + mcp-guide stubs) remains as a
+  fixed-size task independent of domain count.
+
+- **`CLAUDEOS_PASS3_SPLIT` environment variable and single-call mode.**
+  Single-call had failed reliably on projects with more than ~5 domains
+  because output-accumulation overflow is not predictable from input size.
+  Split mode is structurally immune and is now the only supported path.
+
+- **`claudeos-core/plan/` directory creation in `init`**. Directory is no
+  longer created during bootstrap (honors the master-plan-removal contract).
+
+### Deprecated
+
+- `scaffoldMasterPlans` in `lib/memory-scaffold.js` is kept as a
+  backward-compatible no-op (returns `[]`, writes nothing). External
+  callers keep working; no files are produced.
+
+### Fixed
+
+- `bootstrap.sh` line endings normalized from CRLF to LF. v2.0.2 shipped
+  with CRLF which caused immediate `syntax error` on macOS/Linux when
+  invoked via `bash claudeos-core-tools/bootstrap.sh`.
+
+- `pass3-context-builder.js`: removed unused `p2Size` placeholder variable
+  (refactoring leftover, no behavior change).
+
+- `init.js`: Pass 4 progress ticker `totalExpected` corrected from 6 to 5
+  to reflect master plan removal. The 6th slot was counting
+  `plan/50.memory-master.md` which is no longer generated, making the
+  progress bar appear stuck at 83% until the run completed.
+
+- `manifest-generator`: removed stale `plan-manifest.json` generation.
+  Master plans were removed in v2.1.0; a manifest with an empty `plans`
+  array (62 B) was noise. Nothing reads it, nothing validates it.
+  `sync-map.json` is retained (with empty `mappings`) for
+  `sync-checker` backward compatibility.
+
+- `plan-validator`: `plan-sync-status.json` is now skipped when the
+  `plan/` directory is absent or empty. Previously wrote a 147 B
+  all-zeros status file on every health check for master-plan-free
+  projects. `stale-report.json` still records a passing no-op so
+  `health-checker` reports a clean result.
+
+- `plan-parser` placeholder filtering regression in sync-checker
+  on projects with `<...>` style tokens in plan files.
+
+- `cli.js`: `npx claudeos-core memory --help` now displays the memory
+  subcommand help instead of the top-level usage. `parseArgs` previously
+  promoted `--help` to a top-level command even when it appeared after a
+  command name, so `memory --help` was indistinguishable from `--help`
+  alone. The fix: `--help` only becomes the top-level command when no
+  other command has been seen yet. `memory --help`, `memory -h` now
+  route to the subcommand's own help.
+
+- `memory score`: the first `score` run no longer leaves two `importance`
+  lines in each entry. The previous implementation inserted the
+  auto-scored line at the top but left the user's original
+  `- importance: N` line below it, producing a file with two conflicting
+  values per entry. `cmdScore` now strips every importance line
+  (bold or plain) before inserting the new auto-scored line, so there is
+  always exactly one importance line per entry and repeated `score` runs
+  remain idempotent.
+
+- `memory compact`: the Stage 1 summary marker is now a proper markdown
+  list item (`- _Summarized on YYYY-MM-DD — original body dropped._`).
+  Previously the marker was emitted as a bare italic string without the
+  `- ` prefix, which broke the surrounding list in markdown renderers
+  and caused `parseEntries` to misclassify it on subsequent compactions.
+  The default `fixLine` fallback was also updated to `- (fix omitted)`
+  for the same consistency reason.
+
+### Test coverage
+
+- 563 tests pass, 0 skip (3 runs confirmed no flakes). +165 tests vs v2.0.0
+  across Pass 3 context builder, output accumulation, batch subdivision,
+  master plan removal, scaffoldSkillsManifest, and memory score/compact
+  formatting regression suites.
+
 ## [2.0.2] — 2026-04-20
 
 ### Fixed

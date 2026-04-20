@@ -144,7 +144,6 @@ test("M1: realistic Claude-written marker (passNum + all fields) → valid", () 
         "claudeos-core/memory/auto-rule-update.md",
       ],
       ruleFiles: [".claude/rules/60.memory/01.decision-log.md"],
-      planFiles: ["claudeos-core/plan/50.memory-master.md"],
       claudeMdAppended: true,
     });
     assert.equal(isValidPass4Marker(fp), true);
@@ -161,7 +160,6 @@ test("M1: static-fallback marker shape (init.js applyStaticFallback) → valid",
       lang: "ko",
       memoryFiles: ["claudeos-core/memory/decision-log.md"],
       ruleFiles: [".claude/rules/00.core/51.doc-writing-rules.md"],
-      planFiles: ["claudeos-core/plan/50.memory-master.md"],
       claudeMdAppended: true,
     });
     assert.equal(isValidPass4Marker(fp), true);

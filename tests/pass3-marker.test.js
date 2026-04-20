@@ -191,16 +191,16 @@ function setupValidPass3Outputs(d) {
     fs.mkdirSync(path.dirname(fp), { recursive: true });
     fs.writeFileSync(fp, "# " + rel);
   }
-  // Expected outputs: standard sentinel + skills + plan
+  // Expected outputs: standard sentinel + skills
   const coreDir = path.join(d, "claudeos-core/standard/00.core");
   fs.mkdirSync(coreDir, { recursive: true });
   fs.writeFileSync(path.join(coreDir, "01.project-overview.md"), "# overview");
   const skillsDir = path.join(d, "claudeos-core/skills/10.backend-crud");
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(path.join(skillsDir, "orchestrator.md"), "# skill");
-  const planDir = path.join(d, "claudeos-core/plan");
-  fs.mkdirSync(planDir, { recursive: true });
-  fs.writeFileSync(path.join(planDir, "10.standard-master.md"), "# plan");
+  // Note: master plan files (plan/*-master.md) are no longer generated, so
+  // the fixture does not create claudeos-core/plan/. The stale-marker logic
+  // does not depend on their presence.
   return { marker, guideDir };
 }
 

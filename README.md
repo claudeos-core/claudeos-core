@@ -12,6 +12,20 @@ ClaudeOS-Core reads your codebase, extracts every pattern it finds, and generate
 
 ---
 
+## What's New in v2.1.0
+
+v2.1.0 re-architects Pass 3 to eliminate `Prompt is too long` failures on medium-to-large projects. Previously, a single Pass 3 call had to emit the entire documentation tree at once — dozens of files across `CLAUDE.md`, rules, standards, skills, and guides — and the accumulated output reliably exceeded the context window past ~5 domains. The fix is structural, not a prompt tweak:
+
+- **Pass 3 split mode** (always on) — Pass 3 is broken into sequential `claude -p` calls (`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`). Each stage starts with a **fresh context window**, so output-accumulation overflow is no longer possible regardless of project size.
+- **Fact sheet between stages** — Stage `3a` reads the Pass 2 analysis once and distills it into a 5–10 KB `pass3a-facts.md`. All later stages reference that fact sheet instead of re-reading the 100–500 KB `pass2-merged.json`, preserving cross-file consistency across fresh contexts.
+- **Batch sub-division** (automatic at ≥16 domains) — Stages 3b/3c are further split into batches of 15 domains each, keeping each stage under ~50 files of output. An 18-domain React 19 + Vite 6 admin frontend completes in **102 minutes with 101 files generated across 8 stages, zero overflow failures** (real production run, 2026-04-20).
+- **Master plan generation removed** — `claudeos-core/plan/*-master.md` files are no longer generated. Master plans were an internal backup not consumed by Claude Code at runtime, and aggregating them in Pass 3d was a primary overflow trigger. Use `git` for backup/restore instead.
+- **Pass 4 gap-fill: `skills/00.shared/MANIFEST.md`** — If Pass 3c omits the skill registry (skill-sparse projects), Pass 4 now auto-creates a stub so `.claude/rules/50.sync/03.skills-sync.md` never points at a dangling file.
+
+A few smaller fixes: `memory --help` now shows the memory subcommand help (previously top-level was shown); `memory score` no longer leaves duplicate `importance` lines; `memory compact` summary markers are proper markdown list items. Full details: [CHANGELOG.md](./CHANGELOG.md).
+
+---
+
 ## Why ClaudeOS-Core?
 
 Every other Claude Code tool works like this:
@@ -222,7 +236,7 @@ npx claudeos-core init --lang en    # English (default)
 
 > **Note:** This sets the language for generated documentation files only. Code analysis (Pass 1–2) always runs in English; generated output (Pass 3) is written in your chosen language. Code examples inside the generated files remain in their original programming language syntax.
 
-That's it. After 5–20 minutes (Pass 1×N + Pass 2 + Pass 3 + Pass 4 memory scaffolding), all documentation is generated and ready to use. The CLI shows a progress bar with percentage, elapsed time, and ETA for each pass.
+That's it. After 10 minutes (small project) to 2 hours (60+ domain monorepo), all documentation is generated and ready to use. The CLI shows a progress bar with percentage, elapsed time, and ETA for each pass. See [Auto-scaling by Project Size](#auto-scaling-by-project-size) for detailed timing by project size.
 
 ### Manual Step-by-Step Installation
 
@@ -249,10 +263,12 @@ mkdir -p claudeos-core/standard/{00.core,10.backend-api,20.frontend-ui,30.securi
 # Skills
 mkdir -p claudeos-core/skills/{00.shared,10.backend-crud/scaffold-crud-feature,20.frontend-page/scaffold-page-feature,50.testing,90.experimental}
 
-# Guide, Plan, Database, MCP, Generated, Memory (v2.0.0: added memory)
+# Guide, Database, MCP, Generated, Memory (v2.0.0: added memory; v2.1.0: removed plan)
 mkdir -p claudeos-core/guide/{01.onboarding,02.usage,03.troubleshooting,04.architecture}
-mkdir -p claudeos-core/{plan,database,mcp-guide,generated,memory}
+mkdir -p claudeos-core/{database,mcp-guide,generated,memory}
 ```
+
+> **v2.1.0 note:** The `claudeos-core/plan/` directory is no longer created. Master plan generation was removed because master plans were an internal backup Claude Code never reads at runtime, and aggregating them triggered `Prompt is too long` failures. Use `git` for backup/restore.
 
 #### Step 3: Run plan-installer (project analysis)
 
@@ -267,7 +283,8 @@ node claudeos-core-tools/plan-installer/index.js
 - `domain-groups.json` — domain groups for Pass 1
 - `pass1-backend-prompt.md` / `pass1-frontend-prompt.md` — analysis prompts
 - `pass2-prompt.md` — merge prompt
-- `pass3-prompt.md` — generation prompt (wrapped with `staging-override.md` directive — see Step 6 note)
+- `pass3-prompt.md` — Pass 3 prompt template with the Phase 1 "Read Once, Extract Facts" block prepended (Rules A–E). The automated pipeline splits Pass 3 into multiple stages at runtime; this template feeds each stage.
+- `pass3-context.json` — slim project summary (< 5 KB, built after Pass 2) that Pass 3 prompts prefer over the full `pass2-merged.json` (v2.1.0)
 - `pass4-prompt.md` — L4 memory scaffolding prompt (v2.0.0; uses the same `staging-override.md` for `60.memory/` rule writes)
 
 You can inspect these files to verify detection accuracy before proceeding.
@@ -322,16 +339,35 @@ cat claudeos-core/generated/pass2-prompt.md \
 
 **Verify:** `claudeos-core/generated/pass2-merged.json` should exist with 9+ top-level keys.
 
-#### Step 6: Pass 3 — Generate all documentation
+#### Step 6: Pass 3 — Generate all documentation (split into multiple stages)
+
+**v2.1.0 note:** Pass 3 is **always run in split mode** by the automated pipeline. Each stage is a separate `claude -p` call with a fresh context window, so output-accumulation overflow is structurally impossible regardless of project size. The `pass3-prompt.md` template is assembled per-stage with a `STAGE:` directive that tells Claude which subset of files to emit. For manual mode, the simplest path is still to feed the full template and let Claude generate everything in one call — but this is only reliable on small projects (≤5 domains). For anything larger, use `npx claudeos-core init` so the split runner handles stage orchestration.
+
+**Single-call mode (small projects only, ≤5 domains):**
 
 ```bash
 cat claudeos-core/generated/pass3-prompt.md \
   | claude -p --dangerously-skip-permissions
 ```
 
-**Verify:** `CLAUDE.md` should exist in your project root, and `claudeos-core/generated/pass3-complete.json` marker should be written.
+**Stage-by-stage mode (recommended for all project sizes):**
 
-> **Note (v2.0.0):** Pass 3 writes rule files to `claudeos-core/generated/.staged-rules/` first because Claude Code's sensitive-path policy blocks direct writes to `.claude/`. The automated pipeline (`npx claudeos-core init`) handles the move automatically. If you run this step manually, you'll need to move the staged tree yourself: `mv claudeos-core/generated/.staged-rules/* .claude/rules/` (preserve subpaths).
+The automated pipeline runs these stages. The stage list is:
+
+| Stage | Writes | Notes |
+|---|---|---|
+| `3a` | `pass3a-facts.md` (5–10 KB distilled fact sheet) | Reads `pass2-merged.json` once; later stages reference this file |
+| `3b-core` | `CLAUDE.md`, common `standard/`, common `.claude/rules/` | Cross-project files; no domain-specific output |
+| `3b-1..N` | Domain-specific `standard/60.domains/*.md` + domain rules | Batch of ≤15 domains per stage (auto-divided at ≥16 domains) |
+| `3c-core` | `guide/` (9 files), `skills/00.shared/MANIFEST.md`, `skills/*/` orchestrators | Shared skills and all user-facing guides |
+| `3c-1..N` | Domain sub-skills under `skills/20.frontend-page/scaffold-page-feature/` | Batch of ≤15 domains per stage |
+| `3d-aux` | `database/`, `mcp-guide/` | Fixed-size, independent of domain count |
+
+For a 1–15 domain project this expands to 4 stages (`3a`, `3b-core`, `3c-core`, `3d-aux` — no batch sub-division). For 16–30 domains it expands to 8 stages (`3b` and `3c` each sub-divided into 2 batches). See [Auto-scaling by Project Size](#auto-scaling-by-project-size) for the full table.
+
+**Verify:** `CLAUDE.md` should exist in your project root, and `claudeos-core/generated/pass3-complete.json` marker should be written. In split mode, the marker contains `mode: "split"` and a `groupsCompleted` array listing every stage that finished — the partial-marker logic uses this to resume from the right stage after a crash rather than restarting from `3a` (which would double the token cost).
+
+> **Staging note:** Pass 3 writes rule files to `claudeos-core/generated/.staged-rules/` first because Claude Code's sensitive-path policy blocks direct writes to `.claude/`. The automated pipeline handles the move automatically after each stage. If you run a stage manually, you'll need to move the staged tree yourself: `mv claudeos-core/generated/.staged-rules/* .claude/rules/` (preserve subpaths).
 
 #### Step 7: Pass 4 — Memory scaffolding
 
@@ -340,7 +376,9 @@ cat claudeos-core/generated/pass4-prompt.md \
   | claude -p --dangerously-skip-permissions
 ```
 
-**Verify:** `claudeos-core/memory/` should contain 4 files (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`), `.claude/rules/60.memory/` should contain 4 rule files, `claudeos-core/plan/50.memory-master.md` should exist, and `CLAUDE.md` should now have a `## Memory (L4)` section appended. Marker: `claudeos-core/generated/pass4-memory.json`.
+**Verify:** `claudeos-core/memory/` should contain 4 files (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`), `.claude/rules/60.memory/` should contain 4 rule files, and `CLAUDE.md` should have a `## Memory (L4)` section appended. Marker: `claudeos-core/generated/pass4-memory.json`.
+
+> **v2.1.0 gap-fill:** Pass 4 also ensures `claudeos-core/skills/00.shared/MANIFEST.md` exists. If Pass 3c omitted it (possible on skill-sparse projects because the stack `pass3.md` templates list `MANIFEST.md` among generation targets without marking it REQUIRED), the gap-fill creates a minimal stub so that `.claude/rules/50.sync/03.skills-sync.md` always has a valid reference target. Idempotent: skips if the file already has real content (>20 chars).
 
 > **Note:** If `claude -p` fails or `pass4-prompt.md` is missing, the automated pipeline falls back to a static scaffold via `lib/memory-scaffold.js` (with Claude-driven translation when `--lang` is non-English). The static fallback runs only inside `npx claudeos-core init` — manual mode requires Pass 4 to succeed.
 
@@ -396,31 +434,42 @@ ls .claude/rules/*/
 ```
 npx claudeos-core init
     │
-    ├── [1] npm install                    ← Dependencies (~10s)
-    ├── [2] Directory structure            ← Create folders (~1s)
-    ├── [3] plan-installer (Node.js)       ← Project scan (~5s)
+    ├── [1] npm install                        ← Dependencies (~10s)
+    ├── [2] Directory structure                ← Create folders (~1s)
+    ├── [3] plan-installer (Node.js)           ← Project scan (~5s)
     │       ├── Auto-detect stack (multi-stack aware)
     │       ├── Extract domain list (tagged: backend/frontend)
     │       ├── Split into domain groups (per type)
+    │       ├── Build pass3-context.json (slim summary, v2.1.0)
     │       └── Select stack-specific prompts (per type)
     │
-    ├── [4] Pass 1 × N  (claude -p)       ← Deep code analysis (~2-8min)
+    ├── [4] Pass 1 × N  (claude -p)            ← Deep code analysis (~2-8min)
     │       ├── ⚙️ Backend groups → backend-specific prompt
     │       └── 🎨 Frontend groups → frontend-specific prompt
     │
-    ├── [5] Pass 2 × 1  (claude -p)       ← Merge analysis (~1min)
-    │       └── Consolidate ALL Pass 1 results (backend + frontend)
+    ├── [5] Pass 2 × 1  (claude -p)            ← Merge analysis (~1min)
+    │       └── Consolidate ALL Pass 1 results into pass2-merged.json
     │
-    ├── [6] Pass 3 × 1  (claude -p)       ← Generate everything (~3-5min)
-    │       └── Combined prompt (backend + frontend targets)
+    ├── [6] Pass 3 (split mode, v2.1.0)        ← Generate everything
+    │       │
+    │       ├── 3a     × 1  (claude -p)        ← Fact extraction (~5-10min)
+    │       │       └── Read pass2-merged.json once → pass3a-facts.md
+    │       │
+    │       ├── 3b-core × 1  (claude -p)       ← CLAUDE.md + common standard/rules
+    │       ├── 3b-1..N × N  (claude -p)       ← Domain standards/rules (≤15 domains/batch)
+    │       │
+    │       ├── 3c-core × 1  (claude -p)       ← Guides + shared skills + MANIFEST.md
+    │       ├── 3c-1..N × N  (claude -p)       ← Domain sub-skills (≤15 domains/batch)
+    │       │
+    │       └── 3d-aux  × 1  (claude -p)       ← database/ + mcp-guide/ stubs
     │
-    ├── [7] Pass 4 × 1  (claude -p)       ← Memory scaffolding (~30s)
+    ├── [7] Pass 4 × 1  (claude -p)            ← Memory scaffolding (~30s-5min)
     │       ├── Seed memory/ (decision-log, failure-patterns, …)
     │       ├── Generate 60.memory/ rules
     │       ├── Append "Memory (L4)" section to CLAUDE.md
-    │       └── Build 50.memory-master.md plan
+    │       └── Gap-fill: ensure skills/00.shared/MANIFEST.md exists (v2.1.0)
     │
-    └── [8] Verification                   ← Auto-run health checker
+    └── [8] Verification                       ← Auto-run health checker
 ```
 
 ### Why 4 Passes?
@@ -429,9 +478,17 @@ npx claudeos-core init
 
 **Pass 2** merges all Pass 1 results into a unified analysis: common patterns (100% shared), majority patterns (50%+ shared), domain-specific patterns, anti-patterns by severity, and cross-cutting concerns (naming, security, DB, testing, logging, performance). Backend and frontend results are merged together.
 
-**Pass 3** takes the merged analysis and generates the entire file ecosystem (CLAUDE.md, rules, standards, skills, guides). It never reads source code — only the analysis JSON. In multi-stack mode, the generation prompt combines backend and frontend targets so both sets of standards are generated in a single pass.
+**Pass 3** (split mode, v2.1.0) takes the merged analysis and generates the entire file ecosystem (CLAUDE.md, rules, standards, skills, guides) across multiple sequential `claude -p` calls. The key insight is that output-accumulation overflow is not predictable from input size: single-call Pass 3 worked fine on 2-domain projects and reliably failed at ~5 domains, and the failure boundary shifted depending on how verbose each file happened to be. Split mode sidesteps this entirely — each stage starts with a fresh context window and writes a bounded subset of files. Cross-stage consistency (which was the main advantage of the single-call approach) is preserved by `pass3a-facts.md`, a 5–10 KB distilled fact sheet that every subsequent stage references.
 
-**Pass 4** scaffolds the L4 Memory layer: persistent team knowledge files (decision-log, failure-patterns, compaction policy, auto-rule-update) plus the `60.memory/` rules that tell future sessions when and how to read/write those files. The memory layer is what lets Claude Code accumulate lessons across sessions instead of re-discovering them each time. When `--lang` is non-English, the fallback static content is translated via Claude before being written.
+The Pass 3 prompt template also includes a **Phase 1 "Read Once, Extract Facts" block** with five rules that further constrain output volume:
+
+- **Rule A** — Reference the fact table; don't re-read `pass2-merged.json`.
+- **Rule B** — Idempotent file writing (skip if target exists with real content), making Pass 3 safely re-runnable after interruption.
+- **Rule C** — Cross-file consistency enforced via the fact table as single source of truth.
+- **Rule D** — Output conciseness: one line (`[WRITE]`/`[SKIP]`) between file writes, no restating the fact table, no echoing file content.
+- **Rule E** — Batch idempotent check: one `Glob` at PHASE 2 start instead of per-target `Read` calls.
+
+**Pass 4** scaffolds the L4 Memory layer: persistent team knowledge files (decision-log, failure-patterns, compaction policy, auto-rule-update) plus the `60.memory/` rules that tell future sessions when and how to read/write those files. The memory layer is what lets Claude Code accumulate lessons across sessions instead of re-discovering them each time. When `--lang` is non-English, the fallback static content is translated via Claude before being written. v2.1.0 adds a gap-fill for `skills/00.shared/MANIFEST.md` in case Pass 3c omitted it.
 
 ---
 
@@ -459,23 +516,30 @@ your-project/
 │   │   ├── pass1-backend-prompt.md    ← Backend analysis prompt
 │   │   ├── pass1-frontend-prompt.md   ← Frontend analysis prompt (if detected)
 │   │   ├── pass2-prompt.md            ← Merge prompt
-│   │   ├── pass3-prompt.md            ← Generation prompt (combined)
+│   │   ├── pass2-merged.json          ← Pass 2 output (consumed by Pass 3a only)
+│   │   ├── pass3-context.json         ← Slim summary (< 5 KB) for Pass 3 (v2.1.0)
+│   │   ├── pass3-prompt.md            ← Pass 3 prompt template (Phase 1 block prepended)
+│   │   ├── pass3a-facts.md            ← Fact sheet written by Pass 3a, read by 3b/3c/3d (v2.1.0)
 │   │   ├── pass4-prompt.md            ← Memory scaffolding prompt (v2.0.0)
-│   │   ├── pass3-complete.json        ← Pass 3 completion marker (skip on resume)
+│   │   ├── pass3-complete.json        ← Pass 3 completion marker (split mode: includes groupsCompleted, v2.1.0)
 │   │   ├── pass4-memory.json          ← Pass 4 completion marker (skip on resume)
+│   │   ├── rule-manifest.json         ← File index for verification tools
+│   │   ├── sync-map.json              ← Plan ↔ disk mapping (empty in v2.1.0; kept for sync-checker compat)
+│   │   ├── stale-report.json          ← Consolidated verification results
 │   │   ├── .i18n-cache-<lang>.json    ← Translation cache (non-English `--lang`)
 │   │   └── .staged-rules/             ← Transient staging dir for `.claude/rules/` writes (auto-moved + cleaned)
-│   ├── standard/                      ← Coding standards (15-19 files)
+│   ├── standard/                      ← Coding standards (15-19 files + per-domain in 60.domains/)
 │   │   ├── 00.core/                   ← Overview, architecture, naming
 │   │   ├── 10.backend-api/            ← API patterns (stack-specific)
 │   │   ├── 20.frontend-ui/            ← Frontend patterns (if detected)
 │   │   ├── 30.security-db/            ← Security, DB schema, utilities
 │   │   ├── 40.infra/                  ← Config, logging, CI/CD
 │   │   ├── 50.verification/           ← Build verification, testing
+│   │   ├── 60.domains/                ← Per-domain standards (written by Pass 3b-N, v2.1.0)
 │   │   └── 90.optional/               ← Optional conventions (stack-specific extras)
-│   ├── skills/                        ← CRUD scaffolding skills
+│   ├── skills/                        ← CRUD/page scaffolding skills
+│   │   └── 00.shared/MANIFEST.md      ← Single source of truth for registered skills
 │   ├── guide/                         ← Onboarding, FAQ, troubleshooting (9 files)
-│   ├── plan/                          ← Master plans (backup/restore)
 │   ├── database/                      ← DB schema, migration guide
 │   ├── mcp-guide/                     ← MCP server integration guide
 │   └── memory/                        ← L4: team knowledge (4 files) — commit these
@@ -488,6 +552,8 @@ your-project/
 ```
 
 Every standard file includes ✅ correct examples, ❌ incorrect examples, and a rules summary table — all derived from your actual code patterns, not generic templates.
+
+> **v2.1.0 note:** `claudeos-core/plan/` is no longer generated. Master plans were an internal backup that Claude Code didn't consume at runtime, and aggregating them in Pass 3 was a primary cause of output-accumulation overflow. Use `git` for backup/restore instead. Projects upgrading from v2.0.x can safely delete any existing `claudeos-core/plan/` directory.
 
 ### Gitignore recommendations
 
@@ -510,14 +576,38 @@ The `generated/` directory contains analysis JSON (`pass1-*.json`, `pass2-merged
 
 ## Auto-scaling by Project Size
 
-| Size | Domains | Pass 1 Runs | Total `claude -p` | Est. Time |
-|---|---|---|---|---|
-| Small | 1–4 | 1 | 4 (Pass 1 + 2 + 3 + 4) | ~5–6min |
-| Medium | 5–8 | 2 | 5 | ~8–9min |
-| Large | 9–16 | 3–4 | 6–7 | ~12–13min |
-| X-Large | 17+ | 5+ | 8+ | ~18min+ |
+Pass 3's split mode scales stage count with domain count. The batch sub-division kicks in at 16 domains to keep each stage under ~50 files of output, which is the empirical safe range for `claude -p` before output-accumulation overflow starts.
 
-Pass 4 (memory scaffolding) adds ~30s on top of the analysis passes. For multi-stack projects (e.g., Java + React), backend and frontend domains are counted together. A project with 6 backend + 4 frontend domains = 10 total, scaling as "Large".
+| Project Size | Domains | Pass 3 Stages | Total `claude -p` | Est. Time |
+|---|---|---|---|---|
+| Small | 1–4 | 4 (`3a`, `3b-core`, `3c-core`, `3d-aux`) | 7 (Pass 1 + 2 + 4 stages of Pass 3 + Pass 4) | ~10–15 min |
+| Medium | 5–15 | 4 | 8–9 | ~25–45 min |
+| Large | 16–30 | **8** (3b, 3c each split into 2 batches) | 11–12 | **~60–105 min** |
+| X-Large | 31–45 | 10 | 13–14 | ~100–150 min |
+| XX-Large | 46–60 | 12 | 15–16 | ~150–200 min |
+| XXX-Large | 61+ | 14+ | 17+ | 200 min+ |
+
+Stage count formula (when batched): `1 (3a) + 1 (3b-core) + N (3b-1..N) + 1 (3c-core) + N (3c-1..N) + 1 (3d-aux) = 2N + 4`, where `N = ceil(totalDomains / 15)`.
+
+Pass 4 (memory scaffolding) adds ~30 seconds to 5 minutes on top depending on whether Claude-driven generation or static fallback runs. For multi-stack projects (e.g., Java + React), backend and frontend domains are counted together. A project with 6 backend + 4 frontend domains = 10 total = Medium tier.
+
+### Real production case: 18-domain admin frontend (2026-04-20)
+
+A React 19 + Vite 6 + TypeScript admin frontend with 18 domains and 6 domain groups completed end-to-end in **102 minutes with 101 files generated**. Stage breakdown:
+
+| Stage | Files | Time | Files/min |
+|---|---|---|---|
+| `3a` (fact extraction) | 1 (`pass3a-facts.md`) | 8m 44s | — |
+| `3b-core` (CLAUDE.md + common) | 24 | 22m 10s | 1.1 |
+| `3b-1` (15 domains) | 30 | 10m 6s | **3.0** |
+| `3b-2` (3 domains) | 6 | 4m 34s | 1.3 |
+| `3c-core` (guides + shared) | 11 | 8m 31s | 1.3 |
+| `3c-1` (15 domains) | 8 | 5m 11s | **1.5** |
+| `3c-2` (3 domains) | 3 | 3m 50s | 0.8 |
+| `3d-aux` (database + mcp) | 3 | 2m 52s | 1.0 |
+| Pass 4 | 12 | 5m 36s | 2.1 |
+
+Throughput is noticeably higher on the batched domain stages (3b-1: 3.0 files/min vs. 3b-core: 1.1 files/min) because fresh-context stages benefit from tight, repeatable per-domain patterns. Verification all-green: `plan-validator`, `sync-checker`, `content-validator`, `pass-json-validator` — zero overflow failures, zero truncation.
 
 ---
 
@@ -543,11 +633,11 @@ node claudeos-core-tools/sync-checker/index.js
 
 | Tool | What It Does |
 |---|---|
-| **manifest-generator** | Builds metadata JSON (rule-manifest, sync-map, plan-manifest); indexes 7 directories including `memory/` (`totalMemory` in summary) |
-| **plan-validator** | Compares Master Plan `<file>` blocks against disk — 3 modes: check, refresh, restore |
-| **sync-checker** | Detects unregistered files (on disk but not in plan) and orphaned entries — covers 7 directories (added `memory/` in v2.0.0) |
+| **manifest-generator** | Builds metadata JSON (`rule-manifest.json`, `sync-map.json`, initializes `stale-report.json`); indexes 7 directories including `memory/` (`totalMemory` in summary). v2.1.0: `plan-manifest.json` is no longer generated since master plans were removed. |
+| **plan-validator** | Validates master plan `<file>` blocks against disk for projects that still have `claudeos-core/plan/` (legacy upgrade case). v2.1.0: skips `plan-sync-status.json` emission when `plan/` is absent or empty — `stale-report.json` still records a passing no-op. |
+| **sync-checker** | Detects unregistered files (on disk but not in plan) and orphaned entries — covers 7 directories (added `memory/` in v2.0.0). Exits cleanly when `sync-map.json` has no mappings (v2.1.0 default state). |
 | **content-validator** | 9-section quality check — empty files, missing ✅/❌ examples, required sections, plus L4 memory scaffold integrity (decision-log heading dates, failure-pattern required fields, fence-aware parsing) |
-| **pass-json-validator** | Validates Pass 1–4 JSON structure plus the `pass3-complete.json` and `pass4-memory.json` completion markers |
+| **pass-json-validator** | Validates Pass 1–4 JSON structure plus the `pass3-complete.json` (split-mode shape, v2.1.0) and `pass4-memory.json` completion markers |
 
 ---
 
@@ -584,7 +674,7 @@ These folders are explicitly excluded via the `DO NOT Read` section in the stand
 
 | Folder | Why excluded |
 |---|---|
-| `claudeos-core/plan/` | Master Plan backups (~340KB). Use `npx claudeos-core refresh` to sync. |
+| `claudeos-core/plan/` | Master plan backups from legacy projects (v2.0.x and earlier). Not generated in v2.1.0. If present, Claude Code won't load it automatically — read-on-demand only. |
 | `claudeos-core/generated/` | Build metadata JSON, prompts, Pass markers, translation cache, `.staged-rules/`. Not for coding. |
 | `claudeos-core/guide/` | Onboarding guides for humans. |
 | `claudeos-core/mcp-guide/` | MCP server docs. Not for coding. |
@@ -616,7 +706,12 @@ npx claudeos-core health
 ### When Docs Get Corrupted
 
 ```bash
-# Restore everything from Master Plan
+# v2.1.0 recommendation: use git to restore (since master plans are no
+# longer generated). Commit your generated docs regularly so you can roll
+# back specific files without regenerating:
+git checkout HEAD -- .claude/rules/ claudeos-core/
+
+# Legacy (v2.0.x projects with claudeos-core/plan/ still present):
 npx claudeos-core restore
 ```
 
@@ -643,7 +738,12 @@ npx claudeos-core memory propose-rules
 #   Computes confidence (sigmoid on weighted evidence × anchor multiplier)
 #   Writes proposals to memory/auto-rule-update.md (NOT auto-applied)
 #   Confidence ≥ 0.70 deserves serious review; accept → edit rule + log decision
+
+# v2.1.0: `memory --help` now routes to subcommand help (was showing top-level)
+npx claudeos-core memory --help
 ```
+
+> **v2.1.0 fixes:** `memory score` no longer leaves duplicate `importance` lines after the first run (previously the auto-scored line was added on top while the original plain line was left below). `memory compact`'s Stage 1 summary marker is now a proper markdown list item (`- _Summarized on ..._`) so it renders cleanly and is correctly re-parsed on subsequent compactions.
 
 When to write to memory (Claude does this on-demand, but you can edit manually too):
 - **`decision-log.md`** — append a new entry whenever you choose between competing patterns, select a library, define a team convention, or decide NOT to do something. Append-only; never edit historical entries.
@@ -707,19 +807,22 @@ You can use ClaudeOS-Core to generate your project's rules, then use ECC or Harn
 No. It only creates `CLAUDE.md`, `.claude/rules/`, and `claudeos-core/`. Your existing code is never modified.
 
 **Q: How much does it cost?**
-It calls `claude -p` 4–8 times (Pass 1 × N + Pass 2 + Pass 3 + Pass 4). This is within normal Claude Code usage. When `--lang` is non-English, the static fallback path may invoke a few additional `claude -p` calls for translation; results are cached in `claudeos-core/generated/.i18n-cache-<lang>.json` so subsequent runs reuse them.
+It calls `claude -p` several times across 4 passes. In v2.1.0 split mode, Pass 3 alone expands into 4–14+ stages depending on project size (see [Auto-scaling](#auto-scaling-by-project-size)). A typical small project (1–15 domains) uses 8–9 `claude -p` calls total; an 18-domain project uses 11; a 60-domain project uses 15–17. Each stage runs with a fresh context window — the per-call token cost is actually lower than single-call Pass 3 was, because no stage has to hold the entire file tree in one context. When `--lang` is non-English, the static fallback path may invoke a few additional `claude -p` calls for translation; results are cached in `claudeos-core/generated/.i18n-cache-<lang>.json` so subsequent runs reuse them. This is within normal Claude Code usage.
+
+**Q: What is Pass 3 split mode and why was it added in v2.1.0?**
+Before v2.1.0, Pass 3 made a single `claude -p` call that had to emit the entire generated file tree (`CLAUDE.md`, standards, rules, skills, guides — typically 30–60 files) in one response. This worked on small projects but reliably hit `Prompt is too long` output-accumulation failures at ~5 domains. The failure was not predictable from input size — it depended on how verbose each generated file happened to be, and could strike the same project intermittently. Split mode sidesteps the problem structurally: Pass 3 is broken into sequential stages (`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`), each a separate `claude -p` call with a fresh context window. Cross-stage consistency is preserved by `pass3a-facts.md`, a 5–10 KB distilled fact sheet that every later stage references instead of re-reading `pass2-merged.json`. The `pass3-complete.json` marker carries a `groupsCompleted` array so a crash during `3c-2` resumes from `3c-2` (not from `3a`), avoiding double token cost. Empirically verified up to 18 domains × 101 files × 102 minutes with zero overflow — see [Auto-scaling](#auto-scaling-by-project-size) for the real production breakdown.
 
 **Q: Should I commit the generated files to Git?**
 Yes, recommended. Your team can share the same Claude Code standards. Consider adding `claudeos-core/generated/` to `.gitignore` (analysis JSON is regeneratable).
 
 **Q: What about mixed-stack projects (e.g., Java backend + React frontend)?**
-Fully supported. ClaudeOS-Core auto-detects both stacks, tags domains as `backend` or `frontend`, and uses stack-specific analysis prompts for each. Pass 2 merges everything, and Pass 3 generates both backend and frontend standards in one pass.
+Fully supported. ClaudeOS-Core auto-detects both stacks, tags domains as `backend` or `frontend`, and uses stack-specific analysis prompts for each. Pass 2 merges everything, and Pass 3 generates both backend and frontend standards across its split stages — backend domains go into some 3b/3c batches, frontend domains into others, all referencing the same `pass3a-facts.md` for consistency.
 
 **Q: Does it work with Turborepo / pnpm workspaces / Lerna monorepos?**
 Yes. ClaudeOS-Core detects `turbo.json`, `pnpm-workspace.yaml`, `lerna.json`, or `package.json#workspaces` and automatically scans sub-package `package.json` files for framework/ORM/DB dependencies. Domain scanning covers `apps/*/src/` and `packages/*/src/` patterns. Run from the monorepo root.
 
 **Q: What happens on re-run?**
-If previous Pass 1/2 results exist, an interactive prompt lets you choose: **Continue** (resume from where it stopped) or **Fresh** (delete all and start over). Use `--force` to skip the prompt and always start fresh. Pass 3 always re-runs. Previous versions can be restored from Master Plans.
+If previous Pass 1/2 results exist, an interactive prompt lets you choose: **Continue** (resume from where it stopped) or **Fresh** (delete all and start over). Use `--force` to skip the prompt and always start fresh. In v2.1.0 split mode, Pass 3 resume works at stage granularity — if the run crashed during `3c-2`, the next `init` resumes from `3c-2` rather than restarting from `3a` (which would double the token cost). The `pass3-complete.json` marker records `mode: "split"` plus a `groupsCompleted` array to drive this logic.
 
 **Q: Does NestJS get its own template or use the Express one?**
 NestJS uses a dedicated `node-nestjs` template with NestJS-specific analysis categories: `@Module`, `@Injectable`, `@Controller` decorators, Guards, Pipes, Interceptors, DI container, CQRS patterns, and `Test.createTestingModule`. Express projects use the separate `node-express` template.
@@ -746,10 +849,16 @@ The automated pipeline (`npx claudeos-core init`) has a static fallback: if `cla
 See the [Memory Layer Maintenance](#memory-layer-maintenance-v200) section above. Short version: `compact` runs the 4-stage policy (summarize aged, merge duplicates, drop low-importance aged, enforce 400-line cap); `score` re-ranks `failure-patterns.md` by importance (frequency × recency); `propose-rules` surfaces candidate rule additions from recurring failures into `auto-rule-update.md` (not auto-applied — review and accept/reject manually).
 
 **Q: Why does `--force` (or "fresh" resume mode) delete `.claude/rules/`?**
-v2.0.0 added three Pass 3 silent-failure guards (Guard 3 covers two incomplete-output variants: H2 for `guide/` and H1 for `standard/skills/plan`). Guard 1 ("partial staged-rules move") and Guard 3 ("incomplete output — missing/empty guide files or missing standard sentinel / empty skills / empty plan") don't depend on existing rules, but Guard 2 ("zero rules detected") does — it fires when Claude ignored the `staging-override.md` directive and tried to write directly to `.claude/` (where Claude Code's sensitive-path policy blocks it). Stale rules from a prior run would let Guard 2 false-negative — so `--force`/`fresh` wipes `.claude/rules/` to ensure a clean detection. **Manual edits to rule files will be lost** under `--force`/`fresh`; back them up first if needed.
+v2.0.0 added three Pass 3 silent-failure guards (Guard 3 covers two incomplete-output variants: H2 for `guide/` and H1 for `standard/skills`). Guard 1 ("partial staged-rules move") and Guard 3 ("incomplete output — missing/empty guide files or missing standard sentinel / empty skills") don't depend on existing rules, but Guard 2 ("zero rules detected") does — it fires when Claude ignored the `staging-override.md` directive and tried to write directly to `.claude/` (where Claude Code's sensitive-path policy blocks it). Stale rules from a prior run would let Guard 2 false-negative — so `--force`/`fresh` wipes `.claude/rules/` to ensure a clean detection. **Manual edits to rule files will be lost** under `--force`/`fresh`; back them up first if needed. (v2.1.0 note: Guard 3 H1 no longer checks `plan/` since master plans are no longer generated.)
 
 **Q: What is `claudeos-core/generated/.staged-rules/` and why does it exist?**
-Claude Code's sensitive-path policy refuses direct writes to `.claude/` from the `claude -p` subprocess (even with `--dangerously-skip-permissions`). v2.0.0 works around this by having Pass 3/4 prompts redirect all `.claude/rules/` writes to the staging directory; the Node.js orchestrator (not subject to that policy) then moves the staged tree into `.claude/rules/` after each pass. This is transparent to the user — the directory is auto-created, auto-cleaned, and auto-moved. If a prior run crashed mid-move, the next run wipes the staging dir before retrying.
+Claude Code's sensitive-path policy refuses direct writes to `.claude/` from the `claude -p` subprocess (even with `--dangerously-skip-permissions`). v2.0.0 works around this by having Pass 3/4 prompts redirect all `.claude/rules/` writes to the staging directory; the Node.js orchestrator (not subject to that policy) then moves the staged tree into `.claude/rules/` after each pass. This is transparent to the user — the directory is auto-created, auto-cleaned, and auto-moved. If a prior run crashed mid-move, the next run wipes the staging dir before retrying. In v2.1.0 split mode, the stage runner moves staged rules to `.claude/rules/` after every stage (not just at the end), so a crash mid-Pass-3 still leaves previously completed stages' rules in place.
+
+**Q: Can I run Pass 3 manually instead of `npx claudeos-core init`?**
+Yes for small projects (≤5 domains) — the single-call manual instructions in [Step 6](#step-6-pass-3--generate-all-documentation-split-into-multiple-stages) still work. For larger projects you should use `npx claudeos-core init` because the split runner is what orchestrates stage-by-stage execution with fresh contexts, handles batch sub-division at ≥16 domains, writes the correct `pass3-complete.json` marker shape (`mode: "split"` + `groupsCompleted`), and moves staged rules between stages. Reproducing that orchestration by hand is possible but tedious. If you have a reason to run stages manually (e.g., debugging a specific stage), you can template `pass3-prompt.md` with the appropriate `STAGE:` directive and feed it to `claude -p` directly — but remember to move `.staged-rules/` after each stage and update the marker yourself.
+
+**Q: My project is an upgrade from v2.0.x and has an existing `claudeos-core/plan/` directory. What do I do?**
+Nothing required — v2.1.0 tools ignore `plan/` when it's absent or empty, and `plan-validator` still handles legacy projects with populated `plan/` directories for backward compatibility. You can safely delete `claudeos-core/plan/` if you don't need the master plan backups (git history is a better backup anyway). If you keep `plan/`, running `npx claudeos-core init` won't update it — new content is not aggregated into master plans in v2.1.0. Verification tools handle both cases cleanly.
 
 ---
 
@@ -772,7 +881,7 @@ pass-prompts/templates/
 └── python-flask/            # Python / Flask (Blueprint, app factory, Jinja2)
 ```
 
-`plan-installer` auto-detects your stack(s), then assembles type-specific prompts. NestJS, Vue/Nuxt, Vite SPA, and Flask each use dedicated templates with framework-specific analysis categories (e.g., `@Module`/`@Injectable`/Guards for NestJS; `<script setup>`/Pinia/useFetch for Vue; client-side routing/`VITE_` env for Vite; Blueprint/`app.factory`/Flask-SQLAlchemy for Flask). For multi-stack projects, separate `pass1-backend-prompt.md` and `pass1-frontend-prompt.md` are generated, while `pass3-prompt.md` combines both stacks' generation targets. Pass 4 uses the shared `common/pass4.md` template (memory scaffolding) regardless of stack.
+`plan-installer` auto-detects your stack(s), then assembles type-specific prompts. NestJS, Vue/Nuxt, Vite SPA, and Flask each use dedicated templates with framework-specific analysis categories (e.g., `@Module`/`@Injectable`/Guards for NestJS; `<script setup>`/Pinia/useFetch for Vue; client-side routing/`VITE_` env for Vite; Blueprint/`app.factory`/Flask-SQLAlchemy for Flask). For multi-stack projects, separate `pass1-backend-prompt.md` and `pass1-frontend-prompt.md` are generated, while `pass3-prompt.md` combines both stacks' generation targets. In v2.1.0, the Pass 3 template is prepended with `common/pass3-phase1.md` (the "Read Once, Extract Facts" block with Rules A–E) before being sliced per split-mode stage. Pass 4 uses the shared `common/pass4.md` template (memory scaffolding) regardless of stack.
 
 ---
 
@@ -842,7 +951,11 @@ my-monorepo/                    ← Run here: npx claudeos-core init
 
 **"Pass 3 produced CLAUDE.md and rules but N/9 guide files are missing or empty" (v2.0.0)** — Guard 3 (H2) fired: Claude truncated mid-response after writing CLAUDE.md + rules but before finishing (or starting) the `claudeos-core/guide/` section (9 files expected). Also fires on a BOM-only or whitespace-only file (heading was written but the body was truncated). Without this guard the completion marker would still be written, leaving `guide/` permanently empty on subsequent runs. The marker is NOT written here, so the next `init` run retries Pass 3 from the same Pass 2 results. If it keeps repeating, re-run with `npx claudeos-core init --force` to regenerate from scratch.
 
-**"Pass 3 finished but the following required output(s) are missing or empty" (v2.0.0)** — Guard 3 (H1) fired: Claude truncated AFTER `claudeos-core/guide/` but before (or during) `claudeos-core/standard/`, `claudeos-core/skills/`, or `claudeos-core/plan/`. Requirements: (a) `standard/00.core/01.project-overview.md` exists and is non-empty (sentinel written by every stack's Pass 3 prompt), (b) `skills/` has ≥1 non-empty `.md`, (c) `plan/` has ≥1 non-empty `.md`. `database/` and `mcp-guide/` are intentionally excluded (some stacks legitimately produce zero files). Same recovery path as Guard 3 (H2): re-run `init`, or `--force` if it persists.
+**"Pass 3 finished but the following required output(s) are missing or empty" (v2.0.0, updated v2.1.0)** — Guard 3 (H1) fired: Claude truncated AFTER `claudeos-core/guide/` but before (or during) `claudeos-core/standard/` or `claudeos-core/skills/`. Requirements: (a) `standard/00.core/01.project-overview.md` exists and is non-empty (sentinel written by every stack's Pass 3 prompt), (b) `skills/` has ≥1 non-empty `.md`. `database/` and `mcp-guide/` are intentionally excluded (some stacks legitimately produce zero files). `plan/` is no longer checked as of v2.1.0 (master plans were removed). Same recovery path as Guard 3 (H2): re-run `init`, or `--force` if it persists.
+
+**"Pass 3 split stage crashed partway through (v2.1.0)"** — When one of the split stages (e.g., `3b-1`, `3c-2`) fails mid-run, the stage-level marker is NOT written, but completed stages ARE recorded in `pass3-complete.json.groupsCompleted`. The next `init` run reads this array and resumes from the first uncompleted stage, skipping all earlier completed work. You don't need to do anything manually — just re-run `npx claudeos-core init`. If resume keeps failing at the same stage, inspect `claudeos-core/generated/pass3-prompt.md` for malformed content, then try `--force` for a full restart. The `pass3-complete.json` shape (`mode: "split"`, `groupsCompleted: [...]`) is stable; a missing or malformed marker causes the full Pass 3 to re-run from `3a`.
+
+**"Pass 3 stale marker (shape mismatch) — treating as incomplete" (v2.1.0)** — A `pass3-complete.json` from a pre-v2.1.0 single-call run is being interpreted under the new split-mode rules. The shape check looks for `mode: "split"` and a `groupsCompleted` array; if either is missing, the marker is treated as partial and Pass 3 re-runs in split mode. If you upgraded from v2.0.x, this is expected once — the next run will write the correct marker shape. No action needed.
 
 **"pass2-merged.json exists but is malformed or incomplete (<5 top-level keys), re-running" (v2.0.0)** — Info log, not an error. On resume, `init` now parses and validates `pass2-merged.json` (≥5 top-level keys required, mirroring `pass-json-validator`'s `INSUFFICIENT_KEYS` threshold). Skeleton `{}` or malformed JSON from a prior crashed run is automatically deleted and Pass 2 re-runs. No manual action needed — the pipeline self-heals. If it keeps recurring, inspect `claudeos-core/generated/pass2-prompt.md` and retry with `--force`.
 
@@ -865,7 +978,7 @@ Contributions are welcome! Areas where help is most needed:
 - **New stack templates** — Ruby/Rails, Go (Gin/Fiber/Echo), PHP (Laravel/Symfony), Rust (Axum/Actix), Svelte/SvelteKit, Remix
 - **IDE integration** — VS Code extension, IntelliJ plugin
 - **CI/CD templates** — GitLab CI, CircleCI, Jenkins examples (GitHub Actions already shipped — see `.github/workflows/test.yml`)
-- **Test coverage** — Expanding test suite (currently 489 tests across 24 test files covering scanners, stack detection, domain grouping, plan parsing, prompt generation, CLI selectors, monorepo detection, Vite SPA detection, verification tools, L4 memory scaffold, Pass 2 resume validation, Pass 3 Guards 1/2/3 (H1 sentinel + H2 BOM-aware empty-file + strict stale-marker unlink), Pass 4 marker content validation + stale-marker unlink strictness, translation env-skip guard + early fail-fast + CI workflow, staged-rules move, lang-aware translation fallback, and AI Work Rules template structure)
+- **Test coverage** — Expanding test suite (currently 563 tests across 29 test files covering scanners, stack detection, domain grouping, plan parsing, prompt generation, CLI selectors, monorepo detection, Vite SPA detection, verification tools, L4 memory scaffold, Pass 2 resume validation, Pass 3 Guards 1/2/3 (H1 sentinel + H2 BOM-aware empty-file + strict stale-marker unlink), Pass 3 split-mode batch subdivision, Pass 3 partial-marker resume (v2.1.0), Pass 4 marker content validation + stale-marker unlink strictness + scaffoldSkillsManifest gap-fill (v2.1.0), translation env-skip guard + early fail-fast + CI workflow, staged-rules move, lang-aware translation fallback, master plan removal regression suite (v2.1.0), memory score/compact formatting regression (v2.1.0), and AI Work Rules template structure)
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full list of areas, code style, commit convention, and the step-by-step guide for adding a new stack template.
 

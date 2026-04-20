@@ -298,57 +298,53 @@ test("scaffoldMemory: Claude-driven gap-fill — creates only missing files, pre
   fs.rmSync(d, { recursive: true, force: true });
 });
 
-// ─── scaffoldMasterPlans ──────────────────────────────────────
+// ─── scaffoldMasterPlans (deprecated / no-op) ─────────────────
+//
+// Master plan generation was removed from claudeos-core. The function is
+// kept as an exported no-op for backward compatibility with callers that
+// still invoke it. These tests pin the no-op contract.
 
-test("scaffoldMasterPlans: creates 50.memory-master.md only (no legacy 32.memory-master.md or 32.runtime-master.md)", () => {
+test("scaffoldMasterPlans: is a no-op — does NOT create any plan files", () => {
   const d = tmpDir("ms-plan-");
   const planDir = path.join(d, "plan");
   const memoryDir = path.join(d, "memory");
   scaffoldMemory(memoryDir);
   const results = scaffoldMasterPlans(planDir, memoryDir);
-  assert.equal(results.length, 1);
-  assert.equal(results[0].file, "50.memory-master.md");
-  assert.equal(results[0].status, "written");
-  assert.ok(fs.existsSync(path.join(planDir, "50.memory-master.md")));
-  assert.ok(!fs.existsSync(path.join(planDir, "32.memory-master.md")), "legacy 32.memory-master (renumbered to 50) must NOT exist");
-  assert.ok(!fs.existsSync(path.join(planDir, "32.runtime-master.md")), "runtime master must NOT exist");
-  assert.ok(!fs.existsSync(path.join(planDir, "33.memory-master.md")), "33.memory-master was also historical");
+  // Returns an empty array (no files written).
+  assert.ok(Array.isArray(results), "must return an array");
+  assert.equal(results.length, 0, "must return empty results (no-op)");
+  // Plan directory must not be auto-created.
+  assert.ok(!fs.existsSync(path.join(planDir, "50.memory-master.md")),
+    "50.memory-master.md must NOT be created");
+  assert.ok(!fs.existsSync(path.join(planDir, "10.standard-master.md")),
+    "10.standard-master.md must NOT be created");
+  assert.ok(!fs.existsSync(path.join(planDir, "20.rules-master.md")),
+    "20.rules-master.md must NOT be created");
+  assert.ok(!fs.existsSync(path.join(planDir, "30.skills-master.md")),
+    "30.skills-master.md must NOT be created");
+  assert.ok(!fs.existsSync(path.join(planDir, "40.guide-master.md")),
+    "40.guide-master.md must NOT be created");
   fs.rmSync(d, { recursive: true, force: true });
 });
 
-test("scaffoldMasterPlans: embeds all 4 memory files in <file> blocks", () => {
+test("scaffoldMasterPlans: is idempotent — repeat calls also no-op", () => {
   const d = tmpDir("ms-plan2-");
   const planDir = path.join(d, "plan");
   const memoryDir = path.join(d, "memory");
   scaffoldMemory(memoryDir);
-  scaffoldMasterPlans(planDir, memoryDir);
-  const content = fs.readFileSync(path.join(planDir, "50.memory-master.md"), "utf-8");
-  for (const name of Object.keys(MEMORY_FILES)) {
-    assert.match(
-      content,
-      new RegExp(`<file path="claudeos-core/memory/${name.replace(".", "\\.")}">`),
-      `should contain <file> block for ${name}`
-    );
-  }
+  const r1 = scaffoldMasterPlans(planDir, memoryDir);
+  const r2 = scaffoldMasterPlans(planDir, memoryDir);
+  const r3 = scaffoldMasterPlans(planDir, memoryDir, { overwrite: true });
+  assert.equal(r1.length, 0);
+  assert.equal(r2.length, 0);
+  assert.equal(r3.length, 0, "even with overwrite=true, still no-op");
   fs.rmSync(d, { recursive: true, force: true });
 });
 
-test("scaffoldMasterPlans: skips if file exists, overwrites if opts.overwrite", () => {
-  const d = tmpDir("ms-plan3-");
-  const planDir = path.join(d, "plan");
-  const memoryDir = path.join(d, "memory");
-  scaffoldMemory(memoryDir);
-  scaffoldMasterPlans(planDir, memoryDir);
-  const original = fs.readFileSync(path.join(planDir, "50.memory-master.md"), "utf-8");
-
-  const r1 = scaffoldMasterPlans(planDir, memoryDir);
-  assert.equal(r1[0].status, "skipped");
-
-  const r2 = scaffoldMasterPlans(planDir, memoryDir, { overwrite: true });
-  assert.equal(r2[0].status, "written");
-  // Content should still be valid
-  assert.ok(fs.readFileSync(path.join(planDir, "50.memory-master.md"), "utf-8").includes("50. Memory Master Plan"));
-  fs.rmSync(d, { recursive: true, force: true });
+test("scaffoldMasterPlans: tolerates missing planDir / memoryDir arguments", () => {
+  // The function must not throw even on unusual input, since it's a no-op.
+  assert.doesNotThrow(() => scaffoldMasterPlans("/tmp/nonexistent-plan", "/tmp/nonexistent-memory"));
+  assert.doesNotThrow(() => scaffoldMasterPlans("", ""));
 });
 
 // ─── scaffoldDocWritingGuide ──────────────────────────────────
@@ -551,7 +547,7 @@ test("ai-work-rules: 'Established conventions take precedence' rule (B+C initial
 
 // ─── Integration: full static fallback ────────────────────────
 
-test("static fallback integration: scaffolds memory + rules + plan + standard + CLAUDE.md", () => {
+test("static fallback integration: scaffolds memory + rules + standard + CLAUDE.md", () => {
   const d = tmpDir("ms-integration-");
   const memoryDir = path.join(d, "claudeos-core/memory");
   const planDir = path.join(d, "claudeos-core/plan");
@@ -564,6 +560,8 @@ test("static fallback integration: scaffolds memory + rules + plan + standard + 
   scaffoldMemory(memoryDir);
   scaffoldRules(rulesDir);
   scaffoldDocWritingGuide(standardCoreDir);
+  // scaffoldMasterPlans is a no-op in this version; call it to verify
+  // nothing breaks but do not assert any plan file on disk.
   scaffoldMasterPlans(planDir, memoryDir);
   const appended = appendClaudeMdL4Memory(claudeMd);
 
@@ -579,8 +577,9 @@ test("static fallback integration: scaffolds memory + rules + plan + standard + 
   for (const name of Object.keys(RULE_FILES_60)) {
     assert.ok(fs.existsSync(path.join(rulesDir, "60.memory", name)));
   }
-  // Plan
-  assert.ok(fs.existsSync(path.join(planDir, "50.memory-master.md")));
+  // Master plan is NOT generated in this version (no-op).
+  assert.ok(!fs.existsSync(path.join(planDir, "50.memory-master.md")),
+    "plan/50.memory-master.md must NOT be generated (scaffoldMasterPlans is now a no-op)");
   // Standard (any XX.doc-writing-guide.md)
   const stdFiles = fs.readdirSync(standardCoreDir).filter(f => f.endsWith("doc-writing-guide.md"));
   assert.equal(stdFiles.length, 1);

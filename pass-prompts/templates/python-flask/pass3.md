@@ -88,16 +88,8 @@ Generation targets:
    - 03.troubleshooting/01.troubleshooting.md
    - 04.architecture/01.file-map.md
    - 04.architecture/02.pros-and-cons.md
-
-7. claudeos-core/plan/ (Master Plan)
-   - 10.standard-master.md — CLAUDE.md + all standard/ files as <file> blocks
-   - 20.rules-master.md — All rules/ (except sync) as <file> blocks
-   - 21.sync-rules-master.md — All sync rules (code block format)
-   - 30.backend-skills-master.md — All backend skills as <file> blocks
-   - 40.guides-master.md — All guide/ files as <file> blocks
-
-8. claudeos-core/database/
+7. claudeos-core/database/
    - 01.schema-overview.md — DB schema, model relationships, migration guide
 
-9. claudeos-core/mcp-guide/
+8. claudeos-core/mcp-guide/
    - 01.mcp-overview.md — MCP server integration

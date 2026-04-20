@@ -77,6 +77,51 @@ describe("manifest-generator", () => {
     assert.ok(syncMap.mappings.length >= 1, "should extract at least 1 mapping");
     assert.equal(syncMap.mappings[0].sourcePath, "CLAUDE.md");
   });
+
+  // ─── v2.1.0: plan-manifest.json was removed ────────────────
+  // Master plan generation was removed; a manifest with an empty plans array
+  // is noise. This fixes the "plan-manifest.json 62B left behind" gap
+  // observed in 18-domain production runs.
+
+  it("does NOT generate plan-manifest.json (removed in v2.1.0)", () => {
+    // Setup: rules directory + empty generated/ (no plan/ dir exists)
+    writeFile(path.join(tmp, ".claude/rules/00.core/01.rule.md"),
+      "---\nname: Rule\npaths:\n  - \"**/*\"\n---\n\n# Rule\n");
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+
+    const r = runTool(path.join(TOOLS_DIR, "manifest-generator/index.js"), tmp);
+    assert.ok(r.ok, "manifest-generator should succeed");
+
+    const planManifestPath = path.join(tmp, "claudeos-core/generated/plan-manifest.json");
+    assert.ok(!fs.existsSync(planManifestPath),
+      "plan-manifest.json must NOT be created (v2.1.0 removed it)");
+
+    // Output log should say "3 files", not "4"
+    assert.ok(r.output.includes("(3 files)"),
+      `output should report 3 files, got: ${r.output}`);
+  });
+
+  it("does NOT generate plan-manifest.json even when plan/ dir has master plan files", () => {
+    // Even with stale master plan files from an upgrade, we no longer index them
+    writeFile(path.join(tmp, ".claude/rules/00.core/01.rule.md"),
+      "---\nname: Rule\npaths:\n  - \"**/*\"\n---\n\n# Rule\n");
+    writeFile(path.join(tmp, "claudeos-core/plan/10.standard-master.md"),
+      "# Standard Master (leftover from v2.0.x)\n\n<file path=\"CLAUDE.md\">\n# CLAUDE\n</file>\n");
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+
+    const r = runTool(path.join(TOOLS_DIR, "manifest-generator/index.js"), tmp);
+    assert.ok(r.ok, "manifest-generator should succeed");
+
+    const planManifestPath = path.join(tmp, "claudeos-core/generated/plan-manifest.json");
+    assert.ok(!fs.existsSync(planManifestPath),
+      "plan-manifest.json must NOT be created even if plan/ has leftover files");
+
+    // sync-map.json should still index the plan/ file for sync-checker compat
+    const syncMap = JSON.parse(fs.readFileSync(
+      path.join(tmp, "claudeos-core/generated/sync-map.json"), "utf-8"));
+    assert.ok(syncMap.mappings.length >= 1,
+      "sync-map.json should still index leftover plan/ files for backward compat");
+  });
 });
 
 // ─── content-validator ───────────────────────────────────────

@@ -112,8 +112,11 @@ test("generatePrompts: pass4 contains rule file generation instructions", () => 
   assert.match(body, /01\.decision-log\.md/, "should list decision-log rule");
   assert.match(body, /02\.failure-patterns\.md/, "should list failure-patterns rule");
   assert.match(body, /CLAUDE\.md append/, "should instruct CLAUDE.md append");
-  assert.match(body, /50\.memory-master/, "should reference memory master plan");
   assert.match(body, /Common rules/, "should instruct common rules table in CLAUDE.md append");
+  // Master plan reference must NOT be in the prompt — master plan generation
+  // was removed in this version.
+  assert.doesNotMatch(body, /50\.memory-master/,
+    "must not reference 50.memory-master — master plan generation removed");
   // Runtime rule references must be gone
   assert.doesNotMatch(body, /60\.runtime/, "must not reference old 60.runtime");
   assert.doesNotMatch(body, /70\.memory/, "must not reference old 70.memory (renumbered to 60)");

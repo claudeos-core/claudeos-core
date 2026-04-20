@@ -6,9 +6,12 @@
  * Role: Generate metadata JSON + initialize stale-report
  * Output (claudeos-core/generated/):
  *   - rule-manifest.json   : rules/standard/skills/guide file list + frontmatter
- *   - sync-map.json        : plan/ <file> block → file path mapping
- *   - plan-manifest.json   : plan/ file list + <file> block count
+ *   - sync-map.json        : plan/ <file> block → file path mapping (empty since
+ *                            master plan generation was removed in v2.1.0;
+ *                            kept for sync-checker backward compatibility)
  *   - stale-report.json    : initialized (each verification tool appends results)
+ *
+ * v2.1.0 removed plan-manifest.json generation (master plan aggregation gone).
  *
  * Usage: npx claudeos-core <cmd> or node claudeos-core-tools/manifest-generator/index.js
  */
@@ -131,6 +134,10 @@ async function main() {
   // import-graph.json removed — @import was never a Claude Code feature
 
   // ─── sync-map.json ─────────────────────────────────────
+  // Master plan aggregation was removed in v2.1.0 (plan/ directory is no longer
+  // populated). sync-map.json is still produced with an empty `mappings` array
+  // for sync-checker backward compatibility — sync-checker treats an empty map
+  // as "nothing to sync" and exits cleanly (see master-plan-removal tests).
   // CODE_BLOCK_PLANS imported from lib/plan-parser.js
   const sm = { generatedAt: new Date().toISOString(), mappings: [] };
   if (fs.existsSync(DIRS.plan)) {
@@ -147,26 +154,17 @@ async function main() {
   fs.writeFileSync(path.join(GEN, "sync-map.json"), JSON.stringify(sm, null, 2));
   console.log(`  ✅ sync-map.json — ${sm.summary.totalMappings} mappings`);
 
-  // ─── plan-manifest.json ────────────────────────────────
-  const pm = { generatedAt: new Date().toISOString(), plans: [] };
-  if (fs.existsSync(DIRS.plan)) {
-    for (const p of await glob("*.md", { cwd: DIRS.plan, absolute: true })) {
-      const r = rel(p);
-      const s = stat(p);
-      const bn = path.basename(p);
-      const blocks = CODE_BLOCK_PLANS.includes(bn)
-        ? extractCodeBlockPathsFromFile(p)
-        : extractFileBlocksFromFile(p);
-      pm.plans.push({ path: r, ...s, fileBlocks: blocks.length, status: "ok" });
-    }
-  }
-  fs.writeFileSync(path.join(GEN, "plan-manifest.json"), JSON.stringify(pm, null, 2));
-  console.log(`  ✅ plan-manifest.json — ${pm.plans.length} plans`);
+  // ─── plan-manifest.json ─ REMOVED in v2.1.0 ─────────────
+  // Master plan generation was removed; a plan-manifest with an empty plans
+  // array is noise — nothing reads it, nothing validates it. The two-file
+  // stale output (62 B plan-manifest + 147 B plan-sync-status) was removed
+  // to match the declared v2.1.0 contract "plan/ directory is no longer
+  // created during init".
 
   // ─── Initialize stale-report.json (preserve existing sub-tool results) ──
   updateStaleReport(GEN, "generatedAt", new Date().toISOString(), { totalIssues: 0, status: "initial" });
   console.log("  ✅ stale-report.json — initialized");
-  console.log("\n  📁 Output: claudeos-core/generated/ (4 files)\n");
+  console.log("\n  📁 Output: claudeos-core/generated/ (3 files)\n");
 }
 
 if (require.main === module) {

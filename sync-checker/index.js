@@ -50,7 +50,27 @@ async function main() {
   console.log("║  ClaudeOS-Core — Sync Checker         ║");
   console.log("╚═══════════════════════════════════════╝\n");
 
+  // Master plan directory is optional. If it doesn't exist (new default for
+  // claudeos-core, since master plans are no longer generated) AND sync-map
+  // has no mappings to validate, sync-checker has nothing to compare against
+  // and should skip cleanly. This is a PASS state, not a failure.
+  //
+  // However, if sync-map.json DOES contain mappings (either because master
+  // plans exist, or because a caller wrote mappings directly for testing),
+  // we still validate them normally.
+  const PLAN_DIR = path.join(ROOT, "claudeos-core/plan");
+  const planExists = fs.existsSync(PLAN_DIR);
+
   if (!fs.existsSync(SMP)) {
+    // No sync-map at all.
+    if (!planExists) {
+      console.log("  ℹ️  No plan/ directory and no sync-map.json — nothing to compare; skipping.\n");
+      updateStaleReport(GEN, "syncMisses",
+        { checkedAt: new Date().toISOString(), unregistered: [], orphaned: [], skipped: true },
+        { syncIssues: 0, status: "ok" }
+      );
+      process.exit(0);
+    }
     console.log("  ❌ sync-map.json not found. Run manifest-generator first.\n");
     process.exit(1);
   }
@@ -66,6 +86,30 @@ async function main() {
     console.log("  ❌ sync-map.json has no mappings array.\n");
     process.exit(1);
   }
+
+  // If sync-map has no mappings AND plan/ directory doesn't exist, skip
+  // cleanly — there's no ground truth to validate against and no master plans
+  // in use.
+  if (sm.mappings.length === 0 && !planExists) {
+    console.log("  ℹ️  No plan/ directory and sync-map has no mappings — skipping.\n");
+    updateStaleReport(GEN, "syncMisses",
+      { checkedAt: new Date().toISOString(), unregistered: [], orphaned: [], skipped: true },
+      { syncIssues: 0, status: "ok" }
+    );
+    process.exit(0);
+  }
+
+  // If sync-map has no mappings but plan/ exists (e.g., empty plan files),
+  // skip without raising a warning — there's nothing to validate.
+  if (sm.mappings.length === 0) {
+    console.log("  ℹ️  sync-map has no mappings — nothing to validate; skipping.\n");
+    updateStaleReport(GEN, "syncMisses",
+      { checkedAt: new Date().toISOString(), unregistered: [], orphaned: [], skipped: true },
+      { syncIssues: 0, status: "ok" }
+    );
+    process.exit(0);
+  }
+
   const reg = new Set(sm.mappings.map((m) => m.sourcePath).filter(Boolean));
   const issues = { unreg: [], orphan: [] };
 

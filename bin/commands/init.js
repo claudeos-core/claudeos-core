@@ -80,6 +80,627 @@ function makePassTicker(label, startTime, opts = {}) {
   return { onTick, clearLine, tickMs: isTTY ? 1000 : 15000 };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// v2.1: Pass 3 Split Runner
+// ═══════════════════════════════════════════════════════════════════
+//
+// Splits the monolithic Pass 3 into 4 sequential claude -p calls:
+//
+//   3a: Extract facts from pass2-merged.json into pass3a-facts.md
+//       (small document, becomes the shared context for 3b/3c/3d).
+//   3b: Generate CLAUDE.md + standard/ + .claude/rules/ (core files).
+//   3c: Generate skills/ + guide/.
+//   3d: Generate plan/ + database/ + mcp-guide/ (master plans + aux).
+//
+// Each call has fresh context, so the total output volume can far exceed
+// the model's context window without `Prompt is too long` failures.
+// pass3a-facts.md replaces pass2-merged.json as the cross-stage reference,
+// so cross-file consistency (which was the main advantage of the single-call
+// approach) is preserved.
+//
+// Marker schema (pass3-complete.json):
+//   {
+//     "completedAt": "<ISO timestamp of final stage>",
+//     "mode": "split",
+//     "groupsCompleted": ["3a", "3b", "3c", "3d"]
+//   }
+// Partial marker after interruption:
+//   { "mode": "split", "groupsCompleted": ["3a", "3b"] }
+// On re-run, stages in groupsCompleted are skipped.
+//
+// All helper references (injectProjectRoot, fileExists, runClaudePromptAsync,
+// etc.) are passed in via the ctx param rather than being captured by closure,
+// because this function lives outside cmdInit for readability.
+async function runPass3Split(ctx) {
+  const {
+    GENERATED_DIR, PROJECT_ROOT, TOOLS_DIR,
+    pass3Marker, claudeMdPath,
+    injectProjectRoot, readFile, fileExists,
+    runClaudePromptAsync, makePassTicker, formatElapsed,
+    log, countFiles,
+    EXPECTED_GUIDE_FILES, findMissingOutputs,
+    lang, stepTimes,
+  } = ctx;
+
+  const { writeFileSafe, readFileSafe, existsSafe } = require("../../lib/safe-fs");
+  const { moveStagedRules, countFilesRecursive } = require("../../lib/staged-rules");
+
+  const COMMON_DIR = path.join(TOOLS_DIR, "pass-prompts/templates/common");
+  const stagingDir = path.join(GENERATED_DIR, ".staged-rules");
+
+  // ─── Batch sub-division for 3b/3c on large projects ───────────
+  // Even with split mode, a single 3b call that generates standard/ + rules/
+  // for 50+ domains can still hit context overflow within that stage's
+  // session (output accumulation). We sub-divide 3b and 3c into batches of
+  // ~DOMAINS_PER_BATCH domains each when totalDomains > DOMAINS_PER_BATCH.
+  //
+  // 3a is never batched (single fact sheet).
+  // 3d is never batched (master plan aggregation).
+  //
+  // Threshold rationale: 15 domains ≈ 45-60 output files for 3b alone,
+  // which stays within the empirically safe single-session output range.
+  // Beyond 15 we split. ceil(N/15) batches, preserving order from
+  // domain-groups.json (already balanced by plan-installer).
+  const DOMAINS_PER_BATCH = 15;
+
+  function loadDomainOrder() {
+    // Returns an ordered list of domain names for batching 3b/3c.
+    // Primary source: domain-groups.json (already balanced).
+    // Fallback: project-analysis.json backendDomains + frontendDomains.
+    // Final fallback: empty array → single batch (no sub-division).
+    try {
+      const dgPath = path.join(GENERATED_DIR, "domain-groups.json");
+      if (fileExists(dgPath)) {
+        const dg = JSON.parse(readFile(dgPath));
+        const groups = Array.isArray(dg) ? dg : (dg && dg.groups);
+        if (Array.isArray(groups)) {
+          const flat = [];
+          for (const g of groups) {
+            const items = Array.isArray(g.domains) ? g.domains : (Array.isArray(g) ? g : []);
+            for (const d of items) {
+              const name = typeof d === "string" ? d : (d && d.name);
+              if (name) flat.push(name);
+            }
+          }
+          if (flat.length > 0) return flat;
+        }
+      }
+    } catch (_e) { /* fall through to analysis */ }
+
+    try {
+      const paPath = path.join(GENERATED_DIR, "project-analysis.json");
+      if (fileExists(paPath)) {
+        const pa = JSON.parse(readFile(paPath));
+        const backend = Array.isArray(pa.backendDomains) ? pa.backendDomains.map(d => d.name || d) : [];
+        const frontend = Array.isArray(pa.frontendDomains) ? pa.frontendDomains.map(d => d.name || d) : [];
+        return [...backend, ...frontend].filter(Boolean);
+      }
+    } catch (_e) { /* fall through */ }
+
+    return [];
+  }
+
+  function computeBatches(domainOrder) {
+    // Returns an array of batches, where each batch is an array of domain names.
+    // If total <= DOMAINS_PER_BATCH, returns a single-batch array so the caller
+    // can use the backward-compatible "3b"/"3c" marker names.
+    if (!domainOrder || domainOrder.length <= DOMAINS_PER_BATCH) {
+      return [domainOrder || []];
+    }
+    const batches = [];
+    for (let i = 0; i < domainOrder.length; i += DOMAINS_PER_BATCH) {
+      batches.push(domainOrder.slice(i, i + DOMAINS_PER_BATCH));
+    }
+    return batches;
+  }
+
+  const domainOrder = loadDomainOrder();
+  const batches = computeBatches(domainOrder);
+  const isBatched = batches.length > 1;
+
+  if (isBatched) {
+    log(`    📦 Batch sub-division enabled: ${domainOrder.length} domains → ${batches.length} batches per stage (3b, 3c)`);
+    for (let i = 0; i < batches.length; i++) {
+      log(`       • batch ${i + 1}: ${batches[i].slice(0, 3).join(", ")}${batches[i].length > 3 ? ", +" + (batches[i].length - 3) + " more" : ""}`);
+    }
+  }
+
+
+  // ─── Load existing marker to support resume mid-split ─────────
+  // If a prior split run completed 3a and 3b but crashed at 3c, we skip
+  // 3a and 3b automatically. This is the split-mode analog of Guard 3
+  // stale-marker detection in cmdInit.
+  let completedGroups = [];
+  if (fileExists(pass3Marker)) {
+    try {
+      const existing = JSON.parse(readFile(pass3Marker));
+      if (existing && existing.mode === "split" && Array.isArray(existing.groupsCompleted)) {
+        completedGroups = existing.groupsCompleted.slice();
+        if (completedGroups.length > 0) {
+          log(`    ↪️  Resuming Pass 3 split: ${completedGroups.length} stage(s) already done (${completedGroups.join(", ")})`);
+        }
+      } else if (existing && existing.mode !== "split") {
+        // Previous run was NOT split mode but marker exists and is valid.
+        // Caller (cmdInit) should have skipped us already — defensive no-op here.
+        log(`    ℹ️  Pass 3 marker found (non-split mode), skipping split runner`);
+        return;
+      }
+    } catch (_e) {
+      log("    ⚠️  pass3-complete.json malformed, starting Pass 3 split from scratch");
+      completedGroups = [];
+    }
+  }
+
+  // Helper: write marker after each stage so partial progress survives crashes.
+  function persistMarker(complete) {
+    const body = {
+      mode: "split",
+      groupsCompleted: completedGroups.slice(),
+      lastUpdatedAt: new Date().toISOString(),
+    };
+    if (complete) body.completedAt = body.lastUpdatedAt;
+    return writeFileSafe(pass3Marker, JSON.stringify(body, null, 2));
+  }
+
+  // Helper: build a stage prompt by concatenating the common header with
+  // the stack-specific body extracted from the original pass3-prompt.md.
+  // For v2.1 we reuse the full stack template body for 3b/3c/3d, letting
+  // the stage header restrict scope via its "Scope of this step" section.
+  // A future v2.2 could split the stack templates themselves into per-stage
+  // sections; for now this preserves template fidelity while bounding scope.
+  const pass3PromptFile = path.join(GENERATED_DIR, "pass3-prompt.md");
+  if (!fileExists(pass3PromptFile)) {
+    throw new InitError("pass3-prompt.md not found. Re-run plan-installer.");
+  }
+  const fullPass3Body = readFile(pass3PromptFile);
+
+  function buildStagePrompt(stageHeaderFile, includeStackBody) {
+    const headerPath = path.join(COMMON_DIR, stageHeaderFile);
+    if (!existsSafe(headerPath)) {
+      throw new InitError(
+        `Pass 3 split stage header missing: ${stageHeaderFile}\n` +
+        `    Expected at: ${headerPath}\n` +
+        `    Re-install claudeos-core or run plan-installer to regenerate templates.`
+      );
+    }
+    const header = readFileSafe(headerPath);
+    const stackBody = includeStackBody ? ("\n\n" + fullPass3Body) : "";
+    return injectProjectRoot(header + stackBody);
+  }
+
+  // Helper: build a batch scope note injected before "## Scope of this step"
+  // in 3b/3c stage prompts when the project has been sub-divided into batches.
+  // Tells Claude explicitly which domains to process in this particular call,
+  // and which common files to include vs skip.
+  function buildBatchScopeNote(stageKind, batchIndex, totalBatches, batchDomains) {
+    const isLastBatch = batchIndex === totalBatches - 1;
+    const domainList = batchDomains.map(d => `\`${d}\``).join(", ");
+
+    let note = `## Batch scope (${stageKind}-batch ${batchIndex + 1}/${totalBatches})\n\n`;
+    note += `This Pass 3 stage has been sub-divided into ${totalBatches} batches to avoid context overflow.\n`;
+    note += `**You are processing batch ${batchIndex + 1} of ${totalBatches}.**\n\n`;
+
+    if (stageKind === "3b") {
+      note += `**Domains in THIS batch**: ${domainList}\n\n`;
+      note += `**Rules for this batch**:\n`;
+      note += `1. CLAUDE.md and all common standard/ files (00.core/, 30.security-db/, 40.infra/, etc.) are ALREADY GENERATED by the 3b-core stage. DO NOT regenerate them.\n`;
+      note += `2. Generate standard/ entries ONLY for the domains listed above — one section per domain.\n`;
+      note += `3. Generate .claude/rules/ (via staging-override path) — ONLY domain-specific rule files for the domains listed above. Common rules are already generated by 3b-core.\n`;
+      note += `4. DO NOT generate standard/ or rules/ files for domains NOT in the above list — those are/will be processed in other batches.\n`;
+      note += `5. If a file you are about to write already exists with substantive content (Rule B), skip it silently — print \`[SKIP] <path>\` and move on.\n`;
+    } else if (stageKind === "3c") {
+      note += `**Domains in THIS batch**: ${domainList}\n\n`;
+      note += `**Rules for this batch**:\n`;
+      note += `1. ALL guide/ files (01.onboarding, 02.usage, 03.troubleshooting, 04.architecture) are ALREADY GENERATED by the 3c-core stage. DO NOT regenerate.\n`;
+      note += `2. Common skills (00.shared/, orchestrator SKILL.md) are ALREADY GENERATED by 3c-core. DO NOT regenerate.\n`;
+      note += `3. Generate skills/ entries ONLY for the domains listed above — typically under 10.backend-crud/ or 20.frontend-page/ with a per-domain subdirectory.\n`;
+      note += `4. DO NOT generate skills for domains NOT in the above list.\n`;
+      note += `5. Rule B idempotent skip applies: if a skill file already exists, print \`[SKIP] <path>\` and move on.\n`;
+    }
+
+    if (!isLastBatch) {
+      note += `\n**CRITICAL**: Other domains exist in the project but will be processed by LATER batches. Do not attempt to process them now — doing so will consume context that later batches need.\n`;
+    }
+
+    return note + "\n";
+  }
+
+  // Helper: build a "core common files only" prompt for 3b-core / 3c-core
+  // stages. Injected between the stage header and the stack body to restrict
+  // scope to project-wide files (CLAUDE.md, common standards, guides, shared
+  // skills) — explicitly excluding any domain-specific output that belongs
+  // to subsequent batch stages.
+  function buildStageCorePrompt(stageKind, batchesList) {
+    const totalBatches = batchesList.length;
+    const totalDomains = batchesList.reduce((sum, b) => sum + b.length, 0);
+
+    let coreNote = `## Core common files stage (${stageKind}-core)\n\n`;
+    coreNote += `This Pass 3 run has ${totalDomains} domains divided into ${totalBatches} batches.\n`;
+    coreNote += `To keep each stage's output within safe context limits, project-wide common\n`;
+    coreNote += `files are generated in THIS dedicated core stage, BEFORE the per-domain batches.\n\n`;
+
+    if (stageKind === "3b") {
+      coreNote += `**Scope of ${stageKind}-core**:\n`;
+      coreNote += `1. CLAUDE.md at the project root.\n`;
+      coreNote += `2. ALL standard/ files that are NOT tied to a specific domain:\n`;
+      coreNote += `   - claudeos-core/standard/00.core/*.md (project overview, architecture, conventions)\n`;
+      coreNote += `   - claudeos-core/standard/30.security-db/*.md\n`;
+      coreNote += `   - claudeos-core/standard/40.infra/*.md\n`;
+      coreNote += `   - claudeos-core/standard/50.verification/*.md\n`;
+      coreNote += `   - claudeos-core/standard/90.optional/*.md\n`;
+      coreNote += `   - (stack-specific common sections as defined in the pass3 template)\n`;
+      coreNote += `3. ALL rules files (via staging-override path .claude/rules → generated/.staged-rules):\n`;
+      coreNote += `   - common rules that apply regardless of domain.\n\n`;
+      coreNote += `**What NOT to generate in ${stageKind}-core**:\n`;
+      coreNote += `- Per-domain standard/ files (e.g. \`claudeos-core/standard/10.backend/order-api.md\` for a specific domain "order")\n`;
+      coreNote += `- Per-domain rules.\n`;
+      coreNote += `- Anything under claudeos-core/skills/, claudeos-core/guide/, claudeos-core/plan/ — those belong to later stages (3c-core, 3c-N, 3d).\n\n`;
+      coreNote += `**Per-domain files will be generated in subsequent 3b-1, 3b-2, ... batch stages.**\n`;
+    } else if (stageKind === "3c") {
+      coreNote += `**Scope of ${stageKind}-core**:\n`;
+      coreNote += `1. ALL guide/ files (project-wide, domain-independent):\n`;
+      coreNote += `   - claudeos-core/guide/01.onboarding/*.md\n`;
+      coreNote += `   - claudeos-core/guide/02.usage/*.md\n`;
+      coreNote += `   - claudeos-core/guide/03.troubleshooting/*.md\n`;
+      coreNote += `   - claudeos-core/guide/04.architecture/*.md\n`;
+      coreNote += `2. COMMON skills only:\n`;
+      coreNote += `   - claudeos-core/skills/00.shared/*\n`;
+      coreNote += `   - top-level orchestrator SKILL.md files (e.g. \`10.backend-crud/SKILL.md\` without any subfolder)\n\n`;
+      coreNote += `**What NOT to generate in ${stageKind}-core**:\n`;
+      coreNote += `- Per-domain skill sub-directories (e.g. \`10.backend-crud/scaffold-order-feature/\`) — those belong to 3c-1, 3c-2, ... batch stages.\n`;
+      coreNote += `- Anything under plan/, database/, mcp-guide/ — those belong to 3d.\n\n`;
+      coreNote += `**Per-domain skills will be generated in subsequent 3c-1, 3c-2, ... batch stages.**\n`;
+    }
+
+    coreNote += `\nIf you find yourself about to generate a domain-specific file in this stage: STOP. Emit \`[DEFER] <path> — will be generated in 3b-N / 3c-N batch\` and move on.\n\n`;
+
+    const headerFile = stageKind === "3b" ? "pass3b-core-header.md" : "pass3c-skills-guide-header.md";
+    const baseprompt = buildStagePrompt(headerFile, true);
+    return baseprompt.replace(/\n## Scope of this step/, `\n${coreNote}\n## Scope of this step`);
+  }
+
+  // Helper: build the prompt for 3d-aux (the only Pass 3d sub-stage that
+  // actually runs now). Master plan aggregation (standard/rules/skills/guide)
+  // was removed because master plans are an internal tool backup not consumed
+  // by Claude Code at runtime, and aggregating 30+ files in a single session
+  // was the primary source of "Prompt is too long" failures on mid-sized
+  // projects (observed on an 18-domain production run).
+  //
+  // The subStage parameter is kept for forward-compat: if a future version
+  // reintroduces master plans via Node-side aggregation, this helper can
+  // route the extra sub-stages back in.
+  function build3dSubPrompt(subStage) {
+    const baseprompt = buildStagePrompt("pass3d-plan-aux-header.md", true);
+
+    if (subStage !== "aux") {
+      throw new InitError(
+        `build3dSubPrompt called with unsupported subStage "${subStage}". ` +
+        `Master plan sub-stages (standard/rules/skills/guide) were removed in this version. ` +
+        `Only "aux" is supported.`
+      );
+    }
+
+    let scopeNote = `## 3d sub-stage: aux\n\n`;
+    scopeNote += `Pass 3d now produces only auxiliary documentation (database + mcp-guide). Master plan aggregation (standard/rules/skills/guide → plan/*-master.md) was removed because master plans are an internal tool backup not consumed by Claude Code at runtime, and aggregating many files in a single session was the primary cause of "Prompt is too long" failures.\n`;
+    scopeNote += `**You are processing sub-stage \`3d-aux\`.**\n\n`;
+
+    scopeNote += `### Scope of 3d-aux (exclusively)\n\n`;
+    scopeNote += `Generate ONLY auxiliary documentation:\n`;
+    scopeNote += `- \`claudeos-core/database/\` — schema docs and SQL reference. If pass3a-facts.md shows no database was detected, write a single \`README.md\` stub explaining this and stop.\n`;
+    scopeNote += `- \`claudeos-core/mcp-guide/\` — MCP integration guide. If no relevant MCP servers apply, write \`README.md\` stub and stop.\n\n`;
+    scopeNote += `**DO NOT touch \`claudeos-core/plan/\`** — master plans are no longer generated in this version. If the \`plan/\` directory exists from a previous run, leave it untouched (Rule B).\n\n`;
+    scopeNote += `Rule B applies. Absence of database/ or mcp-guide/ is warning-level, so README stubs are acceptable.\n`;
+
+    return baseprompt.replace(/\n## Scope of this step/, `\n${scopeNote}\n## Scope of this step`);
+  }
+
+
+  // Helper: run a single stage with progress ticker, staged-rules move,
+  // and (optionally) per-stage output validation.
+  async function runStage(stageId, label, promptStr, opts = {}) {
+    if (completedGroups.includes(stageId)) {
+      log(`    ⏭️  ${stageId} (${label}) already complete, skipping`);
+      return { skipped: true };
+    }
+
+    // Clear stale staging before each stage. 3a doesn't write rules so
+    // it's a no-op there; 3b/3c/3d may write staged rules.
+    if (fileExists(stagingDir)) {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+    }
+
+    log("");
+    log(`    🚀 ${stageId} — ${label}`);
+    const t0 = Date.now();
+    const ticker = makePassTicker(`Pass ${stageId}`, t0, { baselineCount: countFiles() });
+    const ok = await runClaudePromptAsync(promptStr, {
+      onTick: ticker.onTick,
+      tickMs: ticker.tickMs,
+    });
+    ticker.clearLine();
+    const elapsed = Date.now() - t0;
+    stepTimes.push(elapsed);
+
+    if (!ok) {
+      throw new InitError(
+        `Pass ${stageId} (${label}) failed. Check the claude error output above.\n` +
+        `    Already-completed stages are preserved; re-running will resume from ${stageId}.\n` +
+        `    If this persists, try: npx claudeos-core init --force`
+      );
+    }
+
+    // Move staged rules after stages that generate rule files (3b, 3c, 3d).
+    // Pass 3a only writes pass3a-facts.md, so no staging to move.
+    if (opts.expectsStagedRules) {
+      const move = moveStagedRules(PROJECT_ROOT);
+      if (move.failed > 0) {
+        log(`    ⚠️  ${stageId} staged-rules: ${move.moved} moved, ${move.failed} failed`);
+        for (const err of move.errors) log(`       • ${err}`);
+        throw new InitError(
+          `Pass ${stageId} finished but ${move.failed} rule file(s) could not be moved from staging.\n` +
+          `    This is usually a transient file-lock issue. Re-run \`npx claudeos-core init\`.`
+        );
+      } else if (move.moved > 0) {
+        log(`    📦 ${stageId} staged-rules: ${move.moved} rule files moved to .claude/rules/`);
+      }
+    }
+
+    // Per-stage output validation (delegates to opts.validate callback).
+    if (typeof opts.validate === "function") {
+      const problems = opts.validate();
+      if (problems && problems.length > 0) {
+        const preview = problems.slice(0, 5).map(p => `       • ${p}`).join("\n");
+        const more = problems.length > 5 ? `\n       • ... and ${problems.length - 5} more` : "";
+        throw new InitError(
+          `Pass ${stageId} (${label}) produced incomplete output:\n` +
+          preview + more + "\n" +
+          `    Already-completed stages are preserved. Re-run to retry from ${stageId}.`
+        );
+      }
+    }
+
+    // Mark stage complete and persist marker so a crash in a later stage
+    // doesn't lose this stage's progress.
+    completedGroups.push(stageId);
+    const persisted = persistMarker(false);
+    if (!persisted) {
+      throw new InitError(
+        `Pass ${stageId} succeeded but failed to persist progress to pass3-complete.json.\n` +
+        `    Check disk space / permissions on ${GENERATED_DIR}/.`
+      );
+    }
+
+    log(`    ✅ ${stageId} complete (${formatElapsed(elapsed)})`);
+    return { skipped: false, elapsed };
+  }
+
+  // ═══ Stage 3a: Extract facts ═══════════════════════════════════
+  const factsFile = path.join(GENERATED_DIR, "pass3a-facts.md");
+  await runStage("3a", "fact extraction", buildStagePrompt("pass3a-facts.md", false), {
+    expectsStagedRules: false,
+    validate: () => {
+      const problems = [];
+      if (!fileExists(factsFile)) {
+        problems.push("pass3a-facts.md was not created");
+      } else {
+        const content = readFileSafe(factsFile, "");
+        const stripped = content.replace(/^\uFEFF/, "").trim();
+        if (stripped.length < 500) {
+          problems.push(`pass3a-facts.md too short (${stripped.length} chars, expected >= 500)`);
+        }
+      }
+      return problems;
+    },
+  });
+
+  // ═══ Stage 3b: CLAUDE.md + standard/ + .claude/rules/ ═══════════
+  //
+  // 단일 배치 (도메인 ≤ 15): 기존 "3b" marker 유지 (backward-compatible).
+  // 다중 배치 (도메인 > 15): "3b-core" 먼저 실행 후 "3b-1", "3b-2", ...
+  //
+  // 3b-core 분리 이유: 다중 배치의 첫 배치가 "CLAUDE.md + 공통 standard
+  // + 15 도메인"을 한 세션에 모두 처리하면 단일 스테이지 부하가 ~70-80
+  // 파일까지 치솟음. 관측된 overflow 임계(약 40 파일)보다 2배 가까이 큼.
+  // 공통 파일을 별도 스테이지로 빼서 각 스테이지가 ~50 파일 이하로
+  // 유지되도록 보장.
+  if (isBatched) {
+    await runStage("3b-core", "core common files (CLAUDE.md + common standard + common rules)",
+      buildStageCorePrompt("3b", batches),
+      {
+        expectsStagedRules: true,
+        validate: () => {
+          const problems = [];
+          if (!fileExists(claudeMdPath)) {
+            problems.push("CLAUDE.md was not created");
+          }
+          const stdSentinel = path.join(PROJECT_ROOT, "claudeos-core/standard/00.core/01.project-overview.md");
+          if (!fileExists(stdSentinel)) {
+            problems.push("claudeos-core/standard/00.core/01.project-overview.md missing");
+          } else {
+            const c = readFileSafe(stdSentinel, "");
+            if (c.replace(/^\uFEFF/, "").trim().length === 0) {
+              problems.push("claudeos-core/standard/00.core/01.project-overview.md is empty");
+            }
+          }
+          // 3b-core는 공통 rules만 생성 — rules 카운트 검증은 3b-N에서.
+          return problems;
+        },
+      }
+    );
+  }
+
+  // 도메인별 배치 루프.
+  // 단일 배치: stageId "3b", 공통 파일 포함 (기존 동작).
+  // 다중 배치: stageId "3b-1", "3b-2", ..., 공통 파일은 3b-core에서 이미 처리됨.
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batchDomains = batches[bi];
+    const stageId = isBatched ? `3b-${bi + 1}` : "3b";
+    const label = isBatched
+      ? `domain batch ${bi + 1}/${batches.length} (${batchDomains.length} domains)`
+      : "core files (CLAUDE.md + standard + rules)";
+
+    // 배치별 프롬프트: 원래 3b 헤더에 이번 배치에서만 처리할 도메인 목록 주입.
+    // 다중 배치에서는 모든 배치가 "도메인 특화 파일만" 생성 (공통 파일은 3b-core에서 처리됨).
+    const batchScopeNote = isBatched
+      ? buildBatchScopeNote("3b", bi, batches.length, batchDomains)
+      : "";
+    const baseprompt = buildStagePrompt("pass3b-core-header.md", true);
+    const promptWithScope = batchScopeNote
+      ? baseprompt.replace(/\n## Scope of this step/, `\n${batchScopeNote}\n## Scope of this step`)
+      : baseprompt;
+
+    await runStage(stageId, label, promptWithScope, {
+      expectsStagedRules: true,
+      validate: () => {
+        const problems = [];
+        // 단일 배치: 공통 파일 검증 (3b-core가 없으므로 여기서 체크).
+        if (!isBatched) {
+          if (!fileExists(claudeMdPath)) {
+            problems.push("CLAUDE.md was not created");
+          }
+          const stdSentinel = path.join(PROJECT_ROOT, "claudeos-core/standard/00.core/01.project-overview.md");
+          if (!fileExists(stdSentinel)) {
+            problems.push("claudeos-core/standard/00.core/01.project-overview.md missing");
+          } else {
+            const c = readFileSafe(stdSentinel, "");
+            if (c.replace(/^\uFEFF/, "").trim().length === 0) {
+              problems.push("claudeos-core/standard/00.core/01.project-overview.md is empty");
+            }
+          }
+        }
+        // 모든 배치에서 rules/ 생성 확인 (최소 1개는 staged-rules가 통과해야 함)
+        const rulesDir = path.join(PROJECT_ROOT, ".claude/rules");
+        const rulesCount = countFilesRecursive(rulesDir);
+        if (rulesCount === 0) {
+          problems.push(".claude/rules/ has 0 files (staging-override may have been ignored)");
+        }
+        return problems;
+      },
+    });
+  }
+
+  // ═══ Stage 3c: skills/ + guide/ ═══════════════════════════════
+  //
+  // 단일 배치 (도메인 ≤ 15): 기존 "3c" marker 유지 (guide + skills 함께).
+  // 다중 배치 (도메인 > 15): "3c-core" 먼저 실행 후 "3c-1", "3c-2", ...
+  //
+  // 3c-core 분리 이유: guide 9개 + 공통 skills는 도메인 수 무관하게 고정.
+  // 도메인 배치와 섞이면 첫 배치 부하가 다른 배치보다 커짐.
+  if (isBatched) {
+    await runStage("3c-core", "common guides and shared skills",
+      buildStageCorePrompt("3c", batches),
+      {
+        expectsStagedRules: true, // shared skills occasionally include rule files
+        validate: () => {
+          const problems = [];
+          const guideDir = path.join(PROJECT_ROOT, "claudeos-core/guide");
+          const missingGuides = EXPECTED_GUIDE_FILES.filter(g => {
+            const fp = path.join(guideDir, g);
+            if (!fileExists(fp)) return true;
+            try {
+              return fs.readFileSync(fp, "utf-8").replace(/^\uFEFF/, "").trim().length === 0;
+            } catch (_e) { return true; }
+          });
+          for (const g of missingGuides) {
+            problems.push(`claudeos-core/guide/${g} missing or empty`);
+          }
+          // skills/ 최종 검증은 마지막 도메인 배치에서 수행.
+          return problems;
+        },
+      }
+    );
+  }
+
+  // 도메인별 skills 배치 루프.
+  // 단일 배치: guide + skills 함께 (기존 동작).
+  // 다중 배치: skills만, guide는 이미 3c-core에서 처리됨.
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batchDomains = batches[bi];
+    const stageId = isBatched ? `3c-${bi + 1}` : "3c";
+    const label = isBatched
+      ? `domain skills batch ${bi + 1}/${batches.length} (${batchDomains.length} domains)`
+      : "skills and guides";
+
+    const batchScopeNote = isBatched
+      ? buildBatchScopeNote("3c", bi, batches.length, batchDomains)
+      : "";
+    const baseprompt = buildStagePrompt("pass3c-skills-guide-header.md", true);
+    const promptWithScope = batchScopeNote
+      ? baseprompt.replace(/\n## Scope of this step/, `\n${batchScopeNote}\n## Scope of this step`)
+      : baseprompt;
+
+    await runStage(stageId, label, promptWithScope, {
+      expectsStagedRules: true, // skills occasionally include rule files
+      validate: () => {
+        const problems = [];
+        // 단일 배치: guide 검증도 여기서 수행 (3c-core가 없으니까).
+        if (!isBatched) {
+          const guideDir = path.join(PROJECT_ROOT, "claudeos-core/guide");
+          const missingGuides = EXPECTED_GUIDE_FILES.filter(g => {
+            const fp = path.join(guideDir, g);
+            if (!fileExists(fp)) return true;
+            try {
+              return fs.readFileSync(fp, "utf-8").replace(/^\uFEFF/, "").trim().length === 0;
+            } catch (_e) { return true; }
+          });
+          for (const g of missingGuides) {
+            problems.push(`claudeos-core/guide/${g} missing or empty`);
+          }
+        }
+        // Skills 최종 검증: 단일 배치 / 마지막 배치에서만 전체 검증.
+        if (!isBatched || bi === batches.length - 1) {
+          const { hasNonEmptyMdRecursive } = require("../../lib/expected-outputs");
+          const skillsDir = path.join(PROJECT_ROOT, "claudeos-core/skills");
+          if (!fileExists(skillsDir) || !hasNonEmptyMdRecursive(skillsDir)) {
+            problems.push("claudeos-core/skills/ has no non-empty .md files");
+          }
+        }
+        return problems;
+      },
+    });
+  }
+
+  // ═══ Stage 3d: plan/ + database/ + mcp-guide/ ═════════════════
+  //
+  // 3d는 원래 standard/rules/skills/guide 를 master plan 으로 집계하고
+  // database/mcp-guide stub 을 만들던 스테이지였다. 하지만 master plan 자체는
+  // Claude Code 런타임에서 읽히지 않는 도구 내부 백업/관리용 파일이었고,
+  // 도메인 수가 많아지면 단일 세션 집계에서 Prompt is too long 발생 원인이
+  // 됐다 (18 도메인 실측에서 3d-standard가 32 파일 집계 시점에 실패).
+  // master plan 생성을 중단하는 것이 안정성 측면에서 올바른
+  // 결정이며, 필요시 사용자가 직접 스크립트로 집계 가능하다.
+  //
+  // 결과적으로 3d는 aux 만 남음:
+  //   3d-aux → database/ + mcp-guide/ (프로젝트 특성 설명 stub)
+
+  // 3d-aux: database/ + mcp-guide/ (absence is warning-level)
+  await runStage("3d-aux", "aux docs (database + mcp-guide)",
+    build3dSubPrompt("aux"),
+    {
+      expectsStagedRules: false,
+      validate: () => [],
+    }
+  );
+
+  // ─── Final marker: all 4 stages done ─────────────────────────
+  const finalPersist = persistMarker(true);
+  if (!finalPersist) {
+    throw new InitError(
+      "Pass 3 split all stages complete but failed to write final marker.\n" +
+      `    Check disk space / permissions on ${GENERATED_DIR}/.`
+    );
+  }
+  // 총 스테이지 수 계산
+  // 3a (1) + 3b 계(단일 1 or core+N) + 3c 계(단일 1 or core+N) + 3d-aux (1)
+  // 단일 배치: 1 + 1 + 1 + 1 = 4
+  // 다중 배치: 1 + (1 + N) + (1 + N) + 1 = 2N + 4
+  const three3dStages = 1; // aux only (master plan aggregation removed)
+  const totalStages = isBatched
+    ? (1 + 1 + batches.length + 1 + batches.length + three3dStages)
+    : (1 + 1 + 1 + three3dStages);
+  log(`    🎉 Pass 3 split complete: ${completedGroups.length}/${totalStages} stages successful`);
+}
+
 async function cmdInit(parsedArgs) {
   const totalStart = Date.now();
   // Tracks whether we just wiped generated state via --force or "fresh" resume
@@ -236,7 +857,6 @@ async function cmdInit(parsedArgs) {
     "claudeos-core/skills/20.frontend-page/scaffold-page-feature",
     "claudeos-core/skills/50.testing",
     "claudeos-core/skills/90.experimental",
-    "claudeos-core/plan",
     "claudeos-core/guide/01.onboarding",
     "claudeos-core/guide/02.usage",
     "claudeos-core/guide/03.troubleshooting",
@@ -432,6 +1052,36 @@ async function cmdInit(parsedArgs) {
   }
   log("");
 
+  // ─── [5.5] v2.1: Build pass3-context.json (slim summary for Pass 3) ──
+  // Writes a small (<5 KB) structured summary derived from project-analysis.json
+  // plus pass2-merged.json signals (size, top-level keys). Pass 3 prompts
+  // reference this INSTEAD OF re-reading pass2-merged.json repeatedly, which
+  // was the primary cause of `Prompt is too long` failures on large projects.
+  //
+  // Silent-on-failure: if pass3-context-builder returns null (e.g.
+  // project-analysis.json missing), we skip writing and let Pass 3 fall back
+  // to the pre-v2.1 behavior of reading pass2-merged.json directly.
+  try {
+    const { buildPass3Context } = require("../../plan-installer/pass3-context-builder");
+    const pass3Ctx = buildPass3Context(GENERATED_DIR);
+    if (pass3Ctx) {
+      const { writeFileSafe: wfsCtx } = require("../../lib/safe-fs");
+      const ctxPath = path.join(GENERATED_DIR, "pass3-context.json");
+      const wrote = wfsCtx(ctxPath, JSON.stringify(pass3Ctx, null, 2));
+      if (wrote) {
+        const sizeKB = Math.round(JSON.stringify(pass3Ctx).length / 1024);
+        const p2KB = pass3Ctx.pass2Merged.sizeKB;
+        log(`    📄 pass3-context.json built (${sizeKB} KB summary of ${p2KB} KB pass2-merged.json)`);
+        if (pass3Ctx.pass2Merged.large) {
+          log(`    ⚠️  pass2-merged.json is large (${p2KB} KB). Pass 3 will rely heavily on pass3-context.json to avoid context overflow.`);
+        }
+      }
+    }
+  } catch (e) {
+    log(`    ⚠️  pass3-context.json build skipped: ${e.message} (Pass 3 will fall back to pass2-merged.json)`);
+  }
+  log("");
+
   // ─── [6] Pass 3: Generate + verify ─────────────────────────
   header("[6] Pass 3 — Generating all files...");
 
@@ -493,7 +1143,27 @@ async function cmdInit(parsedArgs) {
     }
   }
   if (fileExists(pass3Marker)) {
-    if (!fileExists(claudeMdPath)) {
+    // v2.1.1: split-mode partial marker 보호.
+    // { mode: "split", groupsCompleted: [...], completedAt: undefined } 형태의
+    // 중간 진행 마커는 stale로 판정하면 안 됨. 3b까지만 완료된 정상 상태에서도
+    // guide/skills/plan이 비어있어서 기존 로직이 잘못 stale 판정하고 marker를
+    // 삭제하면, runPass3Split의 resume 로직이 완료된 스테이지를 못 읽고
+    // 3a부터 전체 재실행하게 됨 (correctness는 OK이지만 토큰 2배 낭비).
+    let markerIsSplitPartial = false;
+    try {
+      const parsed = JSON.parse(readFile(pass3Marker));
+      markerIsSplitPartial =
+        parsed &&
+        parsed.mode === "split" &&
+        Array.isArray(parsed.groupsCompleted) &&
+        !parsed.completedAt;
+    } catch (_e) {
+      // malformed marker → stale check로 넘어감 (이전 동작 유지)
+    }
+
+    if (markerIsSplitPartial) {
+      log(`    ↪️  split-mode partial marker detected — runPass3Split will resume`);
+    } else if (!fileExists(claudeMdPath)) {
       dropStalePass3Marker("    ⚠️  pass3-complete.json exists but CLAUDE.md is missing — treating marker as stale, re-running Pass 3");
     } else {
       const guideDirForStale = path.join(PROJECT_ROOT, "claudeos-core/guide");
@@ -519,139 +1189,48 @@ async function cmdInit(parsedArgs) {
     }
   }
 
-  if (fileExists(pass3Marker)) {
+  // Pass 3 split mode resolution.
+  //
+  // Pass 3 runs as 4 sequential `claude -p` calls (3a facts, 3b core, 3c
+  // skills+guide, 3d-aux database/mcp-guide), each with fresh context.
+  // This eliminates `Prompt is too long` failures by making output
+  // accumulation overflow structurally impossible — each stage starts
+  // with a clean context window. For projects with 16+ domains, 3b and 3c
+  // are further split into core + batched sub-stages.
+  //
+  // Single-call mode (previously toggled by CLAUDEOS_PASS3_SPLIT=0) was
+  // removed because empirical data showed it failed reliably on projects
+  // with more than ~5 domains (output accumulation overflow was not
+  // predictable from input size alone), and split mode is structurally
+  // immune to this failure mode with bounded token overhead.
+  log(`    🚀 Pass 3 split mode (3a → 3b → 3c → 3d-aux)`);
+  try {
+    const ctxPath = path.join(GENERATED_DIR, "pass3-context.json");
+    if (fileExists(ctxPath)) {
+      const ctx = JSON.parse(readFile(ctxPath));
+      const rec = ctx && ctx.splitRecommendation;
+      if (rec) {
+        log(`       • estimated ${rec.estimatedFileCount} files from ${rec.totalDomains} domains`);
+      }
+    }
+  } catch (_e) { /* best-effort log only */ }
+
+  if (!fileExists(pass3Marker)) {
+    await runPass3Split({
+      GENERATED_DIR, PROJECT_ROOT, TOOLS_DIR,
+      pass3Marker, claudeMdPath,
+      injectProjectRoot, readFile, fileExists,
+      runClaudePromptAsync, makePassTicker, formatElapsed,
+      log, countFiles,
+      EXPECTED_GUIDE_FILES, findMissingOutputs,
+      lang, stepTimes,
+    });
+    completedSteps++;
+    progressBar(completedSteps, `Pass 3 complete (split mode)`);
+    log("");
+  } else {
     log("    ⏭️  pass3-complete.json already exists, skipping");
     completedSteps++;
-  } else {
-    const pass3PromptFile = path.join(GENERATED_DIR, "pass3-prompt.md");
-    if (!fileExists(pass3PromptFile)) {
-      throw new InitError("pass3-prompt.md not found. Re-run plan-installer.");
-    }
-    let prompt = injectProjectRoot(readFile(pass3PromptFile));
-
-    // Clear any stale .staged-rules/ before running Claude, so we don't
-    // accidentally move leftover files from a prior crashed run alongside
-    // the new output. Safe no-op when the dir doesn't exist.
-    const stagedBeforeP3 = path.join(GENERATED_DIR, ".staged-rules");
-    if (fileExists(stagedBeforeP3)) fs.rmSync(stagedBeforeP3, { recursive: true, force: true });
-
-    const t3 = Date.now();
-    // Pass 3 writes many files across .claude/ and claudeos-core/; we can't
-    // know the total in advance (stack-dependent), so we show the delta only.
-    const ticker3 = makePassTicker("Pass 3", t3, { baselineCount: countFiles() });
-    const ok3 = await runClaudePromptAsync(prompt, {
-      onTick: ticker3.onTick,
-      tickMs: ticker3.tickMs,
-    });
-    ticker3.clearLine();
-    const elapsed3 = Date.now() - t3;
-    stepTimes.push(elapsed3);
-
-    if (!ok3) {
-      throw new InitError("Pass 3 failed. Check the claude error output above.\n    If this persists, try: npx claudeos-core init --force");
-    }
-
-    // Move rule files that Pass 3 wrote to the staging dir (workaround for
-    // Claude Code's .claude/ sensitive-path block). See lib/staged-rules.js.
-    const { moveStagedRules: mvP3, countFilesRecursive } = require("../../lib/staged-rules");
-    const p3Move = mvP3(PROJECT_ROOT);
-    if (p3Move.failed > 0) {
-      log(`    ⚠️  Pass 3 staged-rules: ${p3Move.moved} moved, ${p3Move.failed} failed`);
-      for (const err of p3Move.errors) log(`       • ${err}`);
-    } else if (p3Move.moved > 0) {
-      log(`    📦 Pass 3 staged-rules: ${p3Move.moved} rule files moved to .claude/rules/`);
-    }
-
-    // Guard 1 (Risk #1): Partial move failure. We do NOT write the pass3
-    // completion marker, so the next `init` run re-executes Pass 3 via the
-    // continue-mode path. Transient causes (Windows file locks, antivirus
-    // scanners) usually clear on retry. The partially-moved rules stay in
-    // .claude/rules/ — they're overwritten on re-run.
-    if (p3Move.failed > 0) {
-      throw new InitError(
-        `Pass 3 finished but ${p3Move.failed} rule file(s) could not be moved from staging.\n` +
-        `    See the warnings above. This is usually a transient file-lock issue.\n` +
-        `    Re-run \`npx claudeos-core init\` — Pass 3 will retry automatically.`
-      );
-    }
-
-    // Guard 2 (Risk #2): Empty .claude/rules/. If Claude ignored the
-    // staging-override directive and tried to write directly to .claude/,
-    // those writes are blocked by Claude Code and the staging dir stays
-    // empty. Pass 3 reliably generates at least 00.standard-reference.md,
-    // so zero files is a strong signal that generation failed silently.
-    const ruleFilesCount = countFilesRecursive(path.join(PROJECT_ROOT, ".claude/rules"));
-    if (ruleFilesCount === 0) {
-      throw new InitError(
-        "Pass 3 produced 0 rule files under .claude/rules/.\n" +
-        "    This usually means Claude ignored the staging-override directive\n" +
-        "    and attempted to write to .claude/ directly, where Claude Code's\n" +
-        "    sensitive-path policy blocks writes.\n" +
-        "    Re-run with --force: `npx claudeos-core init --force`"
-      );
-    }
-
-    if (!fileExists(claudeMdPath)) {
-      throw new InitError("CLAUDE.md was not created. Claude ran but did not produce CLAUDE.md.\n    Verify pass3-prompt.md instructs Claude to create CLAUDE.md at project root.");
-    }
-
-    // Guard 3 (Risk #3): Incomplete generation. Claude occasionally truncates
-    // mid-response after writing CLAUDE.md + rules/ but before reaching the
-    // guide/ section of the prompt. It also occasionally writes only a heading
-    // and truncates before the body — giving us an empty file that satisfies
-    // existsSync but fails content-validator's trim-length check. Both cases
-    // leave the project permanently broken on subsequent runs (step [8]
-    // content-validator errors are non-fatal), so gate the marker here.
-    const guideDir = path.join(PROJECT_ROOT, "claudeos-core/guide");
-    const missingOrEmptyGuides = EXPECTED_GUIDE_FILES.filter(g => {
-      const fp = path.join(guideDir, g);
-      if (!fileExists(fp)) return true;
-      try {
-        // Strip UTF-8 BOM before trim — String.prototype.trim doesn't remove
-        // U+FEFF (not in Unicode White_Space). Otherwise a BOM-only file
-        // (3 bytes, no text) would pass the empty check and Guard 3 would
-        // silently accept it. Mirrors content-validator/index.js:115.
-        return fs.readFileSync(fp, "utf-8").replace(/^\uFEFF/, "").trim().length === 0;
-      } catch (_e) { return true; }  // unreadable counts as missing
-    });
-    if (missingOrEmptyGuides.length > 0) {
-      const preview = missingOrEmptyGuides.slice(0, 5).map(g => `       • claudeos-core/guide/${g}`).join("\n");
-      const more = missingOrEmptyGuides.length > 5 ? `\n       • ... and ${missingOrEmptyGuides.length - 5} more` : "";
-      throw new InitError(
-        `Pass 3 produced CLAUDE.md and rules but ${missingOrEmptyGuides.length}/${EXPECTED_GUIDE_FILES.length} guide files are missing or empty:\n` +
-        preview + more + "\n" +
-        "    Claude likely truncated the response before reaching or finishing the guide/ section.\n" +
-        "    Re-run with --force: `npx claudeos-core init --force`"
-      );
-    }
-
-    // Guard 3 extension (H1): The same truncation pattern can cut off Claude's
-    // response AFTER the guide/ section but before standard/, skills/, or
-    // plan/. content-validator flags these as ERROR-level but step [8] runs
-    // with ignoreError:true so nothing blocks the marker. Validate each
-    // directory here — a specific sentinel file for standard/, and a
-    // "≥1 non-empty .md" check for skills/ and plan/. database/ and
-    // mcp-guide/ are intentionally excluded (validator: WARNING-level; stacks
-    // legitimately produce zero files when no DB or MCP integration exists).
-    const missingOutputs = findMissingOutputs(PROJECT_ROOT);
-    if (missingOutputs.length > 0) {
-      const preview = missingOutputs.map(m => `       • ${m}`).join("\n");
-      throw new InitError(
-        `Pass 3 finished but the following required output(s) are missing or empty:\n` +
-        preview + "\n" +
-        "    Claude likely truncated the response before completing all output sections.\n" +
-        "    Re-run with --force: `npx claudeos-core init --force`"
-      );
-    }
-
-    // Write completion marker so subsequent `init` runs skip Pass 3 under "continue" mode.
-    const { writeFileSafe: wfs } = require("../../lib/safe-fs");
-    const markerOk = wfs(pass3Marker, JSON.stringify({ completedAt: new Date().toISOString() }, null, 2));
-    if (!markerOk) {
-      throw new InitError(`Failed to write ${path.basename(pass3Marker)}. Check disk space and permissions on claudeos-core/generated/.\n    Without this marker, subsequent \`init\` runs will regenerate CLAUDE.md.`);
-    }
-    completedSteps++;
-    progressBar(completedSteps, `Pass 3 complete (${formatElapsed(elapsed3)})`);
   }
   log("");
 
@@ -661,13 +1240,14 @@ async function cmdInit(parsedArgs) {
   const pass4Marker = path.join(GENERATED_DIR, "pass4-memory.json");
   const pass4PromptFile = path.join(GENERATED_DIR, "pass4-prompt.md");
 
-  const { scaffoldMemory, scaffoldRules, appendClaudeMdL4Memory, scaffoldMasterPlans, scaffoldDocWritingGuide } = require("../../lib/memory-scaffold");
+  const { scaffoldMemory, scaffoldRules, appendClaudeMdL4Memory, scaffoldMasterPlans, scaffoldDocWritingGuide, scaffoldSkillsManifest } = require("../../lib/memory-scaffold");
   const { writeFileSafe } = require("../../lib/safe-fs");
 
   const memoryPath = path.join(PROJECT_ROOT, "claudeos-core/memory");
   const planPath = path.join(PROJECT_ROOT, "claudeos-core/plan");
   const rulesPath = path.join(PROJECT_ROOT, ".claude/rules");
   const standardCorePath = path.join(PROJECT_ROOT, "claudeos-core/standard/00.core");
+  const skillsSharedPath = path.join(PROJECT_ROOT, "claudeos-core/skills/00.shared");
 
   function applyStaticFallback() {
     try {
@@ -675,6 +1255,7 @@ async function cmdInit(parsedArgs) {
       scaffoldRules(rulesPath, { lang });
       scaffoldDocWritingGuide(standardCorePath, { lang });
       scaffoldMasterPlans(planPath, memoryPath, { lang });
+      scaffoldSkillsManifest(skillsSharedPath, { lang });
       appendClaudeMdL4Memory(claudeMdPath, { lang });
     } catch (err) {
       // When lang !== "en", translation is REQUIRED. If it fails, we surface
@@ -706,9 +1287,9 @@ async function cmdInit(parsedArgs) {
         ".claude/rules/60.memory/03.compaction.md",
         ".claude/rules/60.memory/04.auto-rule-update.md",
       ],
-      planFiles: [
-        "claudeos-core/plan/50.memory-master.md",
-      ],
+      // Note: master plan files are no longer generated (previously this
+      // included "claudeos-core/plan/50.memory-master.md"). The marker schema
+      // still accepts an optional planFiles field for backward compatibility.
       claudeMdAppended: true,
     }, null, 2);
     return writeFileSafe(pass4Marker, markerBody);
@@ -781,15 +1362,22 @@ async function cmdInit(parsedArgs) {
     if (fileExists(stagedBeforeP4)) fs.rmSync(stagedBeforeP4, { recursive: true, force: true });
 
     const t4 = Date.now();
-    // Pass 4 creates 12 files in total, but the 6 rule files go to
-    // .staged-rules/ (i.e. under claudeos-core/generated/) which countFiles()
-    // deliberately skips. So the ticker can only observe 6 files during the
-    // run: 4 memory + 1 plan + 1 standard. We set totalExpected to that
-    // observable max; the final "100%" shows up on the outer progressBar
-    // once the staged move + marker are done.
+    // Pass 4's prompt lists 12 required outputs (pass4.md §§1-12). Of these:
+    //   - 11 are file creations (#1-10 + #12)
+    //   - 1 is an append to existing CLAUDE.md (#11, not a new file)
+    // Of the 11 file creations, only 5 are visible to countFiles() during
+    // the run:
+    //   - #1-4 (4 memory files)                                 → observable
+    //   - #5-10 (6 rule files) go to .staged-rules/ under
+    //     claudeos-core/generated/, which countFiles() skips    → invisible
+    //   - #12 (1 standard doc-writing-guide)                    → observable
+    // So totalExpected = 5. (v2.0.x had 6 because plan/50.memory-master.md
+    // was also generated; master plan generation was removed in v2.1.0.)
+    // The final "100%" shows up on the outer progressBar once the staged
+    // move + marker are done.
     const ticker4 = makePassTicker("Pass 4", t4, {
       baselineCount: countFiles(),
-      totalExpected: 6,
+      totalExpected: 5,
     });
     const ok4 = await runClaudePromptAsync(prompt4, {
       onTick: ticker4.onTick,
@@ -828,6 +1416,7 @@ async function cmdInit(parsedArgs) {
         const ruleR  = scaffoldRules(rulesPath, { lang });
         const docR   = scaffoldDocWritingGuide(standardCorePath, { lang });
         const planR  = scaffoldMasterPlans(planPath, memoryPath, { lang });
+        const manifestR = scaffoldSkillsManifest(skillsSharedPath, { lang });
         const claudeOk = appendClaudeMdL4Memory(claudeMdPath, { lang });
         // Collect all statuses into one flat array for summary reporting.
         gapResults = [
@@ -835,6 +1424,7 @@ async function cmdInit(parsedArgs) {
           ...ruleR,
           ...planR,
           { file: docR.file, status: docR.status },
+          { file: "skills/00.shared/" + manifestR.file, status: manifestR.status },
           { file: "CLAUDE.md#(L4)", status: claudeOk ? "present-or-appended" : "error" },
         ];
       } catch (err) {

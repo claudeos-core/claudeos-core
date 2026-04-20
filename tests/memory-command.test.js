@@ -562,3 +562,111 @@ test("memory propose-rules: unanchored patterns tagged in output", () => {
   fs.rmSync(d, { recursive: true, force: true });
 });
 
+// ─── v2.1.0 regression: memory score / compact formatting ───────
+
+test("memory score: does NOT leave duplicate importance lines on first run (v2.1.0 regression)", () => {
+  // Before v2.1.0, the first score run would insert the auto-scored line at
+  // the top but leave the user's original `- importance: N` line below,
+  // resulting in two conflicting importance values visible in the file.
+  const d = tmpProject();
+  const fp = path.join(d, "claudeos-core/memory/failure-patterns.md");
+  fs.writeFileSync(fp, `# Failure Patterns
+
+## error-dup-check
+- frequency: 4
+- last seen: ${new Date().toISOString().slice(0, 10)}
+- importance: 3
+- Fix: handle edge case
+`);
+  const r = runMemory(d, "score");
+  assert.equal(r.status, 0, r.stderr);
+
+  const updated = fs.readFileSync(fp, "utf-8");
+  // Count importance lines — there must be exactly ONE per entry.
+  // Both `- **importance**:` (auto-scored) and `- importance:` (plain) count.
+  const importanceLines = updated.split("\n").filter(
+    l => /^\s*-\s*\*{0,2}\s*importance\s*\*{0,2}\s*[:=]/i.test(l)
+  );
+  assert.equal(importanceLines.length, 1,
+    `expected exactly 1 importance line, got ${importanceLines.length}:\n${importanceLines.join("\n")}`);
+  assert.match(importanceLines[0], /\*\*importance\*\*/,
+    "the remaining line must be the auto-scored one (bold)");
+
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("memory score: remains idempotent — repeated runs don't accumulate importance lines", () => {
+  const d = tmpProject();
+  const fp = path.join(d, "claudeos-core/memory/failure-patterns.md");
+  fs.writeFileSync(fp, `# Failure Patterns
+
+## error-idempotent
+- frequency: 2
+- last seen: ${new Date().toISOString().slice(0, 10)}
+- importance: 5
+- Fix: retry
+`);
+  // Run score 3 times in sequence
+  for (let i = 0; i < 3; i++) {
+    const r = runMemory(d, "score");
+    assert.equal(r.status, 0, `score run ${i + 1} failed: ${r.stderr}`);
+  }
+  const updated = fs.readFileSync(fp, "utf-8");
+  const importanceLines = updated.split("\n").filter(
+    l => /^\s*-\s*\*{0,2}\s*importance\s*\*{0,2}\s*[:=]/i.test(l)
+  );
+  assert.equal(importanceLines.length, 1,
+    `after 3 score runs, expected 1 importance line, got ${importanceLines.length}`);
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("memory compact: Stage 1 summary line is a valid markdown list item (v2.1.0 regression)", () => {
+  // Before v2.1.0, the compact summary marker was a plain italic string
+  // without the `- ` list prefix, which broke markdown rendering and
+  // caused parseEntries to misread it on subsequent compactions.
+  const d = tmpProject();
+  const fp = path.join(d, "claudeos-core/memory/failure-patterns.md");
+  // Entry > 30 days old so Stage 1 summary marker kicks in.
+  // daysSince > 30 means we need a lastSeen at least 31 days in the past.
+  const oldDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+  fs.writeFileSync(fp, `# Failure Patterns
+
+## error-needs-summary
+- frequency: 2
+- last seen: ${oldDate}
+- importance: 4
+- Fix: retry the operation
+- Context: lots of verbose context that should be summarized away
+- Additional: even more body content
+`);
+  // Required files for compact
+  fs.writeFileSync(path.join(d, "claudeos-core/memory/decision-log.md"), "# Decision Log\n");
+  fs.writeFileSync(path.join(d, "claudeos-core/memory/compaction.md"),
+    "# Compaction Strategy\n## Last Compaction\n(never)\n");
+  fs.writeFileSync(path.join(d, "claudeos-core/generated/rule-manifest.json"),
+    JSON.stringify({
+      rules: [], standards: [], skills: [], guides: [],
+      database: [], mcpGuide: [], memory: [], summary: {}
+    }));
+
+  const r = runMemory(d, "compact");
+  assert.equal(r.status, 0, r.stderr);
+
+  const updated = fs.readFileSync(fp, "utf-8");
+  // The summary marker must be a proper markdown list item starting with "- "
+  const summaryMatch = updated.match(/^.*Summarized on.*$/m);
+  assert.ok(summaryMatch,
+    "summary line should exist for aged entry");
+  assert.match(summaryMatch[0], /^-\s+_Summarized on/,
+    `summary line must start with "- _Summarized on..._" (markdown list item), got: ${summaryMatch[0]}`);
+
+  // Sanity: the entry body should be significantly shorter after summarization
+  assert.doesNotMatch(updated, /lots of verbose context/,
+    "verbose context should be removed");
+  assert.doesNotMatch(updated, /Additional: even more body content/,
+    "additional body content should be removed");
+
+  fs.rmSync(d, { recursive: true, force: true });
+});
+

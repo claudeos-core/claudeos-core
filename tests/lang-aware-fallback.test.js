@@ -37,7 +37,6 @@ const {
   scaffoldMemory,
   scaffoldRules,
   scaffoldDocWritingGuide,
-  scaffoldMasterPlans,
   appendClaudeMdL4Memory,
 } = require("../lib/memory-scaffold");
 

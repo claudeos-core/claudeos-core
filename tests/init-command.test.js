@@ -38,7 +38,9 @@ function writeFile(filePath, content) {
 
 describe("CLI parseArgs", () => {
   // parseArgs is defined inside cli.js — test via require + private extraction
-  // Since it's not exported, we re-implement the same logic for testing
+  // Since it's not exported, we re-implement the same logic for testing.
+  // Keep this in sync with bin/cli.js::parseArgs — the source-parity test at
+  // the end of this describe block guards against drift.
   function parseArgs(argv) {
     const result = { command: null, lang: null };
     for (let i = 0; i < argv.length; i++) {
@@ -49,7 +51,10 @@ describe("CLI parseArgs", () => {
       } else if (argv[i] === "--force" || argv[i] === "-f") {
         result.force = true;
       } else if (argv[i] === "--help" || argv[i] === "-h") {
-        result.command = "--help";
+        // v2.1.0: --help only promotes to top-level command when it appears
+        // BEFORE any command. `memory --help` leaves command as "memory"
+        // so memory subcommand can handle --help itself.
+        if (!result.command) result.command = "--help";
       } else if (argv[i] === "--version" || argv[i] === "-v") {
         result.command = "--version";
       } else if (!argv[i].startsWith("-") && !result.command) {
@@ -118,6 +123,28 @@ describe("CLI parseArgs", () => {
   it("returns null command when no args", () => {
     const r = parseArgs([]);
     assert.equal(r.command, null);
+  });
+
+  // v2.1.0: --help after a command stays with that command so subcommand
+  // can handle its own help. Before v2.1.0, `memory --help` was broken —
+  // --help overrode the command and showed top-level help instead of
+  // the memory subcommand help.
+  it("parses `memory --help` as memory command (not top-level --help)", () => {
+    const r = parseArgs(["memory", "--help"]);
+    assert.equal(r.command, "memory",
+      "--help after a command must not override it (memory handles --help itself)");
+  });
+
+  it("parses `memory -h` as memory command (shorthand)", () => {
+    const r = parseArgs(["memory", "-h"]);
+    assert.equal(r.command, "memory",
+      "-h after a command must not override it (shorthand path)");
+  });
+
+  it("parses `--help memory` as top-level --help (flag before command)", () => {
+    const r = parseArgs(["--help", "memory"]);
+    assert.equal(r.command, "--help",
+      "--help before any command should still promote to top-level help");
   });
 });
 
@@ -418,5 +445,81 @@ describe("CLI — command routing", () => {
     } catch (e) {
       assert.ok(e.stdout.includes("Unknown command"), "should report unknown command");
     }
+  });
+});
+
+// ─── v2.1.0 source-parity assertions ────────────────────────
+// These tests pin specific invariants about init.js that must not regress.
+// We inspect the source text directly rather than executing init (which
+// requires the claude CLI). Same pattern as pass3-batch-subdivision tests.
+
+describe("init.js source-parity (v2.1.0)", () => {
+  const INIT_SRC = fs.readFileSync(
+    path.join(__dirname, "..", "bin", "commands", "init.js"),
+    "utf-8"
+  );
+
+  it("dirs[] does NOT include claudeos-core/plan (master plan removed in v2.1.0)", () => {
+    // Locate the dirs array inside [2] "Creating directory structure..." block.
+    // The array literal runs from "const dirs = [" to the next "];" on its own line.
+    const match = INIT_SRC.match(/const dirs = \[([\s\S]*?)\n\s*\];/);
+    assert.ok(match, "could not locate dirs array in init.js");
+
+    const dirsBody = match[1];
+    // The exact string we're defending against: "claudeos-core/plan" (no subpath)
+    // as a top-level dir entry. We DO allow "claudeos-core/plan/..." if ever added,
+    // so the assertion is specific to the bare directory skeleton.
+    assert.doesNotMatch(
+      dirsBody,
+      /"claudeos-core\/plan"/,
+      "dirs[] must not create the bare claudeos-core/plan directory " +
+      "(master plan generation was removed in v2.1.0)"
+    );
+
+    // Sanity: the array should still contain other expected entries, so we
+    // know the regex actually matched the right array.
+    assert.match(dirsBody, /"claudeos-core\/memory"/,
+      "sanity: dirs[] must still create claudeos-core/memory");
+    assert.match(dirsBody, /"claudeos-core\/skills\/00\.shared"/,
+      "sanity: dirs[] must still create skills/00.shared");
+  });
+
+  it("Pass 4 ticker totalExpected is 5 (not 6) — reflects master plan removal", () => {
+    // Pass 4's makePassTicker invocation must declare totalExpected: 5.
+    // If this drifts back to 6, the progress bar will appear stuck at 83%
+    // because the 6th file (plan/50.memory-master.md) is no longer generated.
+    assert.match(
+      INIT_SRC,
+      /makePassTicker\("Pass 4"[\s\S]{0,300}totalExpected:\s*5/,
+      "Pass 4 ticker must use totalExpected: 5 (4 memory + 1 standard; " +
+      "master plan removed in v2.1.0)"
+    );
+    assert.doesNotMatch(
+      INIT_SRC,
+      /makePassTicker\("Pass 4"[\s\S]{0,300}totalExpected:\s*6/,
+      "Pass 4 ticker must NOT use totalExpected: 6 (stale master-plan count)"
+    );
+  });
+
+  it("scaffoldSkillsManifest is imported and called in Pass 4 gap-fill", () => {
+    // v2.1.0 added scaffoldSkillsManifest as a Pass 4 gap-fill. It must be:
+    //   1. Imported from memory-scaffold
+    //   2. Called in applyStaticFallback (when Claude-driven Pass 4 fails)
+    //   3. Called in the Claude-driven Pass 4 success gap-fill
+    //
+    // The actual destructure source order is:
+    //   const { ..., scaffoldSkillsManifest } = require("../../lib/memory-scaffold");
+    // so we check both directions: name-then-require and require-then-name.
+    assert.match(
+      INIT_SRC,
+      /scaffoldSkillsManifest\s*\}\s*=\s*require\(["']\.\.\/\.\.\/lib\/memory-scaffold["']\)/,
+      "scaffoldSkillsManifest must be destructured from require(memory-scaffold)"
+    );
+
+    // At least 2 call sites (applyStaticFallback + Claude-driven gap-fill)
+    const callPattern = /scaffoldSkillsManifest\(skillsSharedPath/g;
+    const invocations = INIT_SRC.match(callPattern) || [];
+    assert.ok(invocations.length >= 2,
+      `expected scaffoldSkillsManifest to be invoked at least 2x, got ${invocations.length}`);
   });
 });

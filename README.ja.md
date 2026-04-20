@@ -12,6 +12,20 @@ ClaudeOS-Core はコードベースを読み取り、見つけたすべてのパ
 
 ---
 
+## v2.1.0 の新機能
+
+v2.1.0 は Pass 3 を再設計し、中規模〜大規模プロジェクトで発生していた `Prompt is too long` 失敗を解消します。従来、単一の Pass 3 呼び出しが `CLAUDE.md`、rules、standards、skills、guides にまたがる数十ファイルを一度にすべて出力する必要があり、出力の累積が 5 ドメインを超えるあたりで確実にコンテキストウィンドウを超えていました。今回の修正はプロンプトの調整ではなく**構造的な変更**です:
+
+- **Pass 3 split モード**（常時有効） — Pass 3 は順次実行される `claude -p` 呼び出し（`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`）に分割されます。各ステージは**新しいコンテキストウィンドウ**で開始するため、プロジェクトの規模にかかわらず出力累積によるオーバーフローは構造的に発生しません。
+- **ステージ間のファクトシート** — ステージ `3a` が Pass 2 の分析を一度だけ読み、5〜10 KB の `pass3a-facts.md` に蒸留します。以降のすべてのステージは 100〜500 KB の `pass2-merged.json` を再読み込みせず、このファクトシートを参照するため、新しいコンテキストをまたいでもファイル間の整合性が保たれます。
+- **バッチのサブ分割**（16 ドメイン以上で自動適用） — ステージ 3b/3c はさらに 15 ドメインずつのバッチに分割され、各ステージの出力を ~50 ファイル以下に抑えます。18 ドメインの React 19 + Vite 6 管理画面フロントエンドで、**102 分で 101 ファイル生成・8 ステージ・オーバーフロー 0 件**を実測で確認しました（2026-04-20 の本番実行）。
+- **Master plan の生成を廃止** — `claudeos-core/plan/*-master.md` ファイルは生成されなくなりました。Master plan は Claude Code がランタイムで読み込まない内部バックアップであり、Pass 3d でそれらを集約することがオーバーフローの主要因でした。バックアップ/復元には `git` を使用してください。
+- **Pass 4 gap-fill: `skills/00.shared/MANIFEST.md`** — Pass 3c がスキルレジストリを省略した場合（スキルが少ないプロジェクト）、Pass 4 が自動的にスタブを作成し、`.claude/rules/50.sync/03.skills-sync.md` がぶら下がった参照先を指さないようにします。
+
+細かな修正もあります: `memory --help` が memory サブコマンドのヘルプを表示するようになりました（以前はトップレベルが表示されていました）；`memory score` が `importance` 行を重複して残さなくなりました；`memory compact` のサマリーマーカーが正しい Markdown のリスト項目になりました。詳細: [CHANGELOG.md](./CHANGELOG.md)。
+
+---
+
 ## なぜ ClaudeOS-Core なのか？
 
 他のすべての Claude Code ツールはこう動作します：
@@ -222,7 +236,7 @@ npx claudeos-core init --lang en    # English（デフォルト）
 
 > **注意：** この設定は生成されるドキュメントファイルの言語のみを変更します。コード分析（Pass 1–2）は常に英語で実行され、生成結果（Pass 3）のみが選択した言語で記述されます。生成ファイル内のコード例は元のプログラミング言語構文のまま維持されます。
 
-以上です。5–20 分後（Pass 1×N + Pass 2 + Pass 3 + Pass 4 メモリスキャフォールディング）、すべてのドキュメントが生成され、すぐに使用できます。CLI は各 Pass のパーセンテージ、経過時間、ETA 付きのプログレスバーを表示します。
+以上です。10 分（小規模プロジェクト）から 2 時間（60 ドメイン超のモノレポ）後、すべてのドキュメントが生成され、すぐに使用できます。CLI は各 Pass のパーセンテージ、経過時間、ETA 付きのプログレスバーを表示します。プロジェクトサイズごとの詳細な所要時間は [プロジェクトサイズによる自動スケーリング](#プロジェクトサイズによる自動スケーリング) を参照してください。
 
 ### 手動ステップバイステップインストール
 
@@ -249,10 +263,12 @@ mkdir -p claudeos-core/standard/{00.core,10.backend-api,20.frontend-ui,30.securi
 # Skills
 mkdir -p claudeos-core/skills/{00.shared,10.backend-crud/scaffold-crud-feature,20.frontend-page/scaffold-page-feature,50.testing,90.experimental}
 
-# Guide、Plan、Database、MCP、Generated、Memory（v2.0.0：memory を追加）
+# Guide、Database、MCP、Generated、Memory（v2.0.0：memory を追加 / v2.1.0：plan を削除）
 mkdir -p claudeos-core/guide/{01.onboarding,02.usage,03.troubleshooting,04.architecture}
-mkdir -p claudeos-core/{plan,database,mcp-guide,generated,memory}
+mkdir -p claudeos-core/{database,mcp-guide,generated,memory}
 ```
+
+> **v2.1.0 注意：** `claudeos-core/plan/` ディレクトリはもう作成されません。Master plan は Claude Code がランタイムで一度も読まない内部バックアップであり、それらを集約することが `Prompt is too long` 失敗の引き金になっていたため、生成は廃止されました。バックアップ/復元には `git` を使用してください。
 
 #### Step 3：plan-installer の実行（プロジェクト分析）
 
@@ -267,7 +283,8 @@ node claudeos-core-tools/plan-installer/index.js
 - `domain-groups.json` — Pass 1 用ドメイングループ
 - `pass1-backend-prompt.md` / `pass1-frontend-prompt.md` — 分析プロンプト
 - `pass2-prompt.md` — マージプロンプト
-- `pass3-prompt.md` — 生成プロンプト（`staging-override.md` ディレクティブでラップ — Step 6 の注意参照）
+- `pass3-prompt.md` — Phase 1 "Read Once, Extract Facts" ブロック（Rule A–E）が先頭に追加された Pass 3 プロンプトテンプレート。自動化パイプラインはランタイムで Pass 3 を複数ステージに分割し、このテンプレートが各ステージに供給されます。
+- `pass3-context.json` — Pass 2 後に生成されるスリムなプロジェクト要約（< 5 KB）。Pass 3 プロンプトは完全な `pass2-merged.json` よりこちらを優先して参照します（v2.1.0）
 - `pass4-prompt.md` — L4 メモリスキャフォールディングプロンプト（v2.0.0；`60.memory/` ルール書き込みにも同じ `staging-override.md` を使用）
 
 これらのファイルを検査して、進める前に検出精度を確認できます。
@@ -322,16 +339,35 @@ cat claudeos-core/generated/pass2-prompt.md \
 
 **確認：** `claudeos-core/generated/pass2-merged.json` が存在し、最上位キーが 9 個以上あるはずです。
 
-#### Step 6：Pass 3 — すべてのドキュメントを生成
+#### Step 6：Pass 3 — すべてのドキュメントを生成（複数ステージに分割）
+
+**v2.1.0 注意：** Pass 3 は自動化パイプラインで**常に split モードで実行**されます。各ステージはフレッシュなコンテキストウィンドウを持つ独立した `claude -p` 呼び出しであるため、プロジェクトの規模にかかわらず出力累積によるオーバーフローは構造的に発生しません。`pass3-prompt.md` テンプレートはステージごとに `STAGE:` ディレクティブと共に組み立てられ、どのサブセットのファイルを出力するかを Claude に伝えます。手動モードでは、完全なテンプレートを投入して 1 回の呼び出しで Claude にすべて生成させるのが最もシンプルですが、これは小規模プロジェクト（≤5 ドメイン）でのみ信頼できます。それより大きいプロジェクトでは `npx claudeos-core init` を使用し、split ランナーにステージオーケストレーションを任せてください。
+
+**単一呼び出しモード（小規模プロジェクト専用、≤5 ドメイン）：**
 
 ```bash
 cat claudeos-core/generated/pass3-prompt.md \
   | claude -p --dangerously-skip-permissions
 ```
 
-**確認：** プロジェクトルートに `CLAUDE.md` が存在し、`claudeos-core/generated/pass3-complete.json` マーカーが書き込まれているはずです。
+**ステージ別モード（すべての規模で推奨）：**
 
-> **注意（v2.0.0）：** Claude Code の sensitive-path ポリシーが `.claude/` への直接書き込みをブロックするため、Pass 3 はルールファイルを最初に `claudeos-core/generated/.staged-rules/` に書き込みます。自動化パイプライン（`npx claudeos-core init`）は移動を自動的に処理します。このステップを手動で実行する場合、staged ツリーを自分で移動する必要があります：`mv claudeos-core/generated/.staged-rules/* .claude/rules/`（サブパスを保持）。
+自動化パイプラインは以下のステージを実行します。ステージ一覧：
+
+| ステージ | 書き込むもの | 備考 |
+|---|---|---|
+| `3a` | `pass3a-facts.md`（5–10 KB の蒸留されたファクトシート） | `pass2-merged.json` を一度読み込み、以降のステージはこのファイルを参照 |
+| `3b-core` | `CLAUDE.md`、共通 `standard/`、共通 `.claude/rules/` | プロジェクト横断ファイル；ドメイン固有の出力なし |
+| `3b-1..N` | ドメイン固有の `standard/60.domains/*.md` + ドメインルール | ステージあたり ≤15 ドメインのバッチ（16 ドメイン以上で自動分割） |
+| `3c-core` | `guide/`（9 ファイル）、`skills/00.shared/MANIFEST.md`、`skills/*/` オーケストレータ | 共有スキルとユーザー向けガイド全体 |
+| `3c-1..N` | `skills/20.frontend-page/scaffold-page-feature/` 配下のドメインサブスキル | ステージあたり ≤15 ドメインのバッチ |
+| `3d-aux` | `database/`、`mcp-guide/` | 固定サイズ、ドメイン数とは独立 |
+
+1〜15 ドメインのプロジェクトでは 4 ステージ（`3a`、`3b-core`、`3c-core`、`3d-aux` — バッチ分割なし）に展開されます。16〜30 ドメインでは 8 ステージ（`3b` と `3c` がそれぞれ 2 バッチにサブ分割）に展開されます。完全な表は [プロジェクトサイズによる自動スケーリング](#プロジェクトサイズによる自動スケーリング) を参照してください。
+
+**確認：** プロジェクトルートに `CLAUDE.md` が存在し、`claudeos-core/generated/pass3-complete.json` マーカーが書き込まれているはずです。split モードではこのマーカーに `mode: "split"` と、完了したすべてのステージを列挙する `groupsCompleted` 配列が含まれます — 部分マーカーのロジックはこれを使い、クラッシュ後に `3a` から再実行する（トークンコストが倍増する）のではなく、正しいステージから再開します。
+
+> **ステージング注意：** Claude Code の sensitive-path ポリシーが `.claude/` への直接書き込みをブロックするため、Pass 3 はまず `claudeos-core/generated/.staged-rules/` にルールファイルを書き込みます。自動化パイプラインは各ステージ後に移動を自動的に処理します。ステージを手動で実行する場合、staged ツリーを自分で移動する必要があります：`mv claudeos-core/generated/.staged-rules/* .claude/rules/`（サブパスを保持）。
 
 #### Step 7：Pass 4 — メモリスキャフォールディング
 
@@ -340,7 +376,9 @@ cat claudeos-core/generated/pass4-prompt.md \
   | claude -p --dangerously-skip-permissions
 ```
 
-**確認：** `claudeos-core/memory/` に 4 ファイル（`decision-log.md`、`failure-patterns.md`、`compaction.md`、`auto-rule-update.md`）、`.claude/rules/60.memory/` に 4 ルールファイル、`claudeos-core/plan/50.memory-master.md` が存在し、`CLAUDE.md` に `## Memory (L4)` セクションが追加されているはずです。マーカー：`claudeos-core/generated/pass4-memory.json`。
+**確認：** `claudeos-core/memory/` に 4 ファイル（`decision-log.md`、`failure-patterns.md`、`compaction.md`、`auto-rule-update.md`）、`.claude/rules/60.memory/` に 4 ルールファイルが存在し、`CLAUDE.md` に `## Memory (L4)` セクションが追加されているはずです。マーカー：`claudeos-core/generated/pass4-memory.json`。
+
+> **v2.1.0 gap-fill：** Pass 4 は `claudeos-core/skills/00.shared/MANIFEST.md` の存在も保証します。Pass 3c がこれを省略した場合（スキルが少ないプロジェクトで、スタックの `pass3.md` テンプレートは `MANIFEST.md` を生成ターゲットに挙げているものの REQUIRED としてマークしていないため起こり得ます）、gap-fill が最小限のスタブを作成し、`.claude/rules/50.sync/03.skills-sync.md` の参照ターゲットが常に有効である状態を保ちます。冪等：ファイルがすでに実体のある内容（>20 文字）を持っている場合はスキップします。
 
 > **注意：** `claude -p` が失敗したり `pass4-prompt.md` が欠損している場合、自動化パイプラインは `lib/memory-scaffold.js` を経由した静的スキャフォールドにフォールバックします（`--lang` が非英語の場合は Claude 主導の翻訳付き）。静的フォールバックは `npx claudeos-core init` 内でのみ実行されます — 手動モードでは Pass 4 が成功する必要があります。
 
@@ -396,31 +434,42 @@ ls .claude/rules/*/
 ```
 npx claudeos-core init
     │
-    ├── [1] npm install                    ← 依存関係（~10 秒）
-    ├── [2] ディレクトリ構造                 ← フォルダ作成（~1 秒）
-    ├── [3] plan-installer (Node.js)       ← プロジェクトスキャン（~5 秒）
+    ├── [1] npm install                        ← 依存関係（~10 秒）
+    ├── [2] ディレクトリ構造                     ← フォルダ作成（~1 秒）
+    ├── [3] plan-installer (Node.js)           ← プロジェクトスキャン（~5 秒）
     │       ├── スタック自動検出（マルチスタック対応）
     │       ├── ドメインリスト抽出（タグ付け：backend/frontend）
     │       ├── ドメイングループに分割（タイプ別）
+    │       ├── pass3-context.json をビルド（スリム要約、v2.1.0）
     │       └── スタック固有のプロンプトを選択（タイプ別）
     │
-    ├── [4] Pass 1 × N  (claude -p)       ← 深層コード分析（~2-8 分）
+    ├── [4] Pass 1 × N  (claude -p)            ← 深層コード分析（~2-8 分）
     │       ├── ⚙️ バックエンドグループ → バックエンド固有プロンプト
     │       └── 🎨 フロントエンドグループ → フロントエンド固有プロンプト
     │
-    ├── [5] Pass 2 × 1  (claude -p)       ← 分析マージ（~1 分）
-    │       └── すべての Pass 1 結果を統合（backend + frontend）
+    ├── [5] Pass 2 × 1  (claude -p)            ← 分析マージ（~1 分）
+    │       └── すべての Pass 1 結果を pass2-merged.json に統合
     │
-    ├── [6] Pass 3 × 1  (claude -p)       ← すべてを生成（~3-5 分）
-    │       └── 結合プロンプト（backend + frontend ターゲット）
+    ├── [6] Pass 3（split モード、v2.1.0）       ← すべてを生成
+    │       │
+    │       ├── 3a     × 1  (claude -p)        ← ファクト抽出（~5-10 分）
+    │       │       └── pass2-merged.json を一度読んで → pass3a-facts.md
+    │       │
+    │       ├── 3b-core × 1  (claude -p)       ← CLAUDE.md + 共通 standard/rules
+    │       ├── 3b-1..N × N  (claude -p)       ← ドメイン standard/rules（≤15 ドメイン/バッチ）
+    │       │
+    │       ├── 3c-core × 1  (claude -p)       ← Guides + 共有 skills + MANIFEST.md
+    │       ├── 3c-1..N × N  (claude -p)       ← ドメインサブスキル（≤15 ドメイン/バッチ）
+    │       │
+    │       └── 3d-aux  × 1  (claude -p)       ← database/ + mcp-guide/ スタブ
     │
-    ├── [7] Pass 4 × 1  (claude -p)       ← メモリスキャフォールディング（~30 秒）
+    ├── [7] Pass 4 × 1  (claude -p)            ← メモリスキャフォールディング（~30 秒-5 分）
     │       ├── memory/ をシード（decision-log、failure-patterns、…）
     │       ├── 60.memory/ ルールを生成
     │       ├── CLAUDE.md に "Memory (L4)" セクションを追加
-    │       └── 50.memory-master.md プランを構築
+    │       └── Gap-fill：skills/00.shared/MANIFEST.md の存在を保証（v2.1.0）
     │
-    └── [8] 検証                           ← health checker を自動実行
+    └── [8] 検証                                 ← health checker を自動実行
 ```
 
 ### なぜ 4 Pass なのか？
@@ -429,9 +478,17 @@ npx claudeos-core init
 
 **Pass 2** はすべての Pass 1 結果を統一された分析にマージします：共通パターン（100% 共有）、多数派パターン（50%+ 共有）、ドメイン固有パターン、重大度別のアンチパターン、横断的関心事（命名、セキュリティ、DB、テスト、ロギング、パフォーマンス）。backend と frontend の結果は一緒にマージされます。
 
-**Pass 3** は統合された分析を受け取り、ファイルエコシステム全体（CLAUDE.md、rules、standards、skills、guides）を生成します。ソースコードは決して読まず、分析 JSON のみを参照します。マルチスタックモードでは、生成プロンプトは backend と frontend のターゲットを結合するため、両方のスタンダードセットが 1 回のパスで生成されます。
+**Pass 3**（split モード、v2.1.0）は統合された分析を受け取り、ファイルエコシステム全体（CLAUDE.md、rules、standards、skills、guides）を複数の順次 `claude -p` 呼び出しをまたいで生成します。ポイントは、出力累積によるオーバーフローが入力サイズから予測できない、という事実です：単一呼び出しの Pass 3 は 2 ドメインプロジェクトでは問題なく動作し、~5 ドメインで確実に失敗し、失敗境界は各ファイルの冗長度合いによって変動していました。Split モードはこれを構造的に回避します — 各ステージはフレッシュなコンテキストウィンドウで開始し、限定されたファイルサブセットを書き込みます。ステージをまたいだ整合性（単一呼び出しアプローチの主な利点）は `pass3a-facts.md` によって保持されます。これは 5–10 KB の蒸留されたファクトシートで、以降のすべてのステージが参照します。
 
-**Pass 4** は L4 メモリレイヤをスキャフォールディングします：永続的なチーム知識ファイル（decision-log、failure-patterns、compaction ポリシー、auto-rule-update）に加えて、これらのファイルをいつどのように読み書きするかを将来のセッションに指示する `60.memory/` ルール。メモリレイヤこそが、Claude Code がセッションごとに学びを再発見するのではなく、セッション間で蓄積することを可能にします。`--lang` が非英語の場合、フォールバック静的コンテンツは書き込み前に Claude を経由して翻訳されます。
+Pass 3 プロンプトテンプレートには、出力量をさらに抑制する **Phase 1「Read Once, Extract Facts」ブロック**（5 つのルール）も含まれます：
+
+- **Rule A** — ファクトテーブルを参照する；`pass2-merged.json` を再読み込みしない。
+- **Rule B** — 冪等なファイル書き込み（ターゲットが実体のある内容で存在する場合はスキップ）により、Pass 3 は中断後も安全に再実行できます。
+- **Rule C** — ファクトテーブルを単一の真実の源として、ファイル間の整合性を強制。
+- **Rule D** — 出力の簡潔さ：ファイル書き込みの合間は 1 行（`[WRITE]`/`[SKIP]`）のみ、ファクトテーブルの再掲やファイル内容のエコーをしない。
+- **Rule E** — バッチ冪等チェック：ターゲットごとの `Read` 呼び出しの代わりに、PHASE 2 開始時に `Glob` を 1 回だけ実行。
+
+**Pass 4** は L4 メモリレイヤをスキャフォールディングします：永続的なチーム知識ファイル（decision-log、failure-patterns、compaction ポリシー、auto-rule-update）に加えて、これらのファイルをいつどのように読み書きするかを将来のセッションに指示する `60.memory/` ルール。メモリレイヤこそが、Claude Code がセッションごとに学びを再発見するのではなく、セッション間で蓄積することを可能にします。`--lang` が非英語の場合、フォールバック静的コンテンツは書き込み前に Claude を経由して翻訳されます。v2.1.0 では、Pass 3c が省略した場合に備えて `skills/00.shared/MANIFEST.md` の gap-fill が追加されました。
 
 ---
 
@@ -459,23 +516,30 @@ your-project/
 │   │   ├── pass1-backend-prompt.md    ← バックエンド分析プロンプト
 │   │   ├── pass1-frontend-prompt.md   ← フロントエンド分析プロンプト（検出時）
 │   │   ├── pass2-prompt.md            ← マージプロンプト
-│   │   ├── pass3-prompt.md            ← 生成プロンプト（結合）
+│   │   ├── pass2-merged.json          ← Pass 2 出力（Pass 3a のみが消費）
+│   │   ├── pass3-context.json         ← Pass 3 用のスリム要約（< 5 KB、v2.1.0）
+│   │   ├── pass3-prompt.md            ← Pass 3 プロンプトテンプレート（Phase 1 ブロック先頭追加）
+│   │   ├── pass3a-facts.md            ← Pass 3a が書き、3b/3c/3d が読むファクトシート（v2.1.0）
 │   │   ├── pass4-prompt.md            ← メモリスキャフォールディングプロンプト（v2.0.0）
-│   │   ├── pass3-complete.json        ← Pass 3 完了マーカー（再実行時スキップ）
+│   │   ├── pass3-complete.json        ← Pass 3 完了マーカー（split モード：groupsCompleted を含む、v2.1.0）
 │   │   ├── pass4-memory.json          ← Pass 4 完了マーカー（再実行時スキップ）
+│   │   ├── rule-manifest.json         ← 検証ツール用ファイルインデックス
+│   │   ├── sync-map.json              ← Plan ↔ disk マッピング（v2.1.0 では空；sync-checker 互換のため保持）
+│   │   ├── stale-report.json          ← 統合検証結果
 │   │   ├── .i18n-cache-<lang>.json    ← 翻訳キャッシュ（非英語 `--lang`）
 │   │   └── .staged-rules/             ← `.claude/rules/` 書き込み用一時ステージングディレクトリ（自動移動 + クリーン）
-│   ├── standard/                      ← コーディングスタンダード（15-19 ファイル）
+│   ├── standard/                      ← コーディングスタンダード（15-19 ファイル + 60.domains/ 内のドメイン別）
 │   │   ├── 00.core/                   ← 概要、アーキテクチャ、命名
 │   │   ├── 10.backend-api/            ← API パターン（スタック固有）
 │   │   ├── 20.frontend-ui/            ← フロントエンドパターン（検出時）
 │   │   ├── 30.security-db/            ← セキュリティ、DB スキーマ、ユーティリティ
 │   │   ├── 40.infra/                  ← 設定、ロギング、CI/CD
 │   │   ├── 50.verification/           ← ビルド検証、テスト
+│   │   ├── 60.domains/                ← ドメイン別スタンダード（Pass 3b-N が書き込む、v2.1.0）
 │   │   └── 90.optional/               ← オプション規約（スタック固有エクストラ）
-│   ├── skills/                        ← CRUD スキャフォールディングスキル
+│   ├── skills/                        ← CRUD/ページスキャフォールディングスキル
+│   │   └── 00.shared/MANIFEST.md      ← 登録済みスキルの単一の真実の源
 │   ├── guide/                         ← オンボーディング、FAQ、トラブルシューティング（9 ファイル）
-│   ├── plan/                          ← マスタープラン（バックアップ/リストア）
 │   ├── database/                      ← DB スキーマ、マイグレーションガイド
 │   ├── mcp-guide/                     ← MCP サーバ統合ガイド
 │   └── memory/                        ← L4：チーム知識（4 ファイル）— コミットする
@@ -488,6 +552,8 @@ your-project/
 ```
 
 すべての standard ファイルは ✅ 正しい例、❌ 間違った例、ルール要約テーブルを含みます — すべて汎用テンプレートではなく、実際のコードパターンから導出されます。
+
+> **v2.1.0 注意：** `claudeos-core/plan/` はもう生成されません。Master plan は Claude Code がランタイムで消費しない内部バックアップで、それらを Pass 3 で集約することが出力累積オーバーフローの主要因でした。バックアップ/復元には `git` を使用してください。v2.0.x からアップグレードするプロジェクトは、既存の `claudeos-core/plan/` ディレクトリを安全に削除できます。
 
 ### Gitignore 推奨事項
 
@@ -510,14 +576,38 @@ claudeos-core/generated/
 
 ## プロジェクトサイズによる自動スケーリング
 
-| サイズ | ドメイン | Pass 1 実行回数 | 合計 `claude -p` | 推定時間 |
-|---|---|---|---|---|
-| 小規模 | 1–4 | 1 | 4 (Pass 1 + 2 + 3 + 4) | ~5–6 分 |
-| 中規模 | 5–8 | 2 | 5 | ~8–9 分 |
-| 大規模 | 9–16 | 3–4 | 6–7 | ~12–13 分 |
-| 超大規模 | 17+ | 5+ | 8+ | ~18 分+ |
+Pass 3 の split モードはステージ数をドメイン数に応じてスケールさせます。バッチのサブ分割は 16 ドメインから発動し、各ステージの出力を ~50 ファイル以下に抑えます。これは出力累積オーバーフローが始まる前の、`claude -p` にとって経験的に安全な範囲です。
 
-Pass 4（メモリスキャフォールディング）は分析 Pass の上に ~30 秒を追加します。マルチスタックプロジェクト（例：Java + React）では、backend と frontend のドメインが合算されます。backend 6 + frontend 4 ドメイン = 合計 10 で「大規模」としてスケーリングされます。
+| プロジェクトサイズ | ドメイン | Pass 3 ステージ数 | 合計 `claude -p` | 推定時間 |
+|---|---|---|---|---|
+| 小規模 | 1–4 | 4（`3a`、`3b-core`、`3c-core`、`3d-aux`） | 7（Pass 1 + 2 + Pass 3 4 ステージ + Pass 4） | ~10–15 分 |
+| 中規模 | 5–15 | 4 | 8–9 | ~25–45 分 |
+| 大規模 | 16–30 | **8**（3b、3c がそれぞれ 2 バッチに分割） | 11–12 | **~60–105 分** |
+| 超大規模 | 31–45 | 10 | 13–14 | ~100–150 分 |
+| 超超大規模 | 46–60 | 12 | 15–16 | ~150–200 分 |
+| 超超超大規模 | 61+ | 14+ | 17+ | 200 分+ |
+
+バッチ分割時のステージ数公式：`1 (3a) + 1 (3b-core) + N (3b-1..N) + 1 (3c-core) + N (3c-1..N) + 1 (3d-aux) = 2N + 4`（`N = ceil(totalDomains / 15)`）。
+
+Pass 4（メモリスキャフォールディング）は、Claude 主導の生成または静的フォールバックのいずれが走るかによって、上に ~30 秒〜5 分を追加します。マルチスタックプロジェクト（例：Java + React）では、backend と frontend のドメインが合算されます。backend 6 + frontend 4 ドメイン = 合計 10 で中規模ティアになります。
+
+### 実本番ケース：18 ドメインの管理画面フロントエンド（2026-04-20）
+
+18 ドメイン・6 ドメイングループの React 19 + Vite 6 + TypeScript 管理画面フロントエンドは、エンドツーエンドで **102 分・101 ファイル生成**で完走しました。ステージ別内訳：
+
+| ステージ | ファイル | 時間 | Files/min |
+|---|---|---|---|
+| `3a`（ファクト抽出） | 1（`pass3a-facts.md`） | 8m 44s | — |
+| `3b-core`（CLAUDE.md + 共通） | 24 | 22m 10s | 1.1 |
+| `3b-1`（15 ドメイン） | 30 | 10m 6s | **3.0** |
+| `3b-2`（3 ドメイン） | 6 | 4m 34s | 1.3 |
+| `3c-core`（guides + 共有） | 11 | 8m 31s | 1.3 |
+| `3c-1`（15 ドメイン） | 8 | 5m 11s | **1.5** |
+| `3c-2`（3 ドメイン） | 3 | 3m 50s | 0.8 |
+| `3d-aux`（database + mcp） | 3 | 2m 52s | 1.0 |
+| Pass 4 | 12 | 5m 36s | 2.1 |
+
+バッチ化されたドメインステージではスループットが顕著に高くなります（3b-1：3.0 files/min 対 3b-core：1.1 files/min） — これは、フレッシュなコンテキストのステージが、タイトで反復的なドメインごとのパターンから恩恵を受けるためです。検証はすべてパス：`plan-validator`、`sync-checker`、`content-validator`、`pass-json-validator` — オーバーフロー失敗 0 件、切り詰め 0 件。
 
 ---
 
@@ -543,11 +633,11 @@ node claudeos-core-tools/sync-checker/index.js
 
 | ツール | 役割 |
 |---|---|
-| **manifest-generator** | メタデータ JSON を構築（rule-manifest、sync-map、plan-manifest）；`memory/` を含む 7 ディレクトリをインデックス化（要約の `totalMemory`） |
-| **plan-validator** | Master Plan の `<file>` ブロックを disk と比較 — 3 モード：check、refresh、restore |
-| **sync-checker** | 未登録ファイル（disk 上にあるが plan にない）と孤児エントリを検出 — 7 ディレクトリをカバー（v2.0.0 で `memory/` を追加） |
+| **manifest-generator** | メタデータ JSON を構築（`rule-manifest.json`、`sync-map.json`、`stale-report.json` を初期化）；`memory/` を含む 7 ディレクトリをインデックス化（要約の `totalMemory`）。v2.1.0：master plan が廃止されたため `plan-manifest.json` は生成されなくなりました。 |
+| **plan-validator** | 依然として `claudeos-core/plan/` を持つプロジェクト（レガシーアップグレードケース）向けに、master plan の `<file>` ブロックを disk と照合します。v2.1.0：`plan/` が存在しないか空の場合は `plan-sync-status.json` の出力をスキップします — `stale-report.json` はパスする no-op を引き続き記録します。 |
+| **sync-checker** | 未登録ファイル（disk 上にあるが plan にない）と孤児エントリを検出 — 7 ディレクトリをカバー（v2.0.0 で `memory/` を追加）。`sync-map.json` にマッピングがない場合（v2.1.0 のデフォルト状態）でもクリーンに終了します。 |
 | **content-validator** | 9 セクションの品質チェック — 空ファイル、✅/❌ 例の欠損、必須セクション、加えて L4 メモリスキャフォールドの整合性（decision-log 見出し日付、failure-pattern 必須フィールド、フェンス認識パース） |
-| **pass-json-validator** | Pass 1–4 JSON 構造に加えて `pass3-complete.json` と `pass4-memory.json` 完了マーカーを検証 |
+| **pass-json-validator** | Pass 1–4 JSON 構造に加えて `pass3-complete.json`（split モード形状、v2.1.0）と `pass4-memory.json` 完了マーカーを検証 |
 
 ---
 
@@ -584,7 +674,7 @@ ClaudeOS-Core が生成するドキュメントは、Claude Code が実際に読
 
 | フォルダ | 除外理由 |
 |---|---|
-| `claudeos-core/plan/` | Master Plan バックアップ（~340KB）。`npx claudeos-core refresh` で同期。 |
+| `claudeos-core/plan/` | レガシープロジェクト（v2.0.x 以前）の master plan バックアップ。v2.1.0 では生成されません。存在しても Claude Code は自動ロードしません — オンデマンド読み込みのみ。 |
 | `claudeos-core/generated/` | ビルドメタデータ JSON、プロンプト、Pass マーカー、翻訳キャッシュ、`.staged-rules/`。コーディング用ではありません。 |
 | `claudeos-core/guide/` | 人間向けオンボーディングガイド。 |
 | `claudeos-core/mcp-guide/` | MCP サーバドキュメント。コーディング用ではありません。 |
@@ -616,7 +706,12 @@ npx claudeos-core health
 ### ドキュメントが壊れたとき
 
 ```bash
-# Master Plan からすべてをリストア
+# v2.1.0 推奨：master plan が生成されなくなったため、git を使って復元します。
+# 生成ドキュメントを定期的にコミットしておけば、再生成せずに特定ファイルだけ
+# ロールバックできます：
+git checkout HEAD -- .claude/rules/ claudeos-core/
+
+# レガシー（claudeos-core/plan/ が残っている v2.0.x プロジェクト）：
 npx claudeos-core restore
 ```
 
@@ -643,7 +738,12 @@ npx claudeos-core memory propose-rules
 #   confidence を計算（重み付けエビデンスに sigmoid × アンカー倍率）
 #   memory/auto-rule-update.md に提案を書き込み（自動適用されない）
 #   Confidence ≥ 0.70 は真剣な検討に値する；受諾 → ルール編集 + 決定を記録
+
+# v2.1.0：`memory --help` はサブコマンドのヘルプを表示するようになりました（以前はトップレベルが表示されていました）
+npx claudeos-core memory --help
 ```
+
+> **v2.1.0 修正：** `memory score` は初回実行後に `importance` 行を重複して残さなくなりました（以前は自動スコアリング行が上に追加され、元のプレーン行が下に残っていました）。`memory compact` の Stage 1 サマリーマーカーは正しい Markdown のリスト項目（`- _Summarized on ..._`）になったため、きれいにレンダリングされ、以降のコンパクションでも正しく再パースされます。
 
 メモリに書くタイミング（Claude がオンデマンドで行いますが、手動編集も可能）：
 - **`decision-log.md`** — 競合するパターン間で選択するとき、ライブラリを選ぶとき、チーム規約を定義するとき、または何かを*やらない*と決めるときに新しいエントリを追記。追記のみ；履歴エントリは決して編集しない。
@@ -707,19 +807,22 @@ ClaudeOS-Core を使ってプロジェクトのルールを生成し、その上
 いいえ。`CLAUDE.md`、`.claude/rules/`、`claudeos-core/` を作成するだけです。既存のコードは決して変更されません。
 
 **Q：コストはどのくらいですか？**
-`claude -p` を 4–8 回呼び出します（Pass 1 × N + Pass 2 + Pass 3 + Pass 4）。これは通常の Claude Code 使用量の範囲内です。`--lang` が非英語の場合、静的フォールバックパスは翻訳のために追加の `claude -p` 呼び出しを数回行うことがあります；結果は `claudeos-core/generated/.i18n-cache-<lang>.json` にキャッシュされ、その後の実行で再利用されます。
+4 つの Pass をまたいで `claude -p` を複数回呼び出します。v2.1.0 の split モードでは、Pass 3 だけでもプロジェクトサイズに応じて 4〜14+ ステージに展開されます（[自動スケーリング](#プロジェクトサイズによる自動スケーリング) を参照）。典型的な小規模プロジェクト（1〜15 ドメイン）で合計 8〜9 回の `claude -p` 呼び出し；18 ドメインのプロジェクトで 11 回；60 ドメインのプロジェクトで 15〜17 回。各ステージはフレッシュなコンテキストウィンドウで実行されます — 呼び出しあたりのトークンコストは、どのステージも全体のファイルツリーを 1 つのコンテキストに保持する必要がないため、単一呼び出しの Pass 3 時代より実際は低くなっています。`--lang` が非英語の場合、静的フォールバックパスは翻訳のために追加の `claude -p` 呼び出しを数回行うことがあります；結果は `claudeos-core/generated/.i18n-cache-<lang>.json` にキャッシュされ、その後の実行で再利用されます。これは通常の Claude Code 使用量の範囲内です。
+
+**Q：Pass 3 split モードとは何ですか？なぜ v2.1.0 で追加されたのですか？**
+v2.1.0 より前の Pass 3 は、生成されたファイルツリー全体（`CLAUDE.md`、standards、rules、skills、guides — 通常 30〜60 ファイル）を 1 回のレスポンスで出力しなければならない単一の `claude -p` 呼び出しでした。小規模プロジェクトでは機能しましたが、~5 ドメインで確実に `Prompt is too long` の出力累積失敗にぶつかっていました。失敗は入力サイズから予測できず、生成される各ファイルの冗長度合いに依存し、同じプロジェクトでも断続的に発生しました。Split モードはこの問題を構造的に回避します：Pass 3 は順次ステージ（`3a` → `3b-core` → `3b-N` → `3c-core` → `3c-N` → `3d-aux`）に分割され、それぞれがフレッシュなコンテキストウィンドウを持つ独立した `claude -p` 呼び出しです。ステージをまたいだ整合性は `pass3a-facts.md` — 以降のすべてのステージが `pass2-merged.json` を再読み込みせずに参照する 5〜10 KB の蒸留されたファクトシート — によって保持されます。`pass3-complete.json` マーカーは `groupsCompleted` 配列を持ち、`3c-2` 実行中のクラッシュは `3a` からではなく `3c-2` から再開するため、トークンコストの倍増を避けられます。最大 18 ドメイン × 101 ファイル × 102 分で実証済み、オーバーフロー 0 件 — 実本番内訳は [自動スケーリング](#プロジェクトサイズによる自動スケーリング) を参照してください。
 
 **Q：生成されたファイルを Git にコミットすべきですか？**
 はい、推奨します。チームが同じ Claude Code スタンダードを共有できます。`claudeos-core/generated/` を `.gitignore` に追加することを検討してください（分析 JSON は再生成可能）。
 
 **Q：混合スタックプロジェクト（例：Java backend + React frontend）はどうですか？**
-完全にサポートされています。ClaudeOS-Core は両方のスタックを自動検出し、ドメインを `backend` または `frontend` としてタグ付けし、それぞれにスタック固有の分析プロンプトを使用します。Pass 2 がすべてをマージし、Pass 3 が 1 回のパスで backend と frontend の両方のスタンダードを生成します。
+完全にサポートされています。ClaudeOS-Core は両方のスタックを自動検出し、ドメインを `backend` または `frontend` としてタグ付けし、それぞれにスタック固有の分析プロンプトを使用します。Pass 2 がすべてをマージし、Pass 3 は split ステージ群全体で backend と frontend の両方のスタンダードを生成します — backend ドメインはいくつかの 3b/3c バッチに、frontend ドメインは別のバッチに入り、すべてが同じ `pass3a-facts.md` を参照して整合性を保ちます。
 
 **Q：Turborepo / pnpm workspaces / Lerna モノレポで動作しますか？**
 はい。ClaudeOS-Core は `turbo.json`、`pnpm-workspace.yaml`、`lerna.json`、または `package.json#workspaces` を検出し、サブパッケージの `package.json` ファイルをスキャンして framework/ORM/DB 依存関係を自動検索します。ドメインスキャンは `apps/*/src/` と `packages/*/src/` パターンをカバーします。モノレポのルートから実行してください。
 
 **Q：再実行すると何が起きますか？**
-以前の Pass 1/2 結果が存在する場合、インタラクティブプロンプトが選択を提示します：**Continue**（停止した場所から再開）または **Fresh**（すべて削除して最初からやり直し）。`--force` でプロンプトをスキップして常に Fresh で開始します。Pass 3 は常に再実行されます。以前のバージョンは Master Plans から復元可能です。
+以前の Pass 1/2 結果が存在する場合、インタラクティブプロンプトが選択を提示します：**Continue**（停止した場所から再開）または **Fresh**（すべて削除して最初からやり直し）。`--force` でプロンプトをスキップして常に Fresh で開始します。v2.1.0 の split モードでは、Pass 3 の再開はステージ粒度で動作します — 実行が `3c-2` 中にクラッシュした場合、次の `init` は `3a` から再実行する（トークンコストが倍増する）のではなく `3c-2` から再開します。`pass3-complete.json` マーカーはこのロジックを駆動するため `mode: "split"` に加えて `groupsCompleted` 配列を記録します。
 
 **Q：NestJS は独自のテンプレートを使用するか、それとも Express のものを使用しますか？**
 NestJS は NestJS 固有の分析カテゴリを備えた専用の `node-nestjs` テンプレートを使用します：`@Module`、`@Injectable`、`@Controller` デコレータ、Guards、Pipes、Interceptors、DI コンテナ、CQRS パターン、`Test.createTestingModule`。Express プロジェクトは別の `node-express` テンプレートを使用します。
@@ -746,10 +849,16 @@ ClaudeOS-Core はネスト深度に関係なくすべてのサブモジュール
 上記の [メモリレイヤメンテナンス](#メモリレイヤメンテナンスv200) セクションを参照してください。要約：`compact` は 4 ステージポリシー（古いものを要約、重複をマージ、低重要度の古いものをドロップ、400 行上限を強制）を実行；`score` は `failure-patterns.md` を重要度（frequency × recency）で再ランク付け；`propose-rules` は再発する失敗から `auto-rule-update.md` への候補ルール追加を提示（自動適用されない — 手動で検討して受諾/拒否）。
 
 **Q：なぜ `--force`（または "fresh" 再開モード）は `.claude/rules/` を削除するのですか？**
-v2.0.0 で Pass 3 の silent-failure ガードが 3 つ追加されました（Guard 3 は 2 つの不完全出力のバリアントをカバー：`guide/` 向けの H2 と `standard/skills/plan` 向けの H1）。Guard 1（「部分 staged-rules 移動」）と Guard 3（「不完全出力 — guide ファイル欠損/空または standard センチネル欠損 / skills 空 / plan 空」）は既存ルールに依存しませんが、Guard 2（「ゼロルール検出」）は依存します — Claude が `staging-override.md` ディレクティブを無視して `.claude/` に直接書き込もうとしたときに発動します（Claude Code の sensitive-path ポリシーがブロックする場所）。以前の実行からの古いルールが Guard 2 を false-negative にする可能性があるため — `--force`/`fresh` は `.claude/rules/` を消去してクリーンな検出を保証します。**ルールファイルへの手動編集は `--force`/`fresh` では失われます**；必要ならば事前にバックアップしてください。
+v2.0.0 で Pass 3 の silent-failure ガードが 3 つ追加されました（Guard 3 は 2 つの不完全出力のバリアントをカバー：`guide/` 向けの H2 と `standard/skills` 向けの H1）。Guard 1（「部分 staged-rules 移動」）と Guard 3（「不完全出力 — guide ファイル欠損/空または standard センチネル欠損 / skills 空」）は既存ルールに依存しませんが、Guard 2（「ゼロルール検出」）は依存します — Claude が `staging-override.md` ディレクティブを無視して `.claude/` に直接書き込もうとしたときに発動します（Claude Code の sensitive-path ポリシーがブロックする場所）。以前の実行からの古いルールが Guard 2 を false-negative にする可能性があるため — `--force`/`fresh` は `.claude/rules/` を消去してクリーンな検出を保証します。**ルールファイルへの手動編集は `--force`/`fresh` では失われます**；必要ならば事前にバックアップしてください。（v2.1.0 注意：Guard 3 H1 は master plan が生成されなくなったため `plan/` をもうチェックしません。）
 
 **Q：`claudeos-core/generated/.staged-rules/` とは何ですか、そしてなぜ存在するのですか？**
-Claude Code の sensitive-path ポリシーは `claude -p` サブプロセスから `.claude/` への直接書き込みを拒否します（`--dangerously-skip-permissions` を使用してもです）。v2.0.0 は Pass 3/4 プロンプトにすべての `.claude/rules/` 書き込みをステージングディレクトリにリダイレクトさせることでこれを回避します；その後 Node.js オーケストレータ（このポリシーの対象外）が各パス後に staged ツリーを `.claude/rules/` に移動します。これはユーザーに透過的です — ディレクトリは自動作成、自動クリーン、自動移動されます。以前の実行が移動途中でクラッシュした場合、次の実行はリトライ前にステージングディレクトリを消去します。
+Claude Code の sensitive-path ポリシーは `claude -p` サブプロセスから `.claude/` への直接書き込みを拒否します（`--dangerously-skip-permissions` を使用してもです）。v2.0.0 は Pass 3/4 プロンプトにすべての `.claude/rules/` 書き込みをステージングディレクトリにリダイレクトさせることでこれを回避します；その後 Node.js オーケストレータ（このポリシーの対象外）が各パス後に staged ツリーを `.claude/rules/` に移動します。これはユーザーに透過的です — ディレクトリは自動作成、自動クリーン、自動移動されます。以前の実行が移動途中でクラッシュした場合、次の実行はリトライ前にステージングディレクトリを消去します。v2.1.0 の split モードでは、ステージランナーは staged rules を終了時だけでなく**各ステージ後**に `.claude/rules/` に移動するため、Pass 3 の途中でクラッシュしても以前に完了したステージのルールはそのまま残ります。
+
+**Q：`npx claudeos-core init` の代わりに Pass 3 を手動で実行できますか？**
+小規模プロジェクト（≤5 ドメイン）ならはい — [Step 6](#step-6pass-3--すべてのドキュメントを生成複数ステージに分割) の単一呼び出し手動手順は引き続き動作します。それより大きいプロジェクトでは `npx claudeos-core init` を使用すべきです。split ランナーこそが、フレッシュなコンテキストでのステージ単位実行をオーケストレーションし、16 ドメイン以上でのバッチサブ分割を処理し、正しい `pass3-complete.json` マーカー形状（`mode: "split"` + `groupsCompleted`）を書き込み、ステージ間の staged rules を移動するからです。このオーケストレーションを手で再現することは可能ですが、手間がかかります。ステージを手動で実行する理由がある場合（例：特定ステージのデバッグ）、適切な `STAGE:` ディレクティブで `pass3-prompt.md` をテンプレート化して直接 `claude -p` に投入できます — ただし、各ステージ後に `.staged-rules/` を移動し、マーカーを自分で更新することを忘れないでください。
+
+**Q：私のプロジェクトは v2.0.x からのアップグレードで、既存の `claudeos-core/plan/` ディレクトリがあります。どうすれば良いですか？**
+特に何もする必要はありません — v2.1.0 のツールは `plan/` が存在しないか空の場合それを無視し、`plan-validator` は後方互換性のために plan/ が入っているレガシープロジェクトを引き続き処理します。master plan バックアップが不要なら `claudeos-core/plan/` を安全に削除できます（いずれにせよ git 履歴の方がバックアップとして優れています）。`plan/` を残す場合、`npx claudeos-core init` を実行してもそれは更新されません — v2.1.0 では新しい内容は master plan に集約されません。検証ツールは両方のケースをクリーンに扱います。
 
 ---
 
@@ -772,7 +881,7 @@ pass-prompts/templates/
 └── python-flask/            # Python / Flask (Blueprint, app factory, Jinja2)
 ```
 
-`plan-installer` がスタックを自動検出し、タイプ固有のプロンプトを組み立てます。NestJS、Vue/Nuxt、Vite SPA、Flask はそれぞれフレームワーク固有の分析カテゴリを備えた専用テンプレートを使用します（例：NestJS の `@Module`/`@Injectable`/Guards；Vue の `<script setup>`/Pinia/useFetch；Vite の client-side routing/`VITE_` env；Flask の Blueprint/`app.factory`/Flask-SQLAlchemy）。マルチスタックプロジェクトでは、`pass1-backend-prompt.md` と `pass1-frontend-prompt.md` が別々に生成され、`pass3-prompt.md` は両方のスタックの生成ターゲットを結合します。Pass 4 はスタックに関係なく共有の `common/pass4.md` テンプレート（メモリスキャフォールディング）を使用します。
+`plan-installer` がスタックを自動検出し、タイプ固有のプロンプトを組み立てます。NestJS、Vue/Nuxt、Vite SPA、Flask はそれぞれフレームワーク固有の分析カテゴリを備えた専用テンプレートを使用します（例：NestJS の `@Module`/`@Injectable`/Guards；Vue の `<script setup>`/Pinia/useFetch；Vite の client-side routing/`VITE_` env；Flask の Blueprint/`app.factory`/Flask-SQLAlchemy）。マルチスタックプロジェクトでは、`pass1-backend-prompt.md` と `pass1-frontend-prompt.md` が別々に生成され、`pass3-prompt.md` は両方のスタックの生成ターゲットを結合します。v2.1.0 では、Pass 3 テンプレートの先頭に `common/pass3-phase1.md`（Rule A–E を含む「Read Once, Extract Facts」ブロック）が追加された後、split モードのステージごとにスライスされます。Pass 4 はスタックに関係なく共有の `common/pass4.md` テンプレート（メモリスキャフォールディング）を使用します。
 
 ---
 
@@ -842,7 +951,11 @@ my-monorepo/                    ← ここで実行：npx claudeos-core init
 
 **"Pass 3 produced CLAUDE.md and rules but N/9 guide files are missing or empty"（v2.0.0）** — Guard 3 (H2) が発動しました：Claude は CLAUDE.md + rules を書き込んだ後、`claudeos-core/guide/` セクション（9 ファイル期待）の完了前（または開始前）に応答途中で切り詰められました。BOM のみまたは空白のみのファイルでも発動します（見出しは書かれたが本文が切り詰められた）。このガードがなければ完了マーカーが書き込まれ、その後の実行で `guide/` は永続的に空のままになります。マーカーはここでは書き込まれないので、次の `init` 実行は同じ Pass 2 結果から Pass 3 をリトライします。繰り返し発生する場合、`npx claudeos-core init --force` を使用して最初から再生成してください。
 
-**"Pass 3 finished but the following required output(s) are missing or empty"（v2.0.0）** — Guard 3 (H1) が発動しました：Claude は `claudeos-core/guide/` の後、しかし `claudeos-core/standard/`、`claudeos-core/skills/`、または `claudeos-core/plan/` の前（または途中）で切り詰められました。要件：(a) `standard/00.core/01.project-overview.md` が存在し空でない（すべてのスタックの Pass 3 プロンプトが書き込むセンチネル）、(b) `skills/` に空でない `.md` が 1 つ以上、(c) `plan/` に空でない `.md` が 1 つ以上。`database/` と `mcp-guide/` は意図的に除外されています（一部のスタックは正当にゼロファイルを生成します）。Guard 3 (H2) と同じ復旧パス：`init` を再実行、または持続する場合は `--force`。
+**"Pass 3 finished but the following required output(s) are missing or empty"（v2.0.0、v2.1.0 で更新）** — Guard 3 (H1) が発動しました：Claude は `claudeos-core/guide/` の後、しかし `claudeos-core/standard/` または `claudeos-core/skills/` の前（または途中）で切り詰められました。要件：(a) `standard/00.core/01.project-overview.md` が存在し空でない（すべてのスタックの Pass 3 プロンプトが書き込むセンチネル）、(b) `skills/` に空でない `.md` が 1 つ以上。`database/` と `mcp-guide/` は意図的に除外されています（一部のスタックは正当にゼロファイルを生成します）。`plan/` は v2.1.0 以降チェックされません（master plan が廃止されたため）。Guard 3 (H2) と同じ復旧パス：`init` を再実行、または持続する場合は `--force`。
+
+**"Pass 3 split stage crashed partway through (v2.1.0)"** — split ステージのいずれか（例：`3b-1`、`3c-2`）が実行途中で失敗すると、ステージレベルのマーカーは書き込まれませんが、完了したステージは `pass3-complete.json.groupsCompleted` に記録されます。次の `init` 実行はこの配列を読み、完了済みの作業をすべてスキップして、最初の未完了ステージから再開します。手動操作は不要です — `npx claudeos-core init` を再実行するだけです。同じステージで resume が繰り返し失敗する場合、`claudeos-core/generated/pass3-prompt.md` の内容不正を検査し、それから `--force` で完全再起動を試みてください。`pass3-complete.json` の形状（`mode: "split"`、`groupsCompleted: [...]`）は安定しています；マーカー欠損または形状不正の場合、Pass 3 全体が `3a` から再実行されます。
+
+**"Pass 3 stale marker (shape mismatch) — treating as incomplete"（v2.1.0）** — pre-v2.1.0 の単一呼び出し実行による `pass3-complete.json` が新しい split モードのルールで解釈されています。形状チェックは `mode: "split"` と `groupsCompleted` 配列の有無を確認します；いずれかが欠損していればマーカーは部分的とみなされ、Pass 3 は split モードで再実行されます。v2.0.x からアップグレードした場合、これは一度だけ想定される挙動です — 次の実行で正しいマーカー形状が書き込まれます。操作は不要です。
 
 **"pass2-merged.json exists but is malformed or incomplete (<5 top-level keys), re-running"（v2.0.0）** — エラーではなく情報ログです。再開時、`init` は `pass2-merged.json` をパースして検証するようになりました（最上位キー 5 個以上必要、`pass-json-validator` の `INSUFFICIENT_KEYS` しきい値をミラー）。以前のクラッシュした実行からのスケルトン `{}` または不正な JSON は自動的に削除され、Pass 2 が再実行されます。手動操作は不要 — パイプラインは自己修復します。繰り返し発生する場合、`claudeos-core/generated/pass2-prompt.md` を検査して `--force` でリトライしてください。
 
@@ -865,7 +978,7 @@ my-monorepo/                    ← ここで実行：npx claudeos-core init
 - **新しいスタックテンプレート** — Ruby/Rails、Go (Gin/Fiber/Echo)、PHP (Laravel/Symfony)、Rust (Axum/Actix)、Svelte/SvelteKit、Remix
 - **IDE 統合** — VS Code 拡張機能、IntelliJ プラグイン
 - **CI/CD テンプレート** — GitLab CI、CircleCI、Jenkins の例（GitHub Actions はすでに付属 — `.github/workflows/test.yml` 参照）
-- **テストカバレッジ** — テストスイートの拡張（現在 24 のテストファイルで 489 テスト、スキャナ、スタック検出、ドメイングループ化、プランパーシング、プロンプト生成、CLI セレクタ、モノレポ検出、Vite SPA 検出、検証ツール、L4 メモリスキャフォールド、Pass 2 再開検証、Pass 3 Guards 1/2/3（H1 センチネル + H2 BOM-aware 空ファイル + strict stale-marker unlink）、Pass 4 マーカーコンテンツ検証 + stale-marker unlink strictness、翻訳 env-skip ガード + early fail-fast + CI ワークフロー、staged-rules 移動、言語対応翻訳フォールバック、AI Work Rules テンプレート構造をカバー）
+- **テストカバレッジ** — テストスイートの拡張（現在 29 のテストファイルで 563 テスト、スキャナ、スタック検出、ドメイングループ化、プランパーシング、プロンプト生成、CLI セレクタ、モノレポ検出、Vite SPA 検出、検証ツール、L4 メモリスキャフォールド、Pass 2 再開検証、Pass 3 Guards 1/2/3（H1 センチネル + H2 BOM-aware 空ファイル + strict stale-marker unlink）、Pass 3 split モードのバッチサブ分割、Pass 3 部分マーカー再開（v2.1.0）、Pass 4 マーカーコンテンツ検証 + stale-marker unlink strictness + scaffoldSkillsManifest gap-fill（v2.1.0）、翻訳 env-skip ガード + early fail-fast + CI ワークフロー、staged-rules 移動、言語対応翻訳フォールバック、master plan 廃止のリグレッションスイート（v2.1.0）、memory score/compact フォーマッティングのリグレッション（v2.1.0）、AI Work Rules テンプレート構造をカバー）
 
 領域の完全なリスト、コードスタイル、コミット規約、新しいスタックテンプレートを追加するためのステップバイステップガイドについては、[`CONTRIBUTING.md`](./CONTRIBUTING.md) を参照してください。
 

@@ -114,7 +114,6 @@ Generation targets:
      - claudeos-core/standard/50.verification/01.development-verification.md
      - claudeos-core/standard/50.verification/02.testing-strategy.md
      ## DO NOT Read (context waste)
-     - claudeos-core/plan/ — Master Plan backup files. Never read during coding.
      - claudeos-core/generated/ — Build metadata. Not for coding reference.
      - claudeos-core/guide/ — Onboarding/usage guides for humans. Not for coding reference.
      - claudeos-core/mcp-guide/ — MCP server integration docs. Not for coding reference.
@@ -123,9 +122,9 @@ Generation targets:
 
 4. .claude/rules/50.sync/ (3 sync rules — AI fallback reminders)
    - NOTE: These rules remind AI to run `npx claudeos-core refresh` after modifying standard/rules/skills files.
-   - 01.standard-sync.md — Remind AI to update plan/10 when standard is modified
-   - 02.rules-sync.md — Remind AI to update plan/20 when rules is modified
-   - 03.skills-sync.md — Remind AI to update plan/30 when skills is modified
+   - 01.standard-sync.md — Remind AI to update corresponding rule when standard is modified
+   - 02.rules-sync.md — Remind AI to update corresponding standard when rules are modified
+   - 03.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
 
 5. claudeos-core/skills/ (active domains only)
    - 10.backend-crud/01.scaffold-crud-feature.md (orchestrator)
@@ -142,17 +141,9 @@ Generation targets:
    - 03.troubleshooting/01.troubleshooting.md
    - 04.architecture/01.file-map.md
    - 04.architecture/02.pros-and-cons.md
-
-7. claudeos-core/plan/ (Master Plan)
-   - 10.standard-master.md
-   - 20.rules-master.md
-   - 21.sync-rules-master.md
-   - 30.backend-skills-master.md
-   - 40.guides-master.md
-
-8. claudeos-core/database/
+7. claudeos-core/database/
    - 01.schema-overview.md — Table list, relationship description
    - 02.migration-guide.md — Alembic procedure, autogenerate, rollback
 
-9. claudeos-core/mcp-guide/
+8. claudeos-core/mcp-guide/
    - 01.mcp-overview.md — List of MCP servers in use, integration methods

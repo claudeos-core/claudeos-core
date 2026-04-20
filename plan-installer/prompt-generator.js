@@ -28,6 +28,14 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
   // claudeos-core/generated/.staged-rules/* to bypass Claude Code's sensitive-
   // path block. The Node.js orchestrator moves the staged files after each pass.
   const stagingOverride = existsSafe(stagingOverridePath) ? readFileSafe(stagingOverridePath) + "\n" : "";
+  // v2.1: Phase 1 "Read Once, Extract Facts" block prepended to every Pass 3
+  // prompt. Teaches Claude to read pass2-merged.json exactly once into a
+  // compact in-context fact table and reference that table for all subsequent
+  // file generation — fixes the `Prompt is too long` failure on large projects
+  // caused by 10-20× re-reads of pass2-merged.json. Also includes idempotent
+  // skip rules (Rule B) so interrupted Pass 3 runs can resume safely.
+  const phase1Path = path.join(commonDir, "pass3-phase1.md");
+  const phase1 = existsSafe(phase1Path) ? readFileSafe(phase1Path) + "\n" : "";
 
   let langInstruction = "";
   if (lang && lang !== "en" && existsSafe(langPath)) {
@@ -92,7 +100,7 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
 
     writeFileSafe(
       path.join(generatedDir, "pass3-prompt.md"),
-      header + langInstruction + stagingOverride + combinedBody.trimEnd() + "\n" + footer
+      header + langInstruction + stagingOverride + phase1 + combinedBody.trimEnd() + "\n" + footer
     );
     console.log(`    ✅ pass3-prompt.md${templates.frontend && templates.backend ? " (multi-stack combined)" : ""}`);
   }

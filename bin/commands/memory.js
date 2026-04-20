@@ -177,10 +177,16 @@ function compactFile(filePath, activeRulePaths) {
       const metaLines = e.body.filter(l =>
         /^\s*-\s*\*{0,2}\s*(frequency|last\s*seen|importance)\s*\*{0,2}\s*[:=]/i.test(l)
       );
-      const fixLine = e.body.find(l => FIX_LINE_RE.test(l)) || "(fix omitted)";
+      const fixLine = e.body.find(l => FIX_LINE_RE.test(l)) || "- (fix omitted)";
+      // Summary marker formatted as a proper markdown list item so that:
+      //   1. parseEntries can re-read it as a body line in future compactions
+      //   2. GitHub/IDE markdown renderers format it consistently with the
+      //      surrounding list (previously an inline italic string broke the
+      //      list flow visually).
+      const summaryLine = `- _Summarized on ${new Date().toISOString().slice(0, 10)} — original body dropped._`;
       e.body = [
         ...metaLines,
-        `_Summarized on ${new Date().toISOString().slice(0, 10)} — original body dropped._`,
+        summaryLine,
         fixLine,
       ];
     }
@@ -287,10 +293,16 @@ function cmdScore() {
     const ageDays = daysSince(e.meta.lastSeen);
     const recency = ageDays === Infinity ? 0 : Math.max(0, 1 - ageDays / 90);
     const importance = Math.min(10, Math.round((freq * 1.5) + (recency * 5)));
-    const newHeading = e.body.findIndex(l => /^-\s*\*\*importance/i.test(l));
     const line = `- **importance**: ${importance} _(auto-scored ${new Date().toISOString().slice(0, 10)}, freq=${freq}, recency=${recency.toFixed(2)})_`;
-    if (newHeading >= 0) e.body[newHeading] = line;
-    else e.body.unshift(line);
+
+    // Remove ALL existing importance lines (both the bold auto-scored variant
+    // and the plain `- importance: N` variant). Without this, the first score
+    // run leaves two importance lines — the auto-scored one at the top and
+    // the original user-written one below it — which is confusing and makes
+    // the file look like it has conflicting values.
+    const IMPORTANCE_LINE_RE = /^\s*-\s*\*{0,2}\s*importance\s*\*{0,2}\s*[:=]/i;
+    e.body = e.body.filter(l => !IMPORTANCE_LINE_RE.test(l));
+    e.body.unshift(line);
     e.meta.importance = importance;
     scored++;
   }

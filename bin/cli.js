@@ -87,7 +87,12 @@ function parseArgs(argv) {
     } else if (argv[i] === "--force" || argv[i] === "-f") {
       result.force = true;
     } else if (argv[i] === "--help" || argv[i] === "-h") {
-      result.command = "--help";
+      // If we already saw a command (e.g. `memory --help`), let that command
+      // handle --help itself via process.argv. Only promote --help to
+      // top-level when it appears before any command (e.g. `--help` alone or
+      // `--help memory`). This lets `memory --help` show memory's subcommand
+      // help rather than the top-level usage.
+      if (!result.command) result.command = "--help";
     } else if (argv[i] === "--version" || argv[i] === "-v") {
       result.command = "--version";
     } else if (!argv[i].startsWith("-") && !result.command) {

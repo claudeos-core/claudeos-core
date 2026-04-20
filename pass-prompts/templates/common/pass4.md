@@ -190,20 +190,9 @@ Proposals with confidence >= 0.70 deserve serious consideration. Do NOT edit pro
 
 ---
 
-## Required output — Master plan (`{{PROJECT_ROOT}}/claudeos-core/plan/`)
-
-### 11. `plan/50.memory-master.md`
-Master plan aggregating all 4 memory files using the `<file path="...">` format.
-Include the full content of each memory file (including the seed decision-log entries
-and project-specific compaction categories).
-
-Write the plan's **title** (e.g., `# 50. Memory Master Plan`) and any **introductory sentence** before the `<file>` blocks in **{{LANG_NAME}}**. Inside each `<file path="...">` block, include the already-translated memory file content verbatim — do NOT re-translate or modify it.
-
----
-
 ## Required output — CLAUDE.md append
 
-### 12. Append a new section to existing `CLAUDE.md`
+### 11. Append a new section to existing `CLAUDE.md`
 
 Do NOT overwrite existing CLAUDE.md content — **append only** at the end.
 The new section must include the `(L4)` marker in its top heading (the marker
@@ -214,7 +203,6 @@ Include:
 - Common rules table (references to `00.core/51.doc-writing-rules.md` and `52.ai-work-rules.md`)
 - L4 Memory table with 4 files (decision-log, failure-patterns, compaction, auto-rule-update)
   — include Purpose and Action columns
-- Master plan reference (`claudeos-core/plan/50.memory-master.md`)
 - Memory workflow (6 numbered steps: scan failure-patterns at session start →
   skim recent decision-log → record decisions → record repeat errors →
   periodic `memory compact` → review `auto-rule-update.md` proposals)
@@ -226,7 +214,7 @@ file paths, and CLI command names in English.
 
 ## Required output — Standard (`{{PROJECT_ROOT}}/claudeos-core/standard/00.core/`)
 
-### 13. `claudeos-core/standard/00.core/XX.doc-writing-guide.md`
+### 12. `claudeos-core/standard/00.core/XX.doc-writing-guide.md`
 Scan `claudeos-core/standard/00.core/` for existing numbered files. Use the **next sequential number**
 (e.g., if `01`, `02`, `03` exist, create `04.doc-writing-guide.md`).
 
@@ -234,7 +222,7 @@ This is the **detailed guide** corresponding to `.claude/rules/00.core/51.doc-wr
 Write entirely in **{{LANG_NAME}}**.
 
 Body must cover:
-1. **Document layer structure** — table with Layer/Path/Role/Loading for CLAUDE.md, Rules, Standard, Skills, Memory, Master Plan. Include a relationship diagram showing CLAUDE.md → Rules → Standard flow.
+1. **Document layer structure** — table with Layer/Path/Role/Loading for CLAUDE.md, Rules, Standard, Skills, Memory. Include a relationship diagram showing CLAUDE.md → Rules → Standard flow.
 2. **Rules file writing rules** — paths frontmatter required, paths scope settings table, file structure template with `## Reference` section. Do not propose narrowing `**/*`.
 3. **Standard file writing rules** — long files are normal, file naming (`number.name.md`), register in `00.standard-reference.md`.
 4. **Skills file writing rules** — MANIFEST.md registration, paths frontmatter in generated rules, verify reference paths.
@@ -244,7 +232,7 @@ Body must cover:
 8. **No domain-specific hardcoding** — use generic placeholder patterns.
 9. **No system absolute path hardcoding** — use relative paths, include ❌/✅ examples.
 10. **Code examples must follow project conventions** — verify directory structure, follow project naming conventions.
-11. **Change synchronization procedure** — table showing Standard→Rules+Plan, Rules→Plan, Skills→MANIFEST+Plan sync targets.
+11. **Change synchronization procedure** — table showing Standard→Rules, Rules→Standard (verify `## Reference` link), Skills→MANIFEST sync targets.
 
 ---
 
@@ -271,9 +259,6 @@ After all files are written, create:
     ".claude/rules/60.memory/02.failure-patterns.md",
     ".claude/rules/60.memory/03.compaction.md",
     ".claude/rules/60.memory/04.auto-rule-update.md"
-  ],
-  "planFiles": [
-    "claudeos-core/plan/50.memory-master.md"
   ],
   "standardFiles": [
     "claudeos-core/standard/00.core/XX.doc-writing-guide.md"

@@ -86,9 +86,9 @@ Generation targets:
      List only the standard files that were actually generated above.
 
 4. .claude/rules/50.sync/ (3 sync rules)
-   - 01.standard-sync.md — Remind AI to update plan/10 when standard is modified
-   - 02.rules-sync.md — Remind AI to update plan/20 when rules is modified
-   - 03.skills-sync.md — Remind AI to update plan/30 when skills is modified
+   - 01.standard-sync.md — Remind AI to update corresponding rule when standard is modified
+   - 02.rules-sync.md — Remind AI to update corresponding standard when rules are modified
+   - 03.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
 
 5. claudeos-core/skills/ (active domains only)
    - 10.backend-crud/01.scaffold-crud-feature.md (orchestrator)
@@ -105,17 +105,9 @@ Generation targets:
    - 03.troubleshooting/01.troubleshooting.md
    - 04.architecture/01.file-map.md
    - 04.architecture/02.pros-and-cons.md
-
-7. claudeos-core/plan/ (Master Plan)
-   - 10.standard-master.md — CLAUDE.md + all standard/ files as <file> blocks
-   - 20.rules-master.md — All rules/ (except sync) as <file> blocks
-   - 21.sync-rules-master.md — All sync rules (code block format)
-   - 30.backend-skills-master.md — All backend skills as <file> blocks
-   - 40.guides-master.md — All guide/ files as <file> blocks
-
-8. claudeos-core/database/
+7. claudeos-core/database/
    - 01.schema-overview.md — Table/collection list, relationship description
    - 02.migration-guide.md — Migration procedure, rollback methods
 
-9. claudeos-core/mcp-guide/
+8. claudeos-core/mcp-guide/
    - 01.mcp-overview.md — List of MCP servers in use, integration methods

@@ -28,6 +28,28 @@ describe("parseFileBlocks — path only", () => {
   it("returns empty for no blocks", () => {
     assert.deepEqual(parseFileBlocks("# no blocks here"), []);
   });
+
+  it("filters out placeholder paths like '...'", () => {
+    // Regression test: 50.memory-master.md contained prose like:
+    //   "Use <file path=\"...\"> blocks to wrap files"
+    // which was mistakenly parsed as an actual source path and reported
+    // as orphaned in sync-checker.
+    const content =
+      'Use <file path="..."> blocks to wrap files.\n\n' +
+      '<file path="real/path.md">\ncontent\n</file>';
+    const blocks = parseFileBlocks(content);
+    assert.equal(blocks.length, 1, "only real path should be extracted");
+    assert.equal(blocks[0].path, "real/path.md");
+  });
+
+  it("filters out angle-bracket template placeholders", () => {
+    const content =
+      '<file path="<actual-path>">\nplaceholder\n</file>\n' +
+      '<file path="claudeos-core/memory/decision-log.md">\nreal content\n</file>';
+    const blocks = parseFileBlocks(content);
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0].path, "claudeos-core/memory/decision-log.md");
+  });
 });
 
 describe("parseFileBlocks — with content", () => {

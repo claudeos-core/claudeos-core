@@ -1,5 +1,431 @@
 # Changelog
 
+## [2.2.0] — 2026-04-21
+
+Adds deterministic CLAUDE.md structure. Generated `CLAUDE.md` files now follow
+an 8-section scaffold with fixed titles and order, driven by `pass-prompts/
+templates/common/claude-md-scaffold.md`. Content within each section still
+adapts to the project, but the structural skeleton no longer drifts between
+projects or runs.
+
+### Added
+
+- **`pass-prompts/templates/common/claude-md-scaffold.md`** (new, ~630 lines).
+  Single source of truth for CLAUDE.md structure. Defines the 8 sections
+  (Role Definition / Project Overview / Build & Run Commands / Core
+  Architecture / Directory Structure / Standard · Rules · Skills
+  Reference / DO NOT Read / Common Rules & Memory (L4); titles are
+  emitted in the project's output language), per-section generation
+  rules, dynamic substitution variables (`{PROJECT_NAME}`,
+  `{OUTPUT_LANG}`, `{PROJECT_CONTEXT}`), and a post-generation validation
+  checklist. Section 8 has TWO required sub-sections: a Common Rules
+  sub-section (meta-summary table of `paths: ["**/*"]` universal rules)
+  and an L4 Memory sub-section (memory file table + workflow). All 12 stack-specific Pass 3 prompts
+  now delegate CLAUDE.md structure to this scaffold and supply only
+  stack-specific hints (2-4 lines each).
+
+- **`lib/env-parser.js`** (new). Parses `.env*` files into structured
+  `{port, host, apiTarget, vars, source}` used by stack-detector. Search
+  order prefers `.env.example` (committed, canonical) over local `.env`
+  variants. Port detection recognizes 16+ convention variable names across
+  Vite, Next.js, Nuxt, Angular, Node, and Python frameworks. Exposes
+  utilities (`parseEnvContent`, `extractPort`, `extractHost`,
+  `extractApiTarget`, `readStackEnvInfo`) plus a sensitive-variable
+  filter (`isSensitiveVarName`, `redactSensitiveVars`) that redacts
+  values of PASSWORD/SECRET/TOKEN/API_KEY/CREDENTIAL/PRIVATE_KEY-style
+  variables to a `***REDACTED***` sentinel before the vars map reaches
+  any downstream consumer. DATABASE_URL is whitelisted for
+  stack-detector back-compat. 39 unit tests in `tests/env-parser.test.js`
+  (30 core + 9 redaction).
+
+### Changed
+
+- **All 12 Pass 3 prompts** (`angular/`, `java-spring/`, `kotlin-spring/`,
+  `node-express/`, `node-fastify/`, `node-nestjs/`, `node-nextjs/`,
+  `node-vite/`, `python-django/`, `python-fastapi/`, `python-flask/`,
+  `vue-nuxt/`). Two separate changes per file:
+  1. The previous 5-bullet CLAUDE.md generation block (`- Role definition`,
+     `- Build & Run Commands`, `- Core architecture diagram`, `- {stack item}`,
+     `- Standard/Skills/Guide reference table`) is replaced by a scaffold
+     reference plus stack-specific hints. The `CRITICAL — CLAUDE.md Reference
+     Table Completeness` warning above the block is also removed (the
+     scaffold's validation checklist supersedes it).
+  2. The `40.infra/*` `paths` frontmatter spec is split per-file. Previously
+     all three infra rules (environment-config, logging-monitoring, cicd-
+     deployment) received the same category-level `paths` value, which caused
+     the logging-monitoring rule to never auto-load on source code edits
+     (its `paths` only matched `.env`, `*.config.*`, `*.json`, `*.yml`,
+     `Dockerfile*` — none of which are source files). Per-file paths now
+     match each rule's actual guardrail target: environment-config → env/
+     config files, logging-monitoring → source code extensions (`.ts`/`.tsx`/
+     `.py`/`.java`/`.kt` per stack), cicd-deployment → CI YAML + source.
+
+- **`pass-prompts/templates/common/pass3-footer.md`** — five new `CRITICAL`
+  blocks added:
+  - **`00.standard-reference.md` Composition**: scopes the mechanical
+    standards index strictly. REQUIRES a forward reference to
+    `claudeos-core/standard/00.core/04.doc-writing-guide.md` (generated
+    by Pass 4 but indexed at Pass 3 time to prevent a gap between passes).
+    FORBIDS a redundant "DO NOT Read / context waste" section inside
+    `00.standard-reference.md` — that information belongs solely in
+    CLAUDE.md Section 7, which is both more complete (includes project-
+    specific build-output and external-module paths) and not reloaded
+    on every edit. The 6 stacks (java-spring, kotlin-spring, node-express,
+    node-nextjs, python-django, python-fastapi) whose Pass 3 prompts
+    previously hardcoded a `## DO NOT Read` block in the reference file
+    have been cleaned up.
+  - **`.env` Is the Source of Truth for Runtime Configuration**: when
+    `pass2-merged.json` contains `stack.envInfo`, ports/hosts/API targets
+    declared in the project's `.env.example` MUST be used over framework
+    defaults. Affects Section 2's table, Section 3's inline run-command
+    comments, and any rule referencing port values (e.g., CORS origins
+    in auth rules).
+  - **Rule `paths` Must Match Rule Content**: enforces that each rule's
+    `paths` frontmatter matches the file types its guardrails actually
+    target. Explicitly prohibits copying `paths` across sibling rule files
+    in the same category, and tells the LLM to re-verify "when should
+    Claude Code auto-load this rule?" as the criterion for paths. Added
+    because a category-level paths shortcut in earlier Pass 3 prompts
+    caused the logging-monitoring rule to never match source code edits.
+  - **CLAUDE.md Scaffold Compliance**: enforces the 8-section structure at
+    generation time. Explicitly forbids adding sections with titles like
+    "Required to Observe While Working", "Rules Summary", "Documentation
+    Writing Rules", "AI Common Rules", "L4 Memory Integration Rules",
+    "Common Rules", or any title whose category meaning is "rules"
+    beyond the 8 fixed section names (the same blocklist is applied in
+    every output language, matching on the translated equivalents).
+    Adds a mandatory post-generation check (count `^## ` headings; must
+    equal 8; merge surplus into the correct section or move to `rules/*`
+    / `standard/*`). The expanded blocklist closes a rename loophole
+    discovered during dogfooding on a Vite + React frontend project
+    where the LLM appended a §9 whose title combined "Documentation
+    Writing + AI Common Rules + Memory Layer (L4)" to collect
+    rule-related content.
+  - **CLAUDE.md Does Not Duplicate Rules**: clarifies that CLAUDE.md
+    describes structure, not enforcement. Lists four categories of content
+    that do NOT belong in CLAUDE.md (coding rules, domain-specific rules,
+    multi-file sync rules, work procedures) and points each to its proper
+    home in rules/standard/skills/guide.
+
+- **`pass-prompts/templates/common/claude-md-scaffold.md`** (in addition to
+  the new-file Add above) was tightened after initial dogfooding:
+  - Hard constraints section now leads with **"EXACTLY 8 SECTIONS. No more,
+    no less."** plus a recovery procedure for surplus sections.
+  - Section 6 Rules sub-section explicitly notes that the
+    `.claude/rules/00.core/*` wildcard row already COVERS
+    `51.doc-writing-rules.md` and `52.ai-work-rules.md` — eliminating the
+    perceived need to create a separate section enumerating those rules.
+  - Validation checks section lists common surplus section patterns with
+    target destinations so the LLM can act rather than just detect.
+
+- **`plan-installer/prompt-generator.js`** — embeds the scaffold inline
+  into `pass3-prompt.md` at generation time. The 12 stack-specific Pass 3
+  templates and `pass3-footer.md` both reference
+  `pass-prompts/templates/common/claude-md-scaffold.md` by path, but that
+  path is relative to the claudeos-core package, not the user project.
+  The generator now reads the scaffold and inserts it between the Phase 1
+  fact-table block and the stack-specific body, wrapped in explicit
+  `# === EMBEDDED: claude-md-scaffold.md ===` markers so the LLM can locate
+  it. Without this embed the scaffold references would point to a file
+  Claude Code cannot resolve at runtime. Load is optional (`existsSafe`)
+  so a missing scaffold does not crash generation — the rest of the
+  prompt is still produced, just without the deterministic structure
+  enforcement.
+
+- **`plan-installer/stack-detector.js`** — now calls `readStackEnvInfo`
+  before returning and attaches the result as `stack.envInfo` on
+  project-analysis.json. When the project's `.env.example` (or fallback
+  `.env`) declares a port AND no earlier detector won (Spring Boot
+  application.yml still takes precedence), the parsed port is promoted
+  to `stack.port`. This closes a long-standing gap where Vite projects
+  that customized their dev port via `.env` (e.g., `VITE_DESKTOP_PORT=3000`)
+  received the framework-default 5173 in CLAUDE.md.
+  Host and API target values are also captured for downstream use.
+
+- **`plan-installer/index.js`** — port resolution precedence documented
+  in code comments. The existing `defaultPort` fallback chain (Vite 5173,
+  Next.js 3000, Django 8000, etc.) is now explicitly labeled "last resort"
+  and runs only when neither stack-detector's direct detection (Spring
+  application.yml) nor the env-parser populated `stack.port`.
+
+- **`pass-prompts/templates/common/claude-md-scaffold.md`** Section 2
+  (Project Overview) and Section 3 (Build & Run Commands) rules now
+  reference `stack.envInfo` as authoritative for port/host/API-target
+  values. Section 2 requires env-annotated rows in the project overview
+  table when the project declares them (e.g., `| Dev Server Port | 3000
+  (VITE_DESKTOP_PORT) |`), and Section 3 requires inline port comments
+  next to run commands to match the env-declared value. Framework defaults
+  are explicitly labeled "last resort" in both rules.
+
+### Why this matters
+
+When claudeos-core was applied to three sibling projects in the same
+organization (one Spring Boot backend, two Vite + React frontends), the
+generated files were content-correct — standards, rules, and skills
+accurately captured each project's patterns — but the `CLAUDE.md` files
+had different section counts (8, 8, 9), different section names, and
+different section orders. Claude Code reads CLAUDE.md first on every
+session; inconsistent structure across repos made it harder for
+developers (and Claude Code) to know where to look for a given piece of
+information. v2.2.0 fixes the structure while leaving content
+project-specific.
+
+The removed "Required to Observe While Working" section was a symptom
+of the same problem: different projects put different rules there, most
+of which duplicated
+content already in `.claude/rules/*` (auto-loaded) or `claudeos-core/
+standard/*` (detailed patterns). Removing it eliminates a redundant
+maintenance surface and reinforces the "one rule, one home" principle.
+
+Dogfooding also uncovered a latent paths bug. The `40.infra/*` rules
+shared a single category-level `paths` frontmatter that only matched
+config/infra file extensions (`.env`, `*.config.*`, `*.json`, `*.yml`,
+`Dockerfile*`). This meant the logging-monitoring rule — whose guardrails
+cover `console.log` misuse, PII in logs, and `catch {}` swallowing —
+never auto-loaded when editing `.ts`/`.tsx`/`.py`/`.java` files, i.e.,
+exactly when it was needed. The rule body was correct; its activation
+trigger was mis-scoped. v2.2.0 now specifies per-file `paths` in the Pass
+3 prompts and adds a `Rule paths Must Match Rule Content` CRITICAL block
+to the footer so future rules cannot inherit the wrong scope by default.
+
+A third dogfooding finding exposed a different layer of the same
+philosophy violation. The stack detector parsed Spring Boot's
+`application.yml` for `server.port`, but for Node/Vite projects it
+simply used a hardcoded framework default (Vite → 5173) whenever no
+Spring-style config was found — even when the project declared its
+actual port in `.env.example` (e.g., `VITE_DESKTOP_PORT=3000`). This
+meant CLAUDE.md's §2 table and §3 run-command
+comments showed the Vite theoretical default instead of what the project
+actually runs. The root cause was structural: the detector had no
+`.env` parser beyond a DATABASE_URL check for DB identification. v2.2.0
+introduces `lib/env-parser.js` with convention-aware port/host/API-target
+extraction, and the scaffold and footer now treat `.env.example` as the
+canonical source of runtime configuration — framework defaults are
+last-resort only. This also captures host and API-target values that
+previously never appeared in generated CLAUDE.md at all.
+
+A fourth dogfooding iteration on a Spring Boot backend project
+(regenerated with the interim v2.2.0 scaffold that only allowed a single
+Section 8 titled "Memory (L4)") found the LLM producing a §9 titled
+"Common Rules & Memory (L4)" — even with the expanded blocklist from
+the earlier frontend-project fix.
+The §9 contained both (a) a meta-summary table of `paths: ["**/*"]`
+rules (51.doc-writing-rules + 52.ai-work-rules) and (b) a restated L4
+memory table labeled "L4 Memory Files (Re-declaration)". Close
+inspection showed (a) was genuinely useful content the scaffold had no
+legitimate home for — a developer-facing summary of which rules
+auto-load on every edit, complementary to Section 6's directory index.
+The LLM kept inventing §9 because the information it wanted to convey
+was real. v2.2.0 resolves this by promoting Section 8 to "Common Rules
+& Memory (L4)" with two required sub-sections: one for common rules
+auto-loaded on every edit (meta-summary only, not rule bodies) and one
+for L4 memory referenced on-demand. This acknowledges that "which rules
+auto-load universally" is a legitimate meta-information category that
+deserves a visible home, while keeping the always-8-sections contract
+intact. The duplicate §9 "re-declaration" anti-pattern is now
+explicitly named and forbidden in both the scaffold
+and the footer.
+
+Finally, the same backend-project inspection also surfaced two smaller
+but real bugs in `00.standard-reference.md` generation. First, 6 of the
+12 Pass 3 stack prompts hardcoded a `## DO NOT Read (context waste)`
+section at the bottom of the reference file — a shadow of CLAUDE.md
+Section 7 that was less complete (missed project-specific paths like
+`build/` or external modules) and lived at the wrong layer: `00.standard-
+reference.md` reloads on every edit via `paths: ["**/*"]`, while
+Section 7 loads once per session. Second, `claudeos-core/standard/00.
+core/04.doc-writing-guide.md` is generated by Pass 4 (Required output
+#12) but never appeared in the Pass 3-generated reference index, creating
+a gap the moment Pass 4 ran. v2.2.0 adds a `00.standard-reference.md
+Composition` CRITICAL block to the footer that codifies: (a) always
+include the Pass 4 forward reference, (b) never include a DO NOT Read
+section (Section 7 is the single source of truth), (c) keep the per-
+edit payload minimal (paths only, no descriptions — descriptions live
+in Section 6 which is session-time budget). The 6 inline hardcoded
+DO NOT Read blocks have been removed from the stack prompts and
+replaced with explicit inline notes pointing to the footer rule.
+
+Three additional risks surfaced during pre-release cross-checking
+and were addressed in the same release cycle. **First**, the scaffold's
+"Section 6 Rules: Always include 60.memory/*" directive, added during
+Section 8 redesign, was not echoed in the 12 stack Pass 3 prompts'
+rule-category listings — so the LLM received conflicting signals
+(scaffold says include, stack prompt doesn't mention it). Real dogfooding
+on the backend project confirmed the category was being omitted from
+the generated CLAUDE.md §6 Rules table. v2.2.0 fixes both sides: each stack
+Pass 3 prompt now explicitly lists `60.memory/*` as a forward-reference
+rule category (generated by Pass 4, but indexed at Pass 3 time), and the
+scaffold's Sub-section 2 guidance is strengthened with an example row
+and a "mandatory — do NOT omit" note. **Second**, the existing Migration
+guidance mentioned `--force` but did not explain why `npx claudeos-core
+init` (without `--force`) silently fails to adopt v2.2.0 improvements on
+upgrades. Under Rule B idempotency, existing generated files are skipped
+as "already exists", meaning users running plain `init` on a v2.1.x
+project see no visible change. v2.2.0 adds (a) a dedicated "upgrade
+detected" warning in bin/commands/init.js that fires when a pre-v2.2.0
+CLAUDE.md is detected before the resume/fresh prompt, and (b) an expanded
+Migration section in CHANGELOG that makes the `--force` requirement and
+preservation semantics (memory/ content kept, generated files replaced)
+explicit. **Third**, the new `.env.example` → CLAUDE.md pipeline created
+a theoretical pathway for accidentally committed secrets in `.env.example`
+to be amplified into the project's public-facing documentation. Although
+`.env.example` is conventionally a placeholder file, real-world projects
+occasionally check in real values by mistake. v2.2.0 adds a
+sensitive-variable filter (`lib/env-parser.js`: `isSensitiveVarName`,
+`redactSensitiveVars`) that replaces values of variables matching
+PASSWORD/SECRET/TOKEN/API_KEY/CREDENTIAL/PRIVATE_KEY patterns with a
+`***REDACTED***` sentinel before the vars map reaches any downstream
+consumer. Port/host/API-target extraction uses a whitelist of
+config-relevant keys and is unaffected. The scaffold also gains an
+explicit SECURITY directive forbidding reference to sensitive variables
+in CLAUDE.md as defense-in-depth. `DATABASE_URL` remains unredacted
+because stack-detector's DB identification path has depended on it since
+v1.x — changing that would be a breaking change.
+
+### Migration
+
+Existing projects keep working. The prompt-generator change affects only
+how `pass3-prompt.md` is assembled on the next `init` or `refresh` run —
+installed standards, rules, skills, memory, and CLAUDE.md in existing
+projects are not touched until the user regenerates.
+
+**⚠️ Important: `--force` is REQUIRED to adopt v2.2.0 improvements.**
+
+claudeos-core's Pass 3 runs under Rule B (idempotency): if a target file
+already exists on disk, it is skipped during regeneration. This is
+designed to protect hand-edited content from being overwritten, but it
+means **a plain `npx claudeos-core init` on an existing v2.1.x project
+will NOT apply v2.2.0 improvements** because the old files (CLAUDE.md,
+`00.standard-reference.md`, `40.infra/*-rules.md`, memory rules, etc.)
+will all be skipped as "already exists".
+
+To actually adopt v2.2.0's improvements (8-section CLAUDE.md, per-file
+`40.infra/*` paths, `.env.example`-based port accuracy, Section 8
+redesign, forward-referenced `04.doc-writing-guide.md`, `60.memory/*`
+row), regenerate via:
+
+```
+npx claudeos-core init --force
+```
+
+`--force` overwrites existing generated files while leaving untouched:
+- Your source code
+- `claudeos-core/memory/` content (decision-log, failure-patterns entries
+  you've accumulated) — these are append-only and preserved
+- Any non-generated files under the project root
+
+If you want to preview changes first, regenerate into a scratch copy of
+the project, diff the resulting files against your current ones, and
+then decide whether to `--force` on the real project. Key files to
+diff: `CLAUDE.md`, `.claude/rules/00.core/00.standard-reference.md`,
+`.claude/rules/40.infra/02.logging-monitoring-rules.md` (paths change
+is the most visible delta).
+
+No manual edits are required after `--force`; the scaffold handles
+everything. Hand-edited content in `claudeos-core/standard/**` that
+you want preserved should be committed to version control before
+running `--force` so you can diff/merge any overwrites.
+
+### Notes
+
+- 39 new tests added in `tests/env-parser.test.js` (30 core + 9 sensitive-
+  variable redaction). All tests continue to pass: **563 pre-existing + 39
+  new = 602 total**.
+- No file-format breaking changes. Existing `claudeos-core/standard/`,
+  `.claude/rules/`, and `claudeos-core/skills/` content in installed
+  projects is unaffected — only the CLAUDE.md generated at the project
+  root changes shape on regeneration. The `40.infra/*` rule `paths`
+  values will update on next regeneration, which changes when those
+  rules auto-load (more accurately scoped); the rule content itself
+  does not change. `stack.envInfo` is a new additive field — older
+  project-analysis.json files without it still work.
+- Discovered via dogfooding on three real production projects:
+  - Structural drift (3 different CLAUDE.md layouts) prompted the scaffold.
+  - A Vite + React frontend project produced a §9 surplus section under
+    a renamed title that bypassed the initial forbidden-sections blocklist
+    — fixed by expanding the blocklist and adding the mandatory
+    post-generation §-count check.
+  - The `40.infra/*` paths mismatch surfaced when inspecting a generated
+    `02.logging-monitoring-rules.md` and confirming via grep that its
+    guardrails (source-code-level: PII logging, silent swallow, console
+    use) could never auto-load given the file's own paths frontmatter
+    (config-only).
+  - The Vite port mismatch (5173 in CLAUDE.md when `.env.example`
+    declared 3000) exposed the absence of any `.env` parsing in
+    stack-detector beyond DATABASE_URL — prompted the new
+    `lib/env-parser.js` utility and the `.env Is the Source of Truth`
+    CRITICAL footer block.
+  - A second Spring Boot backend regeneration against the interim
+    scaffold produced §9 "Common Rules & Memory (L4)" despite the
+    expanded blocklist, because the LLM's desired content (a
+    meta-summary of `paths: ["**/*"]` universal rules, complementary to
+    Section 6's directory index) had no legitimate home in the original
+    8-section design. Resolved by redesigning Section 8 into two
+    sub-sections — a Common Rules sub-section for the universal-rules
+    meta-summary and an L4 Memory sub-section for the memory
+    table/workflow. The "L4 Memory Files (Re-declaration)" anti-pattern
+    (duplicate memory table inside a second section) is now explicitly
+    named and forbidden.
+  - Inspection of the same backend-project output showed a generated
+    `00.standard-reference.md` carrying a hardcoded `## DO NOT Read
+    (context waste)` section (a partial duplicate of CLAUDE.md Section 7)
+    and missing `00.core/04.doc-writing-guide.md` (created later by
+    Pass 4). Fixed in the 6 affected Pass 3 stack prompts and formalized
+    as the `00.standard-reference.md Composition` CRITICAL block so
+    future stacks cannot reintroduce either defect.
+  - Pre-release cross-check found the scaffold's `60.memory/*` "Always
+    include" directive was not mirrored in any of the 12 stack Pass 3
+    prompts' rule-category listings, causing the backend project's
+    CLAUDE.md §6 Rules table to omit `60.memory/*` entirely. Fixed by adding the
+    forward-reference row to all 12 stack prompts and strengthening the
+    scaffold's Sub-section 2 guidance with an example row and "mandatory"
+    wording.
+  - Pre-release cross-check flagged that a plain `npx claudeos-core init`
+    on an existing v2.1.x project would silently skip v2.2.0 improvements
+    under Rule B idempotency. Added a CLAUDE.md marker-based detection
+    in `bin/commands/init.js` that warns about the `--force` requirement
+    before the resume/fresh prompt, plus an expanded Migration section
+    covering preservation semantics and preview workflow.
+  - Pre-release cross-check identified that values in `.env.example`
+    flow through to CLAUDE.md, creating a leak pathway for accidentally
+    committed secrets. Added sensitive-variable redaction in
+    `lib/env-parser.js` (PASSWORD/SECRET/TOKEN/API_KEY/CREDENTIAL/
+    PRIVATE_KEY patterns replaced with `***REDACTED***` sentinel) plus
+    a SECURITY directive in the scaffold as defense-in-depth.
+
+---
+
+## [2.1.2] — 2026-04-21
+
+Post-release regression fix for v2.1.0 master plan removal cleanup.
+
+### Fixed
+
+- **`content-validator`: `plan/` directory no longer required.** On fresh
+  v2.1.0+ projects `npx claudeos-core health` always failed because
+  `content-validator/index.js` pushed a `MISSING: plan directory not found`
+  error when `claudeos-core/plan/` was absent. Master plan generation was
+  explicitly removed in v2.1.0 — `plan-validator` (v2.1.0 `Fixed`) and
+  `manifest-generator` (v2.1.0 `Fixed`) were both updated to tolerate a
+  missing `plan/` directory, but `content-validator` was missed during
+  that cleanup. It now silently skips the plan/ check when the directory
+  is absent (with an informational `plan/ not present (expected post-v2.1.0)`
+  log line), matching the contract established by the other validators.
+  The directory contents are still validated when present (legacy projects
+  or user-authored plan files are unaffected).
+
+### Notes
+
+- All 563 existing tests continue to pass. No new tests added — the fix
+  is a one-line behavior change (`errors.push(...)` → `console.log(...)`)
+  with a comment documenting the v2.1.0 context, and regression risk is
+  covered by routine `health` runs rather than an integration test.
+- Discovered via dogfooding on a real Vite 6 + React 19 project: 62
+  generated files, all Pass 1–4 stages succeeded, but `health` failed
+  at content-validator. No other cleanup gaps found.
+
+---
+
 ## [2.1.1] — 2026-04-20
 
 Docs-only maintenance release. No runtime behavior or API changes.

@@ -85,9 +85,19 @@ ClaudeOS-Core는 프로젝트가 `ApiResponse.ok()`를 쓴다는 것, MyBatis XM
 | **Vite / React SPA** | `package.json`, `vite.config.*` | 9개 대분류, 55개 소분류 |
 | **Angular** | `package.json`, `angular.json` | 12개 대분류, 78개 소분류 |
 
-자동 감지 항목: 언어 & 버전, 프레임워크 & 버전(SPA 프레임워크인 Vite 포함), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy 등), 데이터베이스 (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), 패키지 매니저 (Gradle, Maven, npm, yarn, pnpm, pip, poetry), 아키텍처 (CQRS, BFF — 모듈명에서 감지), 멀티모듈 구조 (settings.gradle에서 감지), 모노레포 (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+자동 감지 항목: 언어 & 버전, 프레임워크 & 버전(SPA 프레임워크인 Vite 포함), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy 등), 데이터베이스 (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), 패키지 매니저 (Gradle, Maven, npm, yarn, pnpm, pip, poetry), 아키텍처 (CQRS, BFF — 모듈명에서 감지), 멀티모듈 구조 (settings.gradle에서 감지), 모노레포 (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces), **`.env.example` 런타임 설정**(v2.2.0 — Vite · Next.js · Nuxt · Angular · Node · Python 프레임워크의 16+ 관례 변수명에서 port/host/API-target 추출).
 
 **직접 지정할 필요 없습니다. 전부 자동으로 감지합니다.**
+
+### `.env` 기반 런타임 설정 (v2.2.0)
+
+v2.2.0에서 `lib/env-parser.js`가 추가되어 생성된 `CLAUDE.md`가 framework 기본값이 아닌 프로젝트가 실제로 선언한 값을 반영합니다.
+
+- **검색 순서**: `.env.example` (커밋되는 canonical) → `.env.local.example` → `.env.sample` → `.env.template` → `.env` → `.env.local` → `.env.development`. `.example` 변형이 우선인 이유는 개별 기여자의 로컬 오버라이드가 아닌 개발자 중립적인 "의도된 설정의 shape-of-truth"이기 때문입니다.
+- **인식되는 포트 변수 관례**: `VITE_PORT` / `VITE_DEV_PORT` / `VITE_DESKTOP_PORT` / `NEXT_PUBLIC_PORT` / `NUXT_PORT` / `NG_PORT` / `APP_PORT` / `SERVER_PORT` / `HTTP_PORT` / `DEV_PORT` / `FLASK_RUN_PORT` / `UVICORN_PORT` / `DJANGO_PORT` / 그리고 최후순위 `PORT`. 프레임워크별 이름이 generic `PORT`보다 우선.
+- **Host · API target**: `VITE_DEV_HOST` / `VITE_API_TARGET` / `NEXT_PUBLIC_API_URL` / `NUXT_PUBLIC_API_BASE` / `BACKEND_URL` / `PROXY_TARGET` 등.
+- **우선순위**: Spring Boot `application.yml`의 `server.port`가 먼저(framework-native config), 그 다음 `.env` 선언 포트, 마지막으로 framework 기본값(Vite 5173, Next.js 3000, Django 8000 등)이 fallback.
+- **민감 변수 redaction**: `PASSWORD` / `SECRET` / `TOKEN` / `API_KEY` / `ACCESS_KEY` / `PRIVATE_KEY` / `CREDENTIAL` / `JWT_SECRET` / `CLIENT_SECRET` / `SESSION_SECRET` / `BEARER` / `SALT` 패턴에 매칭되는 변수 값은 downstream 생성기로 전달되기 전 `***REDACTED***`로 치환. `.env.example`에 실수로 커밋된 민감 정보에 대한 defense-in-depth. `DATABASE_URL`은 stack-detector DB 감지 back-compat를 위해 명시적으로 whitelist.
 
 ### Java 도메인 감지 (5가지 패턴, 폴백 포함)
 
@@ -364,7 +374,7 @@ cat claudeos-core/generated/pass4-prompt.md \
 
 **확인:** `claudeos-core/memory/`에 4개 파일(`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`)이 있고, `.claude/rules/60.memory/`에 4개 규칙 파일이 있으며, `CLAUDE.md`에 `## Memory (L4)` 섹션이 추가되어야 합니다. 마커: `claudeos-core/generated/pass4-memory.json`.
 
-> **v2.1.0 gap-fill:** Pass 4는 `claudeos-core/skills/00.shared/MANIFEST.md`의 존재도 보장합니다. Pass 3c가 이를 생략한 경우(skill-sparse 프로젝트에서 가능 — 스택 `pass3.md` 템플릿들이 `MANIFEST.md`를 생성 대상으로 나열하지만 REQUIRED로 표시하지 않음), gap-fill이 최소 스텁을 생성하여 `.claude/rules/50.sync/03.skills-sync.md`가 항상 유효한 참조 대상을 갖도록 합니다. Idempotent: 파일이 이미 실제 내용(20자 초과)을 가지고 있으면 스킵합니다.
+> **v2.1.0 gap-fill:** Pass 4는 `claudeos-core/skills/00.shared/MANIFEST.md`의 존재도 보장합니다. Pass 3c가 이를 생략한 경우(skill-sparse 프로젝트에서 가능 — 스택 `pass3.md` 템플릿들이 `MANIFEST.md`를 생성 대상으로 나열하지만 REQUIRED로 표시하지 않음), gap-fill이 최소 스텁을 생성하여 `.claude/rules/50.sync/02.skills-sync.md`(v2.2.0 경로 — sync 규칙 수가 3개에서 2개로 축소되며 `03`이 `02`로 변경)가 항상 유효한 참조 대상을 갖도록 합니다. Idempotent: 파일이 이미 실제 내용(20자 초과)을 가지고 있으면 스킵합니다.
 
 > **참고:** `claude -p`가 실패하거나 `pass4-prompt.md`가 없으면, 자동 파이프라인은 `lib/memory-scaffold.js`를 통한 정적 스캐폴드로 폴백합니다(`--lang`이 비영어일 때 Claude-driven 번역 포함). 정적 폴백은 `npx claudeos-core init` 내부에서만 실행됩니다 — 수동 모드에서는 Pass 4가 성공해야 합니다.
 
@@ -474,6 +484,8 @@ Pass 3 프롬프트 템플릿에는 출력 볼륨을 추가로 제약하는 **Ph
 - **Rule D** — 출력 간결성: 파일 쓰기 사이에 한 줄(`[WRITE]`/`[SKIP]`)만, 팩트 테이블 반복 금지, 파일 내용 에코 금지.
 - **Rule E** — 배치 idempotent 체크: PHASE 2 시작 시 `Glob` 1회로 대상별 `Read` 호출 대체.
 
+**v2.2.0**에서 Pass 3는 결정적 CLAUDE.md scaffold(`pass-prompts/templates/common/claude-md-scaffold.md`)를 프롬프트에 인라인으로 임베드합니다. 이로써 8개 최상위 섹션 제목과 순서가 고정되어 생성된 `CLAUDE.md`가 프로젝트 간 drift 되지 않도록 하면서, 섹션별 내용은 각 프로젝트에 맞게 적응할 수 있습니다. stack-detector의 새 `.env` 파서(`lib/env-parser.js`)가 `stack.envInfo`를 프롬프트에 공급하여, port/host/API target 행이 framework 기본값이 아닌 프로젝트가 실제로 선언한 값과 일치하게 됩니다.
+
 **Pass 4**는 L4 Memory 레이어를 스캐폴딩합니다: 지속 팀 지식 파일들(decision-log, failure-patterns, compaction policy, auto-rule-update)과 향후 세션에 이 파일들을 언제 어떻게 읽고 쓸지 지시하는 `60.memory/` 규칙들. 메모리 레이어는 Claude Code가 세션마다 교훈을 재발견하는 대신 누적할 수 있게 해주는 핵심입니다. `--lang`이 비영어일 때는 폴백 정적 콘텐츠가 Claude를 통해 번역된 후 작성됩니다. v2.1.0은 Pass 3c가 `skills/00.shared/MANIFEST.md`를 생략한 경우의 gap-fill을 추가합니다.
 
 ---
@@ -483,7 +495,7 @@ Pass 3 프롬프트 템플릿에는 출력 볼륨을 추가로 제약하는 **Ph
 ```
 your-project/
 │
-├── CLAUDE.md                          ← Claude Code 진입점
+├── CLAUDE.md                          ← Claude Code 진입점 (8섹션 결정적 구조, v2.2.0)
 │
 ├── .claude/
 │   └── rules/                         ← Glob 트리거 규칙
@@ -832,7 +844,14 @@ Claude Code의 sensitive-path 정책이 `claude -p` 서브프로세스에서 `.c
 
 ```
 pass-prompts/templates/
-├── common/                  # 공유 header/footer + pass4 + staging-override
+├── common/                  # 공유 header/footer + pass4 + staging-override + CLAUDE.md scaffold (v2.2.0)
+│   ├── header.md             # 역할 + 출력 포맷 지시문 (모든 pass)
+│   ├── pass3-footer.md       # Pass 3 완료 후 health-check 지시 + 5개 CRITICAL 가드레일 블록 (v2.2.0)
+│   ├── pass3-phase1.md       # "Read Once, Extract Facts" 블록 (Rule A-E) (v2.1.0)
+│   ├── pass4.md              # 메모리 스캐폴딩 프롬프트 (v2.0.0)
+│   ├── staging-override.md   # .claude/rules/** 쓰기를 .staged-rules/**로 리다이렉트 (v2.0.0)
+│   ├── claude-md-scaffold.md # 결정적 8섹션 CLAUDE.md 템플릿 (v2.2.0)
+│   └── lang-instructions.json # 언어별 출력 지시문 (10개 언어)
 ├── java-spring/             # Java / Spring Boot
 ├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
 ├── node-express/            # Node.js / Express
@@ -848,6 +867,8 @@ pass-prompts/templates/
 ```
 
 `plan-installer`가 스택을 자동 감지한 후 타입별 프롬프트를 조합합니다. NestJS, Vue/Nuxt, Vite SPA, Flask는 각각 프레임워크별 분석 카테고리가 적용된 전용 템플릿 사용 (예: NestJS의 `@Module`/`@Injectable`/Guards; Vue의 `<script setup>`/Pinia/useFetch; Vite의 client-side routing/`VITE_` env; Flask의 Blueprint/`app.factory`/Flask-SQLAlchemy). 멀티스택 프로젝트에서는 `pass1-backend-prompt.md`와 `pass1-frontend-prompt.md`가 별도로 생성되고, `pass3-prompt.md`는 두 스택의 생성 대상을 결합합니다. v2.1.0에서는 Pass 3 템플릿 앞에 `common/pass3-phase1.md`("Read Once, Extract Facts" 블록, Rule A–E 포함)가 prepend된 후 split 모드 스테이지별로 슬라이스됩니다. Pass 4는 스택 무관 공유 `common/pass4.md` 템플릿 사용 (메모리 스캐폴딩).
+
+**v2.2.0에서는** Pass 3 프롬프트가 phase1 블록과 스택별 본문 사이에 `common/claude-md-scaffold.md`(결정적 8섹션 CLAUDE.md 템플릿)를 인라인 임베드합니다 — 이로써 생성된 CLAUDE.md의 섹션 구조가 프로젝트 간 drift되지 않으며, 내용은 프로젝트별로 적응됩니다. 템플릿은 **English-first**로 작성되며, `lang-instructions.json`의 언어 주입이 LLM에게 출력 시점에 섹션 제목과 산문을 대상 출력 언어로 번역하도록 지시합니다.
 
 ---
 
@@ -935,6 +956,12 @@ my-monorepo/                    ← 여기서 실행: npx claudeos-core init
 
 **"CLAUDEOS_SKIP_TRANSLATION=1 is set but --lang='ko' requires translation" InitError (v2.0.0)** — 셸에 테스트 전용 환경변수 `CLAUDEOS_SKIP_TRANSLATION=1`이 설정된 상태(CI/테스트 설정 leftover 가능성)에서 비영어 `--lang` 선택. 이 환경변수는 Pass 4의 정적 폴백과 gap-fill이 의존하는 번역 경로를 short-circuit. `init`이 언어 선택 시점에 충돌 감지 후 즉시 중단 (Pass 4 중간에 혼란스러운 중첩 에러로 크래시되는 대신). 해결: 실행 전 `unset CLAUDEOS_SKIP_TRANSLATION`, 또는 `npx claudeos-core init --lang en` 사용.
 
+**"⚠️ v2.2.0 upgrade detected" 경고 (v2.2.0)** — 기존 `CLAUDE.md`가 v2.2.0 이전 버전으로 생성된 상태. 기본 resume 모드 재생성은 Rule B idempotency에 따라 기존 파일을 건너뛰므로 v2.2.0의 구조적 개선(8섹션 CLAUDE.md scaffold, `40.infra/*` 파일별 paths, `.env.example` 기반 포트 정확성, Section 8 `공통 규칙 & 메모리 (L4)` 재설계 — 공통 규칙 · L4 메모리 두 하위 섹션 구조, `60.memory/*` 규칙 행, forward-reference 된 `04.doc-writing-guide.md`)이 적용되지 않습니다. 해결: `npx claudeos-core init --force`로 재실행. 생성 파일(`CLAUDE.md`, `.claude/rules/`, `claudeos-core/standard/`, `claudeos-core/skills/`, `claudeos-core/guide/`)은 덮어쓰지만 `claudeos-core/memory/` 콘텐츠(사용자가 축적한 decision-log, failure-patterns 항목 — append-only)는 온전히 보존됩니다. 덮어쓰기 전에 diff를 확인하고 싶다면 `--force` 실행 전에 프로젝트를 git commit 해두세요.
+
+**CLAUDE.md의 port가 `.env.example`과 다름 (v2.2.0)** — v2.2.0의 새 `.env` 파서(`lib/env-parser.js`)는 `.env.example`을 우선 읽고(커밋된 canonical 파일) `.env` 변형을 fallback으로 읽습니다. 인식되는 포트 변수명: `PORT`, `VITE_PORT`, `VITE_DESKTOP_PORT`, `NEXT_PUBLIC_PORT`, `NUXT_PORT`, `DJANGO_PORT` 등. Spring Boot의 경우 `application.yml`의 `server.port`가 `.env`보다 우선합니다(framework-native config 우선). 프로젝트가 비표준 env 변수명을 쓴다면 관례 이름으로 바꾸거나 `PORT_VAR_KEYS` 확장을 issue로 요청해주세요. framework 기본값(Vite 5173, Next.js 3000, Django 8000)은 직접 감지와 `.env` 모두 비어있을 때만 사용됩니다.
+
+**생성된 문서에 값이 `***REDACTED***`로 표시됨 (v2.2.0)** — 의도된 동작입니다. v2.2.0의 `.env` 파서가 `PASSWORD`/`SECRET`/`TOKEN`/`API_KEY`/`CREDENTIAL`/`PRIVATE_KEY` 패턴에 매칭되는 변수 값을 자동으로 `***REDACTED***`로 치환한 후 모든 생성기로 전달합니다. `.env.example`에 실수로 커밋된 민감 정보에 대한 defense-in-depth 보호입니다. `DATABASE_URL`은 stack-detector DB 감지 back-compat 때문에 유지됩니다. 생성된 `CLAUDE.md` 테이블에 `***REDACTED***`가 보인다면 버그이므로 issue로 제보해주세요 — redacted 값이 테이블까지 도달해서는 안 됩니다. 비민감 런타임 설정(port, host, API target, NODE_ENV 등)은 변경 없이 통과합니다.
+
 ---
 
 ## 기여
@@ -944,7 +971,7 @@ my-monorepo/                    ← 여기서 실행: npx claudeos-core init
 - **새 스택 템플릿** — Ruby/Rails, Go (Gin/Fiber/Echo), PHP (Laravel/Symfony), Rust (Axum/Actix), Svelte/SvelteKit, Remix
 - **IDE 연동** — VS Code 확장, IntelliJ 플러그인
 - **CI/CD 템플릿** — GitLab CI, CircleCI, Jenkins 예시 (GitHub Actions는 이미 포함 — `.github/workflows/test.yml` 참조)
-- **테스트 커버리지** — 테스트 스위트 확장 중 (현재 563개 테스트, 29개 테스트 파일; 스캐너, 스택 감지, 도메인 그룹핑, 플랜 파싱, 프롬프트 생성, CLI 셀렉터, 모노레포 감지, Vite SPA 감지, 검증 도구, L4 메모리 스캐폴드, Pass 2 재개 검증, Pass 3 Guards 1/2/3 (H1 센티넬 + H2 BOM-aware 빈 파일 + strict stale-marker unlink), Pass 3 split 모드 배치 하위 분할, Pass 3 partial-marker 재개 (v2.1.0), Pass 4 마커 내용 검증 + stale-marker unlink strictness + scaffoldSkillsManifest gap-fill (v2.1.0), 번역 env-skip 가드 + early fail-fast + CI 워크플로, staged-rules 이동, 언어별 번역 폴백, master plan 제거 regression 스위트 (v2.1.0), memory score/compact 포맷팅 regression (v2.1.0), AI Work Rules 템플릿 구조 커버)
+- **테스트 커버리지** — 테스트 스위트 확장 중 (현재 602개 테스트, 30개 테스트 파일; 스캐너, 스택 감지, 도메인 그룹핑, 플랜 파싱, 프롬프트 생성, CLI 셀렉터, 모노레포 감지, Vite SPA 감지, 검증 도구, L4 메모리 스캐폴드, Pass 2 재개 검증, Pass 3 Guards 1/2/3 (H1 센티넬 + H2 BOM-aware 빈 파일 + strict stale-marker unlink), Pass 3 split 모드 배치 하위 분할, Pass 3 partial-marker 재개 (v2.1.0), Pass 4 마커 내용 검증 + stale-marker unlink strictness + scaffoldSkillsManifest gap-fill (v2.1.0), 번역 env-skip 가드 + early fail-fast + CI 워크플로, staged-rules 이동, 언어별 번역 폴백, master plan 제거 regression 스위트 (v2.1.0), memory score/compact 포맷팅 regression (v2.1.0), AI Work Rules 템플릿 구조, `.env` 파서 port/host/API-target 추출 + 민감 변수 redaction (v2.2.0) 커버)
 
 전체 영역 목록, 코드 스타일, 커밋 컨벤션, 새 스택 템플릿 추가 단계별 가이드는 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 참조.
 

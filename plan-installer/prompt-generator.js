@@ -37,6 +37,23 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
   const phase1Path = path.join(commonDir, "pass3-phase1.md");
   const phase1 = existsSafe(phase1Path) ? readFileSafe(phase1Path) + "\n" : "";
 
+  // v2.2: CLAUDE.md Scaffold — the 8-section deterministic template for CLAUDE.md.
+  // Embedded inline (not referenced by path) because the prompt runs in the user's
+  // project directory where the scaffold file does not exist. Stack-specific pass3
+  // templates and pass3-footer both reference "pass-prompts/templates/common/
+  // claude-md-scaffold.md" in their instructions, and this embed makes that
+  // reference resolvable via in-context content. Wrapped in explicit delimiters
+  // so the LLM can reliably locate the scaffold block.
+  const scaffoldPath = path.join(commonDir, "claude-md-scaffold.md");
+  const scaffold = existsSafe(scaffoldPath)
+    ? "\n---\n\n# === EMBEDDED: claude-md-scaffold.md ===\n\n"
+      + "The content below is the scaffold referenced by stack-specific sections\n"
+      + "and the Pass 3 footer. Treat this embedded block as the authoritative\n"
+      + "source when instructions mention `pass-prompts/templates/common/claude-md-scaffold.md`.\n\n"
+      + readFileSafe(scaffoldPath)
+      + "\n\n# === END EMBEDDED: claude-md-scaffold.md ===\n\n---\n\n"
+    : "";
+
   let langInstruction = "";
   if (lang && lang !== "en" && existsSafe(langPath)) {
     const langData = readJsonSafe(langPath);
@@ -100,7 +117,7 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
 
     writeFileSafe(
       path.join(generatedDir, "pass3-prompt.md"),
-      header + langInstruction + stagingOverride + phase1 + combinedBody.trimEnd() + "\n" + footer
+      header + langInstruction + stagingOverride + phase1 + scaffold + combinedBody.trimEnd() + "\n" + footer
     );
     console.log(`    ✅ pass3-prompt.md${templates.frontend && templates.backend ? " (multi-stack combined)" : ""}`);
   }

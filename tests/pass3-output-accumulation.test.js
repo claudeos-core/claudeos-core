@@ -1,15 +1,15 @@
 /**
  * Tests for Pass 3 output-accumulation mitigation
  *
- *   1. pass3-context-builder: splitRecommendation 계산 정확성
+ *   1. pass3-context-builder: splitRecommendation computation accuracy
  *      - small project → recommend: false
- *      - large output (domain 많음) → recommend: true
+ *      - large output (many domains) → recommend: true
  *      - large input (pass2 > 300KB) → recommend: true
- *      - 둘 다 → reasons에 둘 다 기록
+ *      - both → reasons records both
  *
- *   2. phase1: Rule D (output conciseness) / Rule E (batch idempotent) 블록 존재
+ *   2. phase1: Rule D (output conciseness) / Rule E (batch idempotent) blocks exist
  *
- *   3. phase1: 기존 rule A/B/C와 충돌 없음
+ *   3. phase1: no conflict with existing rules A/B/C
  */
 
 const test = require("node:test");
@@ -135,7 +135,7 @@ test("pass3 — phase1 template contains Rule E (batch idempotent)", () => {
 test("pass3 — phase1 template preserves existing Rule A/B/C", () => {
   const phase1Path = path.join(__dirname, "..", "pass-prompts", "templates", "common", "pass3-phase1.md");
   const content = fs.readFileSync(phase1Path, "utf-8");
-  // 회귀 방지: v2.1.0 원본 rules 보존
+  // Regression guard: preserve v2.1.0 original rules
   assert.match(content, /Rule A/);
   assert.match(content, /Rule B/);
   assert.match(content, /Rule C/);
@@ -147,11 +147,11 @@ test("pass3 — phase1 template preserves existing Rule A/B/C", () => {
 test("pass3 — splitRecommendation size stays small (<6KB total context)", () => {
   const dir = tmp();
   try {
-    writeAnalysis(dir, 10, 10); // 최대 부하 시나리오
+    writeAnalysis(dir, 10, 10); // max-load scenario
     const ctx = buildPass3Context(dir);
     const serialized = JSON.stringify(ctx);
-    // 5KB 상한이었는데 splitRecommendation 추가로 약간 늘어도
-    // 여전히 6KB 아래여야 함
+    // The previous cap was 5KB; splitRecommendation adds a little, but
+    // the serialized context must still stay under 6KB
     assert.ok(serialized.length < 6 * 1024,
       `context too large after splitRecommendation: ${serialized.length} bytes`);
   } finally { rm(dir); }

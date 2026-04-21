@@ -9,6 +9,7 @@
 const path = require("path");
 const { glob } = require("glob");
 const { readFileSafe, readJsonSafe, existsSafe } = require("../lib/safe-fs");
+const { readStackEnvInfo } = require("../lib/env-parser");
 
 // ─── Lookup tables ──────────────────────────────────────────────
 
@@ -457,6 +458,21 @@ async function detectStack(ROOT) {
         }
         break;
       }
+    }
+  }
+
+  // ── .env-derived factual config ──
+  // Read .env.example (preferred) or .env to capture ports/hosts/API targets
+  // the project actually declares. This overrides framework-default guesses
+  // in downstream code (plan-installer/index.js defaultPort) and exposes the
+  // full variable map to Pass 3 prompts via project-analysis.json.
+  const envInfo = readStackEnvInfo(ROOT);
+  if (envInfo) {
+    stack.envInfo = envInfo;
+    // Promote .env-declared port to stack.port if no earlier detection won
+    // (e.g., Spring application.yml parsing at line 407).
+    if (!stack.port && envInfo.port) {
+      stack.port = envInfo.port;
     }
   }
 

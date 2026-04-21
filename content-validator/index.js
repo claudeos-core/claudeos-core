@@ -241,6 +241,11 @@ async function main() {
   }
 
   // ─── 6. claudeos-core/plan/** ──────────────────────────
+  // v2.1.0+ removed master plan generation; plan/ is optional and is not created
+  // during fresh init. If the directory exists (legacy projects, user-authored
+  // plan files), we still validate its contents. If it is absent, that is the
+  // expected state post-v2.1.0 — do not push a MISSING error (parallel to
+  // plan-validator / manifest-generator which were already updated in v2.1.0).
   console.log("  [6/9] claudeos-core/plan/...");
   if (fs.existsSync(PLAN_DIR)) {
     const planFiles = await glob("*.md", { cwd: PLAN_DIR, absolute: true });
@@ -261,7 +266,7 @@ async function main() {
     }
     console.log(`    ${planFiles.length} files checked`);
   } else {
-    errors.push({ file: "claudeos-core/plan/", type: "MISSING", msg: "plan directory not found" });
+    console.log("    ⏭️  plan/ not present (expected post-v2.1.0)");
   }
 
   // ─── 7. claudeos-core/database/** ──────────────────────

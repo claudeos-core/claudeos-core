@@ -495,14 +495,14 @@ async function runPass3Split(ctx) {
 
   // ═══ Stage 3b: CLAUDE.md + standard/ + .claude/rules/ ═══════════
   //
-  // 단일 배치 (도메인 ≤ 15): 기존 "3b" marker 유지 (backward-compatible).
-  // 다중 배치 (도메인 > 15): "3b-core" 먼저 실행 후 "3b-1", "3b-2", ...
+  // Single batch (domains ≤ 15): keep legacy "3b" marker (backward-compatible).
+  // Multi-batch (domains > 15): run "3b-core" first, then "3b-1", "3b-2", ...
   //
-  // 3b-core 분리 이유: 다중 배치의 첫 배치가 "CLAUDE.md + 공통 standard
-  // + 15 도메인"을 한 세션에 모두 처리하면 단일 스테이지 부하가 ~70-80
-  // 파일까지 치솟음. 관측된 overflow 임계(약 40 파일)보다 2배 가까이 큼.
-  // 공통 파일을 별도 스테이지로 빼서 각 스테이지가 ~50 파일 이하로
-  // 유지되도록 보장.
+  // Rationale for splitting 3b-core: if the first multi-batch stage handled
+  // "CLAUDE.md + common standards + 15 domains" in a single session, that
+  // single stage would hit ~70-80 files — close to 2x the observed overflow
+  // threshold (~40 files). Splitting the common files into their own stage
+  // keeps every stage under ~50 files.
   if (isBatched) {
     await runStage("3b-core", "core common files (CLAUDE.md + common standard + common rules)",
       buildStageCorePrompt("3b", batches),
@@ -522,16 +522,16 @@ async function runPass3Split(ctx) {
               problems.push("claudeos-core/standard/00.core/01.project-overview.md is empty");
             }
           }
-          // 3b-core는 공통 rules만 생성 — rules 카운트 검증은 3b-N에서.
+          // 3b-core generates only common rules — rules-count validation happens in 3b-N.
           return problems;
         },
       }
     );
   }
 
-  // 도메인별 배치 루프.
-  // 단일 배치: stageId "3b", 공통 파일 포함 (기존 동작).
-  // 다중 배치: stageId "3b-1", "3b-2", ..., 공통 파일은 3b-core에서 이미 처리됨.
+  // Per-domain batch loop.
+  // Single batch: stageId "3b", common files included (legacy behavior).
+  // Multi-batch: stageId "3b-1", "3b-2", ..., common files already handled in 3b-core.
   for (let bi = 0; bi < batches.length; bi++) {
     const batchDomains = batches[bi];
     const stageId = isBatched ? `3b-${bi + 1}` : "3b";
@@ -539,8 +539,8 @@ async function runPass3Split(ctx) {
       ? `domain batch ${bi + 1}/${batches.length} (${batchDomains.length} domains)`
       : "core files (CLAUDE.md + standard + rules)";
 
-    // 배치별 프롬프트: 원래 3b 헤더에 이번 배치에서만 처리할 도메인 목록 주입.
-    // 다중 배치에서는 모든 배치가 "도메인 특화 파일만" 생성 (공통 파일은 3b-core에서 처리됨).
+    // Per-batch prompt: inject into the original 3b header the list of domains scoped to this batch.
+    // In multi-batch mode every batch generates "domain-specific files only" (common files handled in 3b-core).
     const batchScopeNote = isBatched
       ? buildBatchScopeNote("3b", bi, batches.length, batchDomains)
       : "";
@@ -553,7 +553,7 @@ async function runPass3Split(ctx) {
       expectsStagedRules: true,
       validate: () => {
         const problems = [];
-        // 단일 배치: 공통 파일 검증 (3b-core가 없으므로 여기서 체크).
+        // Single batch: validate common files here (no 3b-core exists).
         if (!isBatched) {
           if (!fileExists(claudeMdPath)) {
             problems.push("CLAUDE.md was not created");
@@ -568,7 +568,7 @@ async function runPass3Split(ctx) {
             }
           }
         }
-        // 모든 배치에서 rules/ 생성 확인 (최소 1개는 staged-rules가 통과해야 함)
+        // For every batch, confirm rules/ was generated (at least one staged-rules move must succeed).
         const rulesDir = path.join(PROJECT_ROOT, ".claude/rules");
         const rulesCount = countFilesRecursive(rulesDir);
         if (rulesCount === 0) {
@@ -581,11 +581,11 @@ async function runPass3Split(ctx) {
 
   // ═══ Stage 3c: skills/ + guide/ ═══════════════════════════════
   //
-  // 단일 배치 (도메인 ≤ 15): 기존 "3c" marker 유지 (guide + skills 함께).
-  // 다중 배치 (도메인 > 15): "3c-core" 먼저 실행 후 "3c-1", "3c-2", ...
+  // Single batch (domains ≤ 15): keep legacy "3c" marker (guide + skills together).
+  // Multi-batch (domains > 15): run "3c-core" first, then "3c-1", "3c-2", ...
   //
-  // 3c-core 분리 이유: guide 9개 + 공통 skills는 도메인 수 무관하게 고정.
-  // 도메인 배치와 섞이면 첫 배치 부하가 다른 배치보다 커짐.
+  // Rationale for splitting 3c-core: the 9 guide files + common skills are fixed regardless of domain count.
+  // Mixing them into domain batches makes the first batch heavier than the others.
   if (isBatched) {
     await runStage("3c-core", "common guides and shared skills",
       buildStageCorePrompt("3c", batches),
@@ -604,16 +604,16 @@ async function runPass3Split(ctx) {
           for (const g of missingGuides) {
             problems.push(`claudeos-core/guide/${g} missing or empty`);
           }
-          // skills/ 최종 검증은 마지막 도메인 배치에서 수행.
+          // Final skills/ validation is performed in the last domain batch.
           return problems;
         },
       }
     );
   }
 
-  // 도메인별 skills 배치 루프.
-  // 단일 배치: guide + skills 함께 (기존 동작).
-  // 다중 배치: skills만, guide는 이미 3c-core에서 처리됨.
+  // Per-domain skills batch loop.
+  // Single batch: guide + skills together (legacy behavior).
+  // Multi-batch: skills only; guide was already handled in 3c-core.
   for (let bi = 0; bi < batches.length; bi++) {
     const batchDomains = batches[bi];
     const stageId = isBatched ? `3c-${bi + 1}` : "3c";
@@ -633,7 +633,7 @@ async function runPass3Split(ctx) {
       expectsStagedRules: true, // skills occasionally include rule files
       validate: () => {
         const problems = [];
-        // 단일 배치: guide 검증도 여기서 수행 (3c-core가 없으니까).
+        // Single batch: validate guide here as well (no 3c-core).
         if (!isBatched) {
           const guideDir = path.join(PROJECT_ROOT, "claudeos-core/guide");
           const missingGuides = EXPECTED_GUIDE_FILES.filter(g => {
@@ -647,7 +647,7 @@ async function runPass3Split(ctx) {
             problems.push(`claudeos-core/guide/${g} missing or empty`);
           }
         }
-        // Skills 최종 검증: 단일 배치 / 마지막 배치에서만 전체 검증.
+        // Final skills validation: full check only in the single-batch case or the last multi-batch.
         if (!isBatched || bi === batches.length - 1) {
           const { hasNonEmptyMdRecursive } = require("../../lib/expected-outputs");
           const skillsDir = path.join(PROJECT_ROOT, "claudeos-core/skills");
@@ -662,16 +662,16 @@ async function runPass3Split(ctx) {
 
   // ═══ Stage 3d: plan/ + database/ + mcp-guide/ ═════════════════
   //
-  // 3d는 원래 standard/rules/skills/guide 를 master plan 으로 집계하고
-  // database/mcp-guide stub 을 만들던 스테이지였다. 하지만 master plan 자체는
-  // Claude Code 런타임에서 읽히지 않는 도구 내부 백업/관리용 파일이었고,
-  // 도메인 수가 많아지면 단일 세션 집계에서 Prompt is too long 발생 원인이
-  // 됐다 (18 도메인 실측에서 3d-standard가 32 파일 집계 시점에 실패).
-  // master plan 생성을 중단하는 것이 안정성 측면에서 올바른
-  // 결정이며, 필요시 사용자가 직접 스크립트로 집계 가능하다.
+  // 3d used to aggregate standard/rules/skills/guide into a master plan
+  // and generate database/mcp-guide stubs. But the master plan itself was
+  // an internal backup/management file never loaded by Claude Code at runtime,
+  // and at high domain counts the single-session aggregation caused "Prompt is
+  // too long" failures (at 18 domains, 3d-standard failed at the 32-file mark).
+  // Dropping master plan generation is the correct call for stability, and
+  // users can aggregate manually with their own script when needed.
   //
-  // 결과적으로 3d는 aux 만 남음:
-  //   3d-aux → database/ + mcp-guide/ (프로젝트 특성 설명 stub)
+  // As a result, 3d only keeps the aux stage:
+  //   3d-aux → database/ + mcp-guide/ (project-specific stub descriptions)
 
   // 3d-aux: database/ + mcp-guide/ (absence is warning-level)
   await runStage("3d-aux", "aux docs (database + mcp-guide)",
@@ -690,10 +690,10 @@ async function runPass3Split(ctx) {
       `    Check disk space / permissions on ${GENERATED_DIR}/.`
     );
   }
-  // 총 스테이지 수 계산
-  // 3a (1) + 3b 계(단일 1 or core+N) + 3c 계(단일 1 or core+N) + 3d-aux (1)
-  // 단일 배치: 1 + 1 + 1 + 1 = 4
-  // 다중 배치: 1 + (1 + N) + (1 + N) + 1 = 2N + 4
+  // Total stage count
+  // 3a (1) + 3b (1 single or core+N) + 3c (1 single or core+N) + 3d-aux (1)
+  // Single batch: 1 + 1 + 1 + 1 = 4
+  // Multi-batch: 1 + (1 + N) + (1 + N) + 1 = 2N + 4
   const three3dStages = 1; // aux only (master plan aggregation removed)
   const totalStages = isBatched
     ? (1 + 1 + batches.length + 1 + batches.length + three3dStages)
@@ -791,6 +791,42 @@ async function cmdInit(parsedArgs) {
         wasFreshClean = true;
         log("  🔄 Previous results deleted (--force)\n");
       } else {
+        // v2.2.0 upgrade detection: if project was generated with older claudeos-core
+        // (pre-2.2.0), default "resume" mode will skip regeneration of existing files
+        // per Rule B idempotency, meaning v2.2.0 structural improvements will NOT be
+        // picked up. Detect this case by checking CLAUDE.md for v2.2.0 markers.
+        const claudeMd = path.join(PROJECT_ROOT, "CLAUDE.md");
+        if (fileExists(claudeMd)) {
+          try {
+            const content = fs.readFileSync(claudeMd, "utf-8");
+            // v2.2.0 scaffold enforces EXACTLY 8 top-level `##` sections.
+            // Pre-v2.2.0 CLAUDE.md files typically carry 9+ sections (extra
+            // "Rules Summary" / "Common Rules" / "Required to Observe"
+            // blocks that v2.2.0 forbids). Counting `^## ` headings is a
+            // language-independent heuristic that works across all 10
+            // supported output languages. False positive (an existing
+            // 8-section pre-v2.2.0 CLAUDE.md) is acceptable — the user
+            // simply won't see the upgrade warning and can still run
+            // `--force` manually.
+            const sectionCount = (content.match(/^## /gm) || []).length;
+            const hasV220Section8 = sectionCount === 8;
+            if (!hasV220Section8) {
+              log("\n  ⚠️  v2.2.0 upgrade detected");
+              log("  ─────────────────────────");
+              log("  Your existing CLAUDE.md was generated with an older claudeos-core version.");
+              log("  v2.2.0 introduces structural changes that the default 'resume' mode");
+              log("  CANNOT apply because existing files are preserved under Rule B (idempotency).");
+              log("");
+              log("  To fully adopt v2.2.0, choose one of:");
+              log("    1. Rerun with --force:   npx claudeos-core init --force");
+              log("       (overwrites generated files; your memory/ content is preserved)");
+              log("    2. Choose 'fresh' below  (equivalent to --force)");
+              log("");
+              log("  See CHANGELOG.md Migration section for full details.\n");
+            }
+          } catch (_) { /* Read error is non-fatal; proceed to resume prompt */ }
+        }
+
         const status = { pass1Done: existingPass1.length, pass2Done: pass2Exists };
         const mode = await selectResumeMode(lang, status);
         if (!mode) throw new InitError("Cancelled.");
@@ -1143,12 +1179,12 @@ async function cmdInit(parsedArgs) {
     }
   }
   if (fileExists(pass3Marker)) {
-    // v2.1.1: split-mode partial marker 보호.
-    // { mode: "split", groupsCompleted: [...], completedAt: undefined } 형태의
-    // 중간 진행 마커는 stale로 판정하면 안 됨. 3b까지만 완료된 정상 상태에서도
-    // guide/skills/plan이 비어있어서 기존 로직이 잘못 stale 판정하고 marker를
-    // 삭제하면, runPass3Split의 resume 로직이 완료된 스테이지를 못 읽고
-    // 3a부터 전체 재실행하게 됨 (correctness는 OK이지만 토큰 2배 낭비).
+    // v2.1.1: protect split-mode partial markers.
+    // An in-progress marker of the form { mode: "split", groupsCompleted: [...], completedAt: undefined }
+    // must NOT be treated as stale. When the pipeline has normally completed
+    // only through 3b, guide/skills/plan are empty, so the legacy check
+    // falsely flagged the marker as stale. Deleting it made runPass3Split
+    // lose track of completed stages and re-run from 3a (correct but wastes ~2x tokens).
     let markerIsSplitPartial = false;
     try {
       const parsed = JSON.parse(readFile(pass3Marker));
@@ -1158,7 +1194,7 @@ async function cmdInit(parsedArgs) {
         Array.isArray(parsed.groupsCompleted) &&
         !parsed.completedAt;
     } catch (_e) {
-      // malformed marker → stale check로 넘어감 (이전 동작 유지)
+      // malformed marker → fall through to the stale check (legacy behavior)
     }
 
     if (markerIsSplitPartial) {

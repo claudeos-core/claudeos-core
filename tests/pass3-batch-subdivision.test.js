@@ -99,19 +99,19 @@ test("batch — init.js source-parity: computeBatches implementation matches", (
   const initSrc = fs.readFileSync(
     path.join(__dirname, "..", "bin", "commands", "init.js"), "utf-8");
 
-  // computeBatches 함수 존재 확인
+  // Verify computeBatches function exists
   assert.match(initSrc, /function computeBatches/,
     "init.js must define computeBatches function");
 
-  // DOMAINS_PER_BATCH 상수 = 15
+  // DOMAINS_PER_BATCH constant = 15
   assert.match(initSrc, /DOMAINS_PER_BATCH\s*=\s*15/,
     "init.js must set DOMAINS_PER_BATCH = 15");
 
-  // loadDomainOrder 함수 존재
+  // loadDomainOrder function exists
   assert.match(initSrc, /function loadDomainOrder/,
     "init.js must define loadDomainOrder function");
 
-  // buildBatchScopeNote 헬퍼 존재
+  // buildBatchScopeNote helper exists
   assert.match(initSrc, /function buildBatchScopeNote/,
     "init.js must define buildBatchScopeNote function");
 });
@@ -120,15 +120,15 @@ test("batch — init.js source-parity: 3b and 3c are batched via for-loop", () =
   const initSrc = fs.readFileSync(
     path.join(__dirname, "..", "bin", "commands", "init.js"), "utf-8");
 
-  // 3b 배치 루프: `3b-${bi + 1}` 형태의 stageId
+  // 3b batch loop: stageId of the form `3b-${bi + 1}`
   assert.match(initSrc, /stageId\s*=\s*isBatched\s*\?\s*`3b-\$\{bi\s*\+\s*1\}`/,
     "init.js must use dynamic 3b-N stageId when batched");
 
-  // 3c 배치 루프
+  // 3c batch loop
   assert.match(initSrc, /stageId\s*=\s*isBatched\s*\?\s*`3c-\$\{bi\s*\+\s*1\}`/,
     "init.js must use dynamic 3c-N stageId when batched");
 
-  // 3b의 backward-compatible "3b" stageId (단일 배치 시)
+  // Backward-compatible "3b" stageId (single-batch case)
   assert.match(initSrc, /stageId.*=.*"3b"/,
     "init.js must fall back to plain '3b' stageId when not batched");
 });
@@ -137,12 +137,12 @@ test("batch — init.js source-parity: 3a is NOT batched, 3d is aux-only", () =>
   const initSrc = fs.readFileSync(
     path.join(__dirname, "..", "bin", "commands", "init.js"), "utf-8");
 
-  // 3a runStage 호출은 직접 "3a" 문자열 (배치 없음, 단일 스테이지)
+  // 3a runStage call uses the literal "3a" string (no batching, single stage)
   assert.match(initSrc, /runStage\("3a"/,
     "init.js must call runStage with plain '3a' (no batching)");
 
-  // Master plan 생성 제거됨 — 3d-standard/rules/skills/guide는 더 이상 없음.
-  // plain "3d" 호출도 없음 (aux 전용 runStage로 대체됨).
+  // Master plan generation removed — 3d-standard/rules/skills/guide no longer exist.
+  // No plain "3d" call either (replaced by aux-only runStage).
   assert.doesNotMatch(initSrc, /runStage\("3d"/,
     "init.js must NOT have a plain 3d stage — only 3d-aux remains");
   assert.doesNotMatch(initSrc, /runStage\("3d-standard"/,
@@ -154,19 +154,19 @@ test("batch — init.js source-parity: 3a is NOT batched, 3d is aux-only", () =>
   assert.doesNotMatch(initSrc, /runStage\("3d-guide"/,
     "init.js must NOT call 3d-guide — master plan aggregation removed");
 
-  // 3d-aux만 남음 (database + mcp-guide stub)
+  // Only 3d-aux remains (database + mcp-guide stubs)
   assert.match(initSrc, /runStage\("3d-aux"/,
     "init.js must call 3d-aux sub-stage (only remaining 3d sub-stage)");
 
-  // build3dSubPrompt 헬퍼 존재 (aux 전용으로 축소됨)
+  // build3dSubPrompt helper exists (reduced to aux-only)
   assert.match(initSrc, /function build3dSubPrompt/,
     "init.js must define build3dSubPrompt helper");
 });
 
 test("batch — marker groupsCompleted shape is backward-compatible", () => {
-  // 도메인 7개 프로젝트 (3b/3c 단일, 3d는 aux 하나만):
+  // 7-domain project (3b/3c single, 3d only aux):
   //   ["3a", "3b", "3c", "3d-aux"]
-  // 도메인 18개 프로젝트 (3b/3c 배치, 3d는 aux 하나만):
+  // 18-domain project (3b/3c batched, 3d only aux):
   //   ["3a", "3b-core", "3b-1", "3b-2", "3c-core", "3c-1", "3c-2", "3d-aux"]
   const singleBatchMarker = {
     mode: "split",
@@ -190,13 +190,13 @@ test("batch — marker groupsCompleted shape is backward-compatible", () => {
   assert.strictEqual(s1.groupsCompleted.length, 4);
   assert.strictEqual(s2.groupsCompleted.length, 8);
 
-  // 3d-aux 포함 (두 케이스 모두)
+  // 3d-aux included (in both cases)
   assert.ok(s1.groupsCompleted.includes("3d-aux"),
     "single-batch marker must include 3d-aux");
   assert.ok(s2.groupsCompleted.includes("3d-aux"),
     "batched marker must include 3d-aux");
 
-  // 제거된 3d 서브스테이지들은 marker에 없어야 함
+  // Removed 3d sub-stages must NOT appear in the marker
   for (const removed of ["3d", "3d-standard", "3d-rules", "3d-skills", "3d-guide"]) {
     assert.ok(!s1.groupsCompleted.includes(removed),
       `marker must NOT include removed stage '${removed}'`);
@@ -204,7 +204,7 @@ test("batch — marker groupsCompleted shape is backward-compatible", () => {
       `marker must NOT include removed stage '${removed}'`);
   }
 
-  // 배치 모드에서만 core 스테이지 있음
+  // Core stages exist only in batched mode
   assert.ok(s2.groupsCompleted.includes("3b-core"));
   assert.ok(s2.groupsCompleted.includes("3c-core"));
   assert.ok(!s1.groupsCompleted.includes("3b-core"),
@@ -212,34 +212,34 @@ test("batch — marker groupsCompleted shape is backward-compatible", () => {
 });
 
 test("batch — total stages calculation: 3d is always 1 (aux only)", () => {
-  // 공식: isBatched ? (1 + 1 + N + 1 + N + 1) : (1 + 1 + 1 + 1)
-  // 즉 3a + 3b(단일 or core+N) + 3c(단일 or core+N) + 3d-aux(1)
+  // Formula: isBatched ? (1 + 1 + N + 1 + N + 1) : (1 + 1 + 1 + 1)
+  // i.e. 3a + 3b (single or core+N) + 3c (single or core+N) + 3d-aux (1)
   //
-  // 배치 없음 (도메인 ≤15) → 1 + 1 + 1 + 1 = 4
+  // No batching (domains ≤ 15) → 1 + 1 + 1 + 1 = 4
   assert.strictEqual(1 + 1 + 1 + 1, 4);
-  // 배치 2개 (도메인 16~30) → 1 + 1 + 2 + 1 + 2 + 1 = 8
+  // 2 batches (domains 16-30) → 1 + 1 + 2 + 1 + 2 + 1 = 8
   assert.strictEqual(1 + 1 + 2 + 1 + 2 + 1, 8);
-  // 배치 5개 (도메인 61~75) → 1 + 1 + 5 + 1 + 5 + 1 = 14
+  // 5 batches (domains 61-75) → 1 + 1 + 5 + 1 + 5 + 1 = 14
   assert.strictEqual(1 + 1 + 5 + 1 + 5 + 1, 14);
-  // 배치 7개 (도메인 91~105) → 1 + 1 + 7 + 1 + 7 + 1 = 18
+  // 7 batches (domains 91-105) → 1 + 1 + 7 + 1 + 7 + 1 = 18
   assert.strictEqual(1 + 1 + 7 + 1 + 7 + 1, 18);
 });
 
-// ─── 3b-core / 3c-core 스테이지 분리 검증 ───────────────────────
+// ─── 3b-core / 3c-core stage split verification ───────────────────────
 
 test("batch — init.js: 3b-core stage is defined for multi-batch projects", () => {
   const initSrc = fs.readFileSync(
     path.join(__dirname, "..", "bin", "commands", "init.js"), "utf-8");
 
-  // 3b-core stage 호출이 isBatched 분기 안에 있어야 함
+  // 3b-core stage call must live inside the isBatched branch
   assert.match(initSrc, /runStage\("3b-core"/,
     "init.js must define 3b-core stage for multi-batch projects");
 
-  // 3c-core stage 호출
+  // 3c-core stage call
   assert.match(initSrc, /runStage\("3c-core"/,
     "init.js must define 3c-core stage for multi-batch projects");
 
-  // buildStageCorePrompt 헬퍼 존재
+  // buildStageCorePrompt helper exists
   assert.match(initSrc, /function buildStageCorePrompt/,
     "init.js must define buildStageCorePrompt helper");
 });
@@ -248,9 +248,9 @@ test("batch — init.js: core stages run only when isBatched is true", () => {
   const initSrc = fs.readFileSync(
     path.join(__dirname, "..", "bin", "commands", "init.js"), "utf-8");
 
-  // 3b-core 호출이 `if (isBatched)` 내부에 있는지 확인
-  // 구조: `if (isBatched) { ... runStage("3b-core" ... }`
-  // 정확한 구조 매칭이 어려우므로 근접성으로 확인
+  // Verify 3b-core call sits inside `if (isBatched)`
+  // Structure: `if (isBatched) { ... runStage("3b-core" ... }`
+  // Exact structural matching is hard; verify via proximity instead
   const runStageCoreMatch = initSrc.match(/if\s*\(isBatched\)\s*\{[\s\S]{0,500}runStage\("3b-core"/);
   assert.ok(runStageCoreMatch,
     "init.js must guard 3b-core runStage call with `if (isBatched)`");
@@ -264,7 +264,7 @@ test("batch — buildBatchScopeNote: instructs NO common files (delegated to 3b-
   const initSrc = fs.readFileSync(
     path.join(__dirname, "..", "bin", "commands", "init.js"), "utf-8");
 
-  // 3b batch scope 설명에서 "already generated by 3b-core" 혹은 유사 문구 존재
+  // 3b batch-scope description contains "already generated by 3b-core" or similar wording
   assert.match(initSrc, /ALREADY GENERATED by the 3b-core/,
     "buildBatchScopeNote(3b, ...) must tell Claude that common files are already generated by 3b-core");
 
@@ -273,7 +273,7 @@ test("batch — buildBatchScopeNote: instructs NO common files (delegated to 3b-
 });
 
 test("batch — marker groupsCompleted includes core stages when batched", () => {
-  // 다중 배치 성공 시 marker 샘플 (3d는 aux-only):
+  // Multi-batch success marker sample (3d is aux-only):
   const batchedMarker = {
     mode: "split",
     groupsCompleted: [
@@ -285,14 +285,14 @@ test("batch — marker groupsCompleted includes core stages when batched", () =>
     completedAt: "2026-04-20T...",
   };
 
-  // 단일 배치 성공 시 marker (backward-compatible — core 스테이지 없음):
+  // Single-batch success marker (backward-compatible — no core stages):
   const singleBatchMarker = {
     mode: "split",
     groupsCompleted: ["3a", "3b", "3c", "3d-aux"],
     completedAt: "2026-04-20T...",
   };
 
-  // 두 형태 모두 JSON round-trip OK
+  // Both shapes must JSON round-trip cleanly
   const s1 = JSON.parse(JSON.stringify(batchedMarker));
   const s2 = JSON.parse(JSON.stringify(singleBatchMarker));
 

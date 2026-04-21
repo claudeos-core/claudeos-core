@@ -91,6 +91,14 @@ async function main() {
   console.log();
 
   // Save outputs
+  //
+  // Port resolution precedence (stack.port):
+  //   1. stack.port already set by stack-detector (Spring application.yml
+  //      server.port, or .env file PORT variable) — highest authority.
+  //   2. defaultPort fallback below — framework convention, only used when
+  //      the project declares no port of its own. This is a last-resort
+  //      default; prefer that stack-detector extract it from .env.example
+  //      to keep CLAUDE.md truthful to what the project actually runs.
   const defaultPort = (stack.framework === "fastapi" || stack.framework === "django") ? 8000
     : stack.framework === "flask" ? 5000
     : stack.framework === "vite" ? 5173

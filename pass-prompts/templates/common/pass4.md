@@ -195,9 +195,12 @@ Proposals with confidence >= 0.70 deserve serious consideration. Do NOT edit pro
 ### 11. Append a new section to existing `CLAUDE.md`
 
 Do NOT overwrite existing CLAUDE.md content — **append only** at the end.
-The new section must include the `(L4)` marker in its top heading (the marker
-is language-independent so the CLI fallback can detect it). For example, English:
-`## Memory (L4)`, Korean: `## 메모리 (L4)`.
+The new section must include the `(L4)` marker in its top heading (the
+marker string itself is language-independent so the CLI fallback can
+detect it). The heading word is translated into the target output
+language, while `(L4)` is preserved verbatim. Example: English emits
+`## Memory (L4)`; other languages emit the equivalent translation of
+"Memory" followed by the same `(L4)` suffix.
 
 Include:
 - Common rules table (references to `00.core/51.doc-writing-rules.md` and `52.ai-work-rules.md`)

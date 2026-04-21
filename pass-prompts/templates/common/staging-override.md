@@ -12,7 +12,7 @@ Examples (write-target redirect, **subpath preserved**):
 |---|---|
 | `.claude/rules/00.core/00.standard-reference.md` | `claudeos-core/generated/.staged-rules/00.core/00.standard-reference.md` |
 | `.claude/rules/10.backend/01.controller-rules.md` | `claudeos-core/generated/.staged-rules/10.backend/01.controller-rules.md` |
-| `.claude/rules/50.sync/01.standard-sync.md` | `claudeos-core/generated/.staged-rules/50.sync/01.standard-sync.md` |
+| `.claude/rules/50.sync/01.doc-sync.md` | `claudeos-core/generated/.staged-rules/50.sync/01.doc-sync.md` |
 | `.claude/rules/60.memory/01.decision-log.md` | `claudeos-core/generated/.staged-rules/60.memory/01.decision-log.md` |
 
 **Important clarifications:**

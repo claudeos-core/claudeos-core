@@ -51,21 +51,31 @@ its responsibilities (DTO↔VO conversion, multi-service orchestration, response
 MUST be described identically across architecture.md, controller-patterns.md,
 response-exception.md, and all skills files.
 
-CRITICAL — CLAUDE.md Reference Table Completeness:
-The reference table in CLAUDE.md MUST list ALL generated standard files, not just core.
-Include all backend-api, security-db, infra, and verification standards.
-Alternatively, add a note directing readers to .claude/rules/00.core/00.standard-reference.md
-for the complete list.
-
 Generation targets:
 
 1. CLAUDE.md (project root)
-   - Role definition (Kotlin + Spring Boot + multi-module, mention CQRS if detected)
-   - Build & Run Commands (Gradle tasks per module, e.g., :servers:command:reservation-command-server:bootRun)
-   - Multi-module architecture diagram (BFF → Feign → Command/Query → DB)
-   - Module list with ports and roles
-   - DB table naming conventions
-   - Standard/Skills/Guide reference table
+
+   Follow the scaffold EXACTLY:
+   → `pass-prompts/templates/common/claude-md-scaffold.md`
+
+   The scaffold enforces an 8-section deterministic structure:
+   1. Role Definition → 2. Project Overview → 3. Build & Run Commands →
+   4. Core Architecture → 5. Directory Structure → 6. Standard / Rules / Skills Reference →
+   7. DO NOT Read → 8. Common Rules & Memory (L4)
+
+   All section titles, order, and formats are FIXED by the scaffold.
+   Content within each section adapts to this project based on pass2-merged.json.
+   The scaffold's validation checklist MUST pass.
+
+   Stack-specific hints for this project (Kotlin + Spring Boot):
+   - Project type for Section 1 PROJECT_CONTEXT: "Backend Application"
+     (when CQRS/BFF is detected, reflect as e.g. "CQRS-based Microservices")
+   - Multi-module projects: represent in Section 4 diagram and Section 5 tree
+   - Architecture diagram (Section 4): BFF → Feign → Command/Query → DB (if CQRS detected)
+   - Module ports and roles: include in Section 2 Project Overview (generic form)
+   - DB naming conventions: belong in standard/00.core/03.naming-conventions.md (not CLAUDE.md)
+   - Gradle tasks per module: Section 3 examples should show the pattern generically
+     then let developers refer to build.gradle.kts for specifics
 
 2. claudeos-core/standard/ (active domains only)
    - 00.core/01.project-overview.md — Stack (Kotlin version, Spring Boot version), module list, server ports
@@ -108,8 +118,11 @@ Generation targets:
      - `00.core/*` rules: `paths: ["**/*"]` — always loaded (architecture, naming are universally needed)
      - `10.backend/*` rules: `paths: ["**/*"]` — always loaded (backend rules needed for any source editing)
      - `30.security-db/*` rules: `paths: ["**/*"]` — always loaded (cross-cutting concerns)
-     - `40.infra/*` rules: `paths: ["**/*.yml", "**/*.yaml", "**/*.properties", "**/config/**", "**/*.gradle*", "**/Dockerfile*", "**/.env*"]` — loaded only for config/infra files
+     - `40.infra/01.environment-config-rules.md` paths: `["**/*.properties", "**/*.yml", "**/*.yaml", "**/.env*", "**/config/**", "**/application*.properties"]` — Spring config files
+     - `40.infra/02.logging-monitoring-rules.md` paths: `["**/*.kt", "**/*.kts", "**/logback*.xml"]` — source code where logs live + log config
+     - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.gradle*", "**/*.kt", "**/*.kts"]` — CI / build config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]` — loaded only when editing claudeos-core files
+     - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — a directory of all standard files. This is NOT a "read all" instruction. Claude should Read ONLY the standards relevant to the current task. Structure it as:
      ```
      ---
@@ -124,6 +137,7 @@ Generation targets:
      - claudeos-core/standard/00.core/01.project-overview.md
      - claudeos-core/standard/00.core/02.architecture.md
      - claudeos-core/standard/00.core/03.naming-conventions.md
+     - claudeos-core/standard/00.core/04.doc-writing-guide.md
      ## Backend API
      - claudeos-core/standard/10.backend-api/01.controller-patterns.md
      - claudeos-core/standard/10.backend-api/02.service-patterns.md
@@ -143,18 +157,16 @@ Generation targets:
      - claudeos-core/standard/40.infra/03.cicd-deployment.md
      - claudeos-core/standard/50.verification/01.development-verification.md
      - claudeos-core/standard/50.verification/02.testing-strategy.md
-     ## DO NOT Read (context waste)
-     - claudeos-core/generated/ — Build metadata. Not for coding reference.
-     - claudeos-core/guide/ — Onboarding/usage guides for humans. Not for coding reference.
-     - claudeos-core/mcp-guide/ — MCP server integration docs. Not for coding reference.
      ```
-     List only the standard files that were actually generated above. Include frontend standards only if frontend was detected.
+     List only the standard files that were actually generated above. Include frontend standards only if frontend was detected. NOTE: `00.core/04.doc-writing-guide.md` is a FORWARD REFERENCE — Pass 4 will generate it; include it anyway. Do NOT add a "DO NOT Read" section here — that information lives in CLAUDE.md Section 7 (the single source of truth).
 
-4. .claude/rules/50.sync/ (3 sync rules — AI fallback reminders)
+4. .claude/rules/50.sync/ (2 sync rules — AI fallback reminders)
    - NOTE: These rules remind AI to run `npx claudeos-core refresh` after modifying standard/rules/skills files.
-   - 01.standard-sync.md — Remind AI to update corresponding rule when standard is modified
-   - 02.rules-sync.md — Remind AI to update corresponding standard when rules are modified
-   - 03.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
+   - 01.doc-sync.md — Bidirectional standard ↔ rules sync reminder (both directions in ONE rule).
+     Do NOT generate a separate 02.rules-sync.md mirror file — redundant.
+     Express the mapping as a naming convention (standard/<N>.<dir>/<M>.<n>.md ↔
+     .claude/rules/<N>.<dir>/<M>.<n>-rules.md), NOT a hardcoded file-to-file table.
+   - 02.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
 
 5. claudeos-core/skills/ (active domains only)
    - 10.backend-crud/01.scaffold-crud-feature.md (orchestrator — CQRS-aware: creates both command and query modules)

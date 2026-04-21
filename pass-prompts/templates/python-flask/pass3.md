@@ -22,17 +22,30 @@ Determine from pass2-merged.json which layer (route handler vs service layer) fo
 the response. This MUST be identical across architecture.md, route-patterns.md,
 and all rules files.
 
-CRITICAL — CLAUDE.md Reference Table Completeness:
-The reference table in CLAUDE.md MUST list ALL generated standard files.
-
 Generation targets:
 
 1. CLAUDE.md (project root)
-   - Role definition (based on detected stack — Flask)
-   - Build & Run Commands (pip/poetry, flask run, gunicorn, docker)
-   - Core architecture diagram (application factory, Blueprint structure)
-   - Module structure
-   - Standard/Skills/Guide reference table
+
+   Follow the scaffold EXACTLY:
+   → `pass-prompts/templates/common/claude-md-scaffold.md`
+
+   The scaffold enforces an 8-section deterministic structure:
+   1. Role Definition → 2. Project Overview → 3. Build & Run Commands →
+   4. Core Architecture → 5. Directory Structure → 6. Standard / Rules / Skills Reference →
+   7. DO NOT Read → 8. Common Rules & Memory (L4)
+
+   All section titles, order, and formats are FIXED by the scaffold.
+   Content within each section adapts to this project based on pass2-merged.json.
+   The scaffold's validation checklist MUST pass.
+
+   Stack-specific hints for this project (Python Flask):
+   - Project type for Section 1 PROJECT_CONTEXT: "Lightweight Web Application" or "REST API Server"
+     (reflect the application factory pattern and Blueprint structure)
+   - Architecture diagram (Section 4): application factory → Blueprint → route → service,
+     request lifecycle
+   - Section 3 commands: pip/poetry install, flask run (dev), gunicorn (production), docker
+   - Module structure: reflect in Section 5 tree (blueprints/, models/, services/)
+   - Detect SQLAlchemy/marshmallow/WTForms and reflect in Section 2
 
 2. claudeos-core/standard/ (active domains only)
    - 00.core/01.project-overview.md — Stack, modules, server info
@@ -64,14 +77,19 @@ Generation targets:
      - `00.core/*` rules: `paths: ["**/*"]`
      - `10.backend/*` rules: `paths: ["**/*"]`
      - `30.security-db/*` rules: `paths: ["**/*"]`
-     - `40.infra/*` rules: `paths: ["**/*.json", "**/*.env*", "**/*.cfg", "**/Dockerfile*", "**/*.yml", "**/*.yaml"]`
+     - `40.infra/01.environment-config-rules.md` paths: `["**/.env*", "**/config.py", "**/config/**", "**/*.cfg", "**/*.toml"]` — env / Flask config
+     - `40.infra/02.logging-monitoring-rules.md` paths: `["**/*.py"]` — source code where logs live
+     - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.py"]` — CI / deploy config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
+     - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — directory of all standard files
 
-4. .claude/rules/50.sync/ (3 sync rules)
-   - 01.standard-sync.md
-   - 02.rules-sync.md
-   - 03.skills-sync.md
+4. .claude/rules/50.sync/ (2 sync rules)
+   - 01.doc-sync.md — Bidirectional standard ↔ rules sync reminder (both directions in ONE rule).
+     Do NOT generate a separate 02.rules-sync.md mirror file — redundant.
+     Express the mapping as a naming convention (standard/<N>.<dir>/<M>.<n>.md ↔
+     .claude/rules/<N>.<dir>/<M>.<n>-rules.md), NOT a hardcoded file-to-file table.
+   - 02.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
 
 5. claudeos-core/skills/ (active domains only)
    - 10.backend-crud/01.scaffold-crud-feature.md (orchestrator)

@@ -85,9 +85,19 @@ Dieser Unterschied summiert sich. 10 Aufgaben/Tag × 20 Minuten gespart = **übe
 | **Vite / React SPA** | `package.json`, `vite.config.*` | 9 Kategorien, 55 Unterpunkte |
 | **Angular** | `package.json`, `angular.json` | 12 Kategorien, 78 Unterpunkte |
 
-Automatisch erkannt: Sprache und Version, Framework und Version (einschließlich Vite als SPA-Framework), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy usw.), Datenbank (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), Paketmanager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), Architektur (CQRS, BFF — aus Modulnamen), Multi-Modul-Struktur (aus settings.gradle), Monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces).
+Automatisch erkannt: Sprache und Version, Framework und Version (einschließlich Vite als SPA-Framework), ORM (MyBatis, JPA, Exposed, Prisma, TypeORM, SQLAlchemy usw.), Datenbank (PostgreSQL, MySQL, Oracle, MongoDB, SQLite), Paketmanager (Gradle, Maven, npm, yarn, pnpm, pip, poetry), Architektur (CQRS, BFF — aus Modulnamen), Multi-Modul-Struktur (aus settings.gradle), Monorepo (Turborepo, pnpm-workspace, Lerna, npm/yarn workspaces), **Laufzeitkonfiguration aus `.env.example`** (v2.2.0 — extrahiert port/host/API-target aus über 16 Konventions-Variablennamen in den Frameworks Vite · Next.js · Nuxt · Angular · Node · Python).
 
 **Sie geben nichts an. Alles wird automatisch erkannt.**
+
+### `.env`-basierte Laufzeitkonfiguration (v2.2.0)
+
+v2.2.0 fügt `lib/env-parser.js` hinzu, damit die generierte `CLAUDE.md` widerspiegelt, was das Projekt tatsächlich deklariert, statt Framework-Defaults.
+
+- **Suchreihenfolge**: `.env.example` (kanonisch, committet) → `.env.local.example` → `.env.sample` → `.env.template` → `.env` → `.env.local` → `.env.development`. Die `.example`-Variante gewinnt, weil sie die entwickler-neutrale Shape-of-Truth ist, nicht die lokalen Overrides eines einzelnen Contributors.
+- **Erkannte Port-Variablen-Konventionen**: `VITE_PORT` / `VITE_DEV_PORT` / `VITE_DESKTOP_PORT` / `NEXT_PUBLIC_PORT` / `NUXT_PORT` / `NG_PORT` / `APP_PORT` / `SERVER_PORT` / `HTTP_PORT` / `DEV_PORT` / `FLASK_RUN_PORT` / `UVICORN_PORT` / `DJANGO_PORT` / generisches `PORT`. Framework-spezifische Namen gewinnen gegenüber dem generischen `PORT`, wenn beide vorhanden sind.
+- **Host & API-Target**: `VITE_DEV_HOST` / `VITE_API_TARGET` / `NEXT_PUBLIC_API_URL` / `NUXT_PUBLIC_API_BASE` / `BACKEND_URL` / `PROXY_TARGET` usw.
+- **Priorität**: Spring Boots `application.yml` `server.port` gewinnt weiterhin (framework-native Config), dann der in `.env` deklarierte Port, dann der Framework-Default (Vite 5173, Next.js 3000, Django 8000 usw.) als letzte Rückfall-Option.
+- **Redaction sensibler Variablen**: Werte von Variablen, die den Mustern `PASSWORD` / `SECRET` / `TOKEN` / `API_KEY` / `ACCESS_KEY` / `PRIVATE_KEY` / `CREDENTIAL` / `JWT_SECRET` / `CLIENT_SECRET` / `SESSION_SECRET` / `BEARER` / `SALT` entsprechen, werden durch `***REDACTED***` ersetzt, bevor sie einen nachgelagerten Generator erreichen. Defense-in-Depth gegen versehentlich committed Secrets in `.env.example`. `DATABASE_URL` ist explizit auf der Allowlist für die Stack-Detector-DB-Identifikations-Back-Compat.
 
 ### Java-Domain-Erkennung (5 Muster mit Fallback)
 
@@ -364,7 +374,7 @@ cat claudeos-core/generated/pass4-prompt.md \
 
 **Verifikation:** `claudeos-core/memory/` sollte 4 Dateien enthalten (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`), `.claude/rules/60.memory/` sollte 4 Rule-Dateien enthalten, und `CLAUDE.md` sollte einen angehängten Abschnitt `## Memory (L4)` haben. Marker: `claudeos-core/generated/pass4-memory.json`.
 
-> **v2.1.0 Gap-Fill:** Pass 4 stellt zudem sicher, dass `claudeos-core/skills/00.shared/MANIFEST.md` existiert. Wenn Pass 3c die Datei ausgelassen hat (möglich bei skill-spärlichen Projekten, weil die Stack-`pass3.md`-Templates `MANIFEST.md` unter den Generierungszielen listen, aber nicht als REQUIRED markieren), erzeugt das Gap-Fill einen minimalen Stub, damit `.claude/rules/50.sync/03.skills-sync.md` stets ein gültiges Referenzziel hat. Idempotent: wird übersprungen, wenn die Datei bereits echten Inhalt hat (>20 Zeichen).
+> **v2.1.0 Gap-Fill:** Pass 4 stellt zudem sicher, dass `claudeos-core/skills/00.shared/MANIFEST.md` existiert. Wenn Pass 3c die Datei ausgelassen hat (möglich bei skill-spärlichen Projekten, weil die Stack-`pass3.md`-Templates `MANIFEST.md` unter den Generierungszielen listen, aber nicht als REQUIRED markieren), erzeugt das Gap-Fill einen minimalen Stub, damit `.claude/rules/50.sync/02.skills-sync.md` (v2.2.0-Pfad — die Anzahl der Sync-Regeln wurde von 3 auf 2 reduziert, was `03` war, ist jetzt `02`) stets ein gültiges Referenzziel hat. Idempotent: wird übersprungen, wenn die Datei bereits echten Inhalt hat (>20 Zeichen).
 
 > **Hinweis:** Wenn `claude -p` fehlschlägt oder `pass4-prompt.md` fehlt, fällt die automatisierte Pipeline auf ein statisches Scaffold über `lib/memory-scaffold.js` zurück (mit Claude-getriebener Übersetzung, wenn `--lang` nicht-englisch ist). Der statische Fallback läuft nur innerhalb von `npx claudeos-core init` — der manuelle Modus erfordert, dass Pass 4 erfolgreich ist.
 
@@ -474,6 +484,8 @@ Das Pass-3-Prompt-Template enthält zudem einen **Phase-1-Block „Read Once, Ex
 - **Rule D** — Output-Knappheit: eine Zeile (`[WRITE]`/`[SKIP]`) zwischen Datei-Schreibvorgängen, keine Wiederholung der Fact-Tabelle, kein Echoing des Datei-Inhalts.
 - **Rule E** — Batch-Idempotenz-Prüfung: ein `Glob` zu PHASE-2-Beginn statt Per-Target-`Read`-Aufrufe.
 
+In **v2.2.0** bettet Pass 3 zusätzlich ein deterministisches CLAUDE.md-Scaffold (`pass-prompts/templates/common/claude-md-scaffold.md`) inline in den Prompt ein. Dies fixiert die Titel und die Reihenfolge der 8 obersten Abschnitte, sodass die generierte `CLAUDE.md` nicht mehr zwischen Projekten drifted, während der Inhalt jedes Abschnitts sich weiterhin an jedes Projekt anpasst. Der neue `.env`-Parser des Stack-Detectors (`lib/env-parser.js`) liefert `stack.envInfo` an den Prompt, sodass Port/Host/API-Target-Zeilen mit dem übereinstimmen, was das Projekt tatsächlich deklariert, statt mit Framework-Defaults.
+
 **Pass 4** baut die L4-Memory-Schicht auf: persistente Team-Wissensdateien (decision-log, failure-patterns, Compaction-Policy, auto-rule-update) plus die `60.memory/`-Regeln, die zukünftigen Sessions mitteilen, wann und wie diese Dateien gelesen/geschrieben werden sollen. Die Memory-Schicht ist das, was Claude Code erlaubt, Lehren über Sessions hinweg anzusammeln, anstatt sie jedes Mal neu zu entdecken. Wenn `--lang` nicht-englisch ist, wird der statische Fallback-Inhalt über Claude übersetzt, bevor er geschrieben wird. v2.1.0 fügt ein Gap-Fill für `skills/00.shared/MANIFEST.md` hinzu, falls Pass 3c es ausgelassen hat.
 
 ---
@@ -483,7 +495,7 @@ Das Pass-3-Prompt-Template enthält zudem einen **Phase-1-Block „Read Once, Ex
 ```
 your-project/
 │
-├── CLAUDE.md                          ← Claude-Code-Einstiegspunkt
+├── CLAUDE.md                          ← Claude-Code-Einstiegspunkt (deterministische 8-Abschnitt-Struktur, v2.2.0)
 │
 ├── .claude/
 │   └── rules/                         ← Glob-getriggerte Regeln
@@ -834,7 +846,14 @@ Nichts erforderlich — v2.1.0-Tools ignorieren `plan/`, wenn es fehlt oder leer
 
 ```
 pass-prompts/templates/
-├── common/                  # Gemeinsamer Header/Footer + pass4 + staging-override
+├── common/                  # gemeinsame header/footer + pass4 + staging-override + CLAUDE.md scaffold (v2.2.0)
+│   ├── header.md             # Rolle + Ausgabeformat-Direktive (alle Passes)
+│   ├── pass3-footer.md       # Post-Pass-3 health-check-Anweisung + 5 CRITICAL Guardrail-Blöcke (v2.2.0)
+│   ├── pass3-phase1.md       # „Read Once, Extract Facts"-Block mit Rules A-E (v2.1.0)
+│   ├── pass4.md              # Memory-Scaffolding-Prompt (v2.0.0)
+│   ├── staging-override.md   # Leitet .claude/rules/**-Schreibvorgänge auf .staged-rules/** um (v2.0.0)
+│   ├── claude-md-scaffold.md # Deterministische 8-Abschnitt-CLAUDE.md-Vorlage (v2.2.0)
+│   └── lang-instructions.json # Ausgabedirektiven pro Sprache (10 Sprachen)
 ├── java-spring/             # Java / Spring Boot
 ├── kotlin-spring/           # Kotlin / Spring Boot (CQRS, BFF, multi-module)
 ├── node-express/            # Node.js / Express
@@ -850,6 +869,8 @@ pass-prompts/templates/
 ```
 
 `plan-installer` erkennt Ihren Stack/Ihre Stacks automatisch und setzt dann typ-spezifische Prompts zusammen. NestJS, Vue/Nuxt, Vite SPA und Flask verwenden jeweils dedizierte Templates mit framework-spezifischen Analyse-Kategorien (z. B. `@Module`/`@Injectable`/Guards für NestJS; `<script setup>`/Pinia/useFetch für Vue; Client-Side-Routing/`VITE_`-Env für Vite; Blueprint/`app.factory`/Flask-SQLAlchemy für Flask). Für Multi-Stack-Projekte werden separate `pass1-backend-prompt.md` und `pass1-frontend-prompt.md` generiert, während `pass3-prompt.md` die Generierungsziele beider Stacks kombiniert. In v2.1.0 wird dem Pass-3-Template `common/pass3-phase1.md` (der „Read Once, Extract Facts"-Block mit Rules A–E) vorangestellt, bevor es pro Split-Mode-Stage zugeschnitten wird. Pass 4 verwendet unabhängig vom Stack das gemeinsame `common/pass4.md`-Template (Memory-Scaffolding).
+
+**In v2.2.0** bettet der Pass-3-Prompt zusätzlich `common/claude-md-scaffold.md` (die deterministische 8-Abschnitt-CLAUDE.md-Vorlage) inline zwischen dem phase1-Block und dem stack-spezifischen Körper ein — dies fixiert die Abschnittsstruktur, sodass generierte CLAUDE.md nicht zwischen Projekten abweichen, während der Inhalt weiterhin projektspezifisch angepasst wird. Vorlagen werden **English-first** geschrieben; die Sprachinjektion aus `lang-instructions.json` weist das LLM an, Abschnittstitel und Fließtext zum Emit-Zeitpunkt in die Zielausgabesprache zu übersetzen.
 
 ---
 
@@ -937,6 +958,12 @@ my-monorepo/                    ← Hier ausführen: npx claudeos-core init
 
 **„CLAUDEOS_SKIP_TRANSLATION=1 is set but --lang='ko' requires translation" InitError (v2.0.0)** — Sie haben die Test-only-Env-Var `CLAUDEOS_SKIP_TRANSLATION=1` in Ihrer Shell gesetzt (wahrscheinlich ein Rest aus CI-/Test-Setup) UND eine nicht-englische `--lang` gewählt. Diese Env-Var short-circuit den Übersetzungs-Pfad, von dem Pass 4's statischer Fallback und Gap-Fill für nicht-englischen Output abhängen. `init` erkennt den Konflikt beim Sprachwahl-Zeitpunkt und bricht sofort ab (anstatt mitten in Pass 4 mit einem verwirrenden verschachtelten Fehler zu crashen). Fix: Entweder `unset CLAUDEOS_SKIP_TRANSLATION` vor dem Ausführen oder `npx claudeos-core init --lang en` verwenden.
 
+**Warnung "⚠️ v2.2.0 upgrade detected" (v2.2.0)** — Deine existierende `CLAUDE.md` wurde mit einer Pre-v2.2.0-Version generiert. Die Standard-Resume-Mode-Regeneration wird existierende Dateien unter Rule B idempotency überspringen, daher werden die strukturellen Verbesserungen von v2.2.0 (8-Abschnitt-CLAUDE.md-Scaffold, Per-File-Paths in `40.infra/*`, `.env.example`-basierte Port-Genauigkeit, Section-8-Redesign mit `Common Rules & Memory (L4)` (neu gestaltet mit zwei Unterabschnitten: Common Rules · L4 Memory), `60.memory/*`-Rule-Zeile, forward-referenced `04.doc-writing-guide.md`) NICHT angewendet. Fix: Mit `npx claudeos-core init --force` erneut ausführen. Das überschreibt generierte Dateien (`CLAUDE.md`, `.claude/rules/`, `claudeos-core/standard/`, `claudeos-core/skills/`, `claudeos-core/guide/`) und bewahrt dabei `claudeos-core/memory/` (akkumulierte decision-log-, failure-patterns-Einträge — append-only). Committe das Projekt vorher, wenn du die Überschreibungen vor dem Akzeptieren diff-en möchtest.
+
+**Port in CLAUDE.md weicht von `.env.example` ab (v2.2.0)** — Der neue `.env`-Parser des Stack-Detectors (`lib/env-parser.js`) liest zuerst `.env.example` (kanonisch, committed), dann `.env`-Varianten als Fallback. Erkannte Port-Variablen: `PORT`, `VITE_PORT`, `VITE_DESKTOP_PORT`, `NEXT_PUBLIC_PORT`, `NUXT_PORT`, `DJANGO_PORT` usw. Für Spring Boot hat `server.port` aus `application.yml` weiterhin Vorrang vor `.env` (framework-native Config gewinnt). Wenn dein Projekt einen ungewöhnlichen Env-Variablennamen verwendet, benenne ihn auf eine anerkannte Konvention um oder stelle eine Issue-Anfrage zur Erweiterung von `PORT_VAR_KEYS`. Framework-Defaults (Vite 5173, Next.js 3000, Django 8000) werden nur verwendet, wenn sowohl direkte Detection als auch `.env` still bleiben.
+
+**Secret-Werte als `***REDACTED***` in generierten Docs (v2.2.0)** — Erwartetes Verhalten. Der `.env`-Parser von v2.2.0 redact-iert automatisch Werte von Variablen, die den Mustern `PASSWORD`/`SECRET`/`TOKEN`/`API_KEY`/`CREDENTIAL`/`PRIVATE_KEY` entsprechen, bevor sie irgendeinen Generator erreichen. Das ist Defense-in-Depth gegen versehentlich in `.env.example` committed Secrets. `DATABASE_URL` bleibt unverändert für Stack-Detector-DB-Identifikations-Back-Compat. Wenn du irgendwo in der generierten `CLAUDE.md` `***REDACTED***` siehst, ist das ein Bug — redact-ierte Werte sollten nicht in der Tabelle landen; bitte erstelle eine Issue. Nicht-sensible Runtime-Config (Port, Host, API Target, NODE_ENV usw.) kommt unverändert durch.
+
 ---
 
 ## Mitwirken
@@ -946,7 +973,7 @@ Beiträge sind willkommen! Bereiche, in denen Hilfe am meisten benötigt wird:
 - **Neue Stack-Templates** — Ruby/Rails, Go (Gin/Fiber/Echo), PHP (Laravel/Symfony), Rust (Axum/Actix), Svelte/SvelteKit, Remix
 - **IDE-Integration** — VS-Code-Extension, IntelliJ-Plugin
 - **CI/CD-Templates** — GitLab CI, CircleCI, Jenkins-Beispiele (GitHub Actions bereits ausgeliefert — siehe `.github/workflows/test.yml`)
-- **Testabdeckung** — Erweiterung der Test-Suite (derzeit 563 Tests über 29 Test-Dateien, die Scanner, Stack-Erkennung, Domain-Grouping, Plan-Parsing, Prompt-Generierung, CLI-Selectors, Monorepo-Erkennung, Vite-SPA-Erkennung, Verifikations-Tools, L4-Memory-Scaffold, Pass-2-Resume-Validierung, Pass-3-Guards 1/2/3 (H1-Sentinel + H2-BOM-aware-Empty-File + strikter Stale-Marker-Unlink), Pass-3-Split-Mode-Batch-Unterteilung, Pass-3-Partial-Marker-Resume (v2.1.0), Pass-4-Marker-Content-Validierung + Stale-Marker-Unlink-Striktheit + scaffoldSkillsManifest-Gap-Fill (v2.1.0), Translation-Env-Skip-Guard + Early-Fail-Fast + CI-Workflow, staged-rules-Move, lang-aware-Translation-Fallback, Master-Plan-Removal-Regressions-Suite (v2.1.0), Memory-Score/Compact-Formatting-Regression (v2.1.0) und AI-Work-Rules-Template-Struktur abdecken)
+- **Testabdeckung** — Erweiterung der Test-Suite (derzeit 602 Tests über 30 Test-Dateien, die Scanner, Stack-Erkennung, Domain-Grouping, Plan-Parsing, Prompt-Generierung, CLI-Selectors, Monorepo-Erkennung, Vite-SPA-Erkennung, Verifikations-Tools, L4-Memory-Scaffold, Pass-2-Resume-Validierung, Pass-3-Guards 1/2/3 (H1-Sentinel + H2-BOM-aware-Empty-File + strikter Stale-Marker-Unlink), Pass-3-Split-Mode-Batch-Unterteilung, Pass-3-Partial-Marker-Resume (v2.1.0), Pass-4-Marker-Content-Validierung + Stale-Marker-Unlink-Striktheit + scaffoldSkillsManifest-Gap-Fill (v2.1.0), Translation-Env-Skip-Guard + Early-Fail-Fast + CI-Workflow, staged-rules-Move, lang-aware-Translation-Fallback, Master-Plan-Removal-Regressions-Suite (v2.1.0), Memory-Score/Compact-Formatting-Regression (v2.1.0) und AI-Work-Rules-Template-Struktur und `.env`-Parser Port/Host/API-Target-Extraktion + Redaction sensibler Variablen (v2.2.0) abdecken)
 
 Siehe [`CONTRIBUTING.md`](./CONTRIBUTING.md) für die vollständige Liste der Bereiche, den Code-Style, die Commit-Konvention und die Schritt-für-Schritt-Anleitung zum Hinzufügen eines neuen Stack-Templates.
 

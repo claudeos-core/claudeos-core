@@ -3,9 +3,11 @@
  *
  * scaffoldSkillsManifest is a Pass 4 gap-fill that auto-creates
  * claudeos-core/skills/00.shared/MANIFEST.md when Pass 3c omits it.
- * This is necessary because .claude/rules/50.sync/03.skills-sync.md
- * names MANIFEST.md as the single source of truth for skill registration,
- * and skill-sparse projects sometimes leave that reference dangling.
+ * This is necessary because .claude/rules/50.sync/02.skills-sync.md
+ * (v2.2.0 path — previously 50.sync/03.skills-sync.md before the
+ * sync-rule count was reduced from 3 to 2) names MANIFEST.md as the
+ * single source of truth for skill registration, and skill-sparse
+ * projects sometimes leave that reference dangling.
  *
  * Contract:
  *   - Creates MANIFEST.md if missing               → { status: "written" }
@@ -132,7 +134,7 @@ test("scaffoldSkillsManifest: English stub contains expected sections", () => {
   const content = fs.readFileSync(path.join(sharedDir, "MANIFEST.md"), "utf-8");
   // Must reference its role as the sync-checker anchor
   assert.match(content, /# Skill Registry/, "heading");
-  assert.match(content, /50\.sync\/03\.skills-sync\.md/, "sync anchor reference");
+  assert.match(content, /50\.sync\/02\.skills-sync\.md/, "sync anchor reference");
   assert.match(content, /How to register/, "registration instructions section");
   assert.match(content, /Registered skills/, "registry table section");
   // Should be a valid skeleton (no placeholder TODOs that would fail content-validator)

@@ -18,17 +18,29 @@ ALL code examples in rules and standards MUST use EXACT method names, class name
 and signatures from pass2-merged.json analysis data.
 Do NOT paraphrase, rename, or infer API names.
 
-CRITICAL — CLAUDE.md Reference Table Completeness:
-The reference table in CLAUDE.md MUST list ALL generated standard files.
-
 Generation targets:
 
 1. CLAUDE.md (project root)
-   - Role definition (based on detected stack — Vite + React SPA)
-   - Build & Run Commands (use ONLY the detected packageManager)
-   - Core architecture diagram (client-side SPA, routing, state management)
-   - Directory structure description
-   - Standard/Skills/Guide reference table
+
+   Follow the scaffold EXACTLY:
+   → `pass-prompts/templates/common/claude-md-scaffold.md`
+
+   The scaffold enforces an 8-section deterministic structure:
+   1. Role Definition → 2. Project Overview → 3. Build & Run Commands →
+   4. Core Architecture → 5. Directory Structure → 6. Standard / Rules / Skills Reference →
+   7. DO NOT Read → 8. Common Rules & Memory (L4)
+
+   All section titles, order, and formats are FIXED by the scaffold.
+   Content within each section adapts to this project based on pass2-merged.json.
+   The scaffold's validation checklist MUST pass.
+
+   Stack-specific hints for this project (Vite + React SPA):
+   - Project type for Section 1 PROJECT_CONTEXT: "SPA" 
+     (reflect the actual character, e.g., Back Office / Front Office / Full-stack)
+   - Architecture diagram (Section 4): client-side routing, state management, data flow
+   - Detect multi-entry configs (vite.config.*.ts) and reflect in Section 2 / 4 / 5
+   - Detect codegen tools (orval, openapi-generator) and reflect in Section 5 emphasis
+     (auto-generated directories → "Do Not Modify Manually")
 
 2. claudeos-core/standard/ (active domains only)
    - 00.core/01.project-overview.md — Stack, routing approach, deployment environment
@@ -64,14 +76,19 @@ Generation targets:
      - `00.core/*` rules: `paths: ["**/*"]`
      - `20.frontend/*` rules: `paths: ["**/*"]`
      - `30.security-db/*` rules: `paths: ["**/*"]`
-     - `40.infra/*` rules: `paths: ["**/*.json", "**/*.env*", "**/vite.config.*", "**/Dockerfile*", "**/*.yml", "**/*.yaml"]`
+     - `40.infra/01.environment-config-rules.md` paths: `["**/*.env*", "**/vite.config.*", "**/*.json"]` — env / build config
+     - `40.infra/02.logging-monitoring-rules.md` paths: `["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]` — source code where logs live
+     - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts", "**/*.tsx"]` — CI config + source with API origin / codegen references
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
+     - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — directory of all standard files.
 
-4. .claude/rules/50.sync/ (3 sync rules)
-   - 01.standard-sync.md — Remind AI to update corresponding rule when standard is modified
-   - 02.rules-sync.md — Remind AI to update corresponding standard when rules are modified
-   - 03.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
+4. .claude/rules/50.sync/ (2 sync rules)
+   - 01.doc-sync.md — Bidirectional standard ↔ rules sync reminder (both directions in ONE rule).
+     Do NOT generate a separate 02.rules-sync.md mirror file — redundant.
+     Express the mapping as a naming convention (standard/<N>.<dir>/<M>.<n>.md ↔
+     .claude/rules/<N>.<dir>/<M>.<n>-rules.md), NOT a hardcoded file-to-file table.
+   - 02.skills-sync.md — Remind AI to update MANIFEST.md when skills are modified
 
 5. claudeos-core/skills/ (active domains only)
    - 20.frontend-page/01.scaffold-page-feature.md (orchestrator)

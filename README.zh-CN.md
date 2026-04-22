@@ -95,10 +95,6 @@ npx claudeos-core health     # 所有验证器 —— 单一 go/no-go 判定
 npx claudeos-core lint       # 仅 CLAUDE.md 结构不变式 (任意语言)
 ```
 
-### 真实世界验证
-
-v2.3.0 在发布前在两个真实世界的韩语姐妹项目上完成了 end-to-end 验证: 一个 14 domain 的 single-SPA Vite + React 19 前端,带有一个 8 子 skill 的 `scaffold-page-feature` orchestrator; 以及一个 8 domain 的 Spring Boot + MyBatis 后端,带有一个 8 子 skill 的 `scaffold-crud-feature` orchestrator,正在进行 PostgreSQL → MariaDB 迁移。两个项目在完整 health check 中都稳定在 **0 errors, 0 warnings** —— `STALE_PATH` 0、`MANIFEST_DRIFT` 0、25/25 结构不变式全部通过 —— 没有对生成输出进行任何手动编辑。
-
 ---
 
 ## 支持的技术栈

@@ -95,10 +95,6 @@ npx claudeos-core health     # todos los validadores — veredicto único go/no-
 npx claudeos-core lint       # solo invariantes estructurales de CLAUDE.md (cualquier idioma)
 ```
 
-### Verificación en el mundo real
-
-v2.3.0 fue validado end-to-end en dos proyectos hermanos reales en coreano antes del lanzamiento: un frontend Vite + React 19 single-SPA con 14 dominios y un orchestrator `scaffold-page-feature` de 8 sub-skills, y un backend Spring Boot + MyBatis con 8 dominios y un orchestrator `scaffold-crud-feature` de 8 sub-skills en plena migración PostgreSQL → MariaDB. Ambos se asentaron en **0 errores, 0 advertencias** en el health check completo — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 invariantes estructurales pasando — sin ninguna edición manual sobre la salida generada.
-
 ---
 
 ## Stacks Soportados

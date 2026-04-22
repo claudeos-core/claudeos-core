@@ -1,6 +1,6 @@
 {
   "name": "claudeos-core",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Auto-generate Claude Code documentation from your actual source code — Standards, Rules, Skills, and Guides tailored to your project",
   "main": "bin/cli.js",
   "bin": {
@@ -40,8 +40,8 @@
     "validate": "node bin/cli.js validate",
     "refresh": "node bin/cli.js refresh",
     "restore": "node bin/cli.js restore",
-    "pretest": "node -e \"require('glob')\" 2>/dev/null || npm install",
-    "test": "node --test tests/*.test.js",
+    "pretest": "node -e \"try{require('glob')}catch(e){process.exit(1)}\" || npm install",
+    "test": "node scripts/run-tests.js",
     "test:health": "node health-checker/index.js"
   },
   "keywords": [

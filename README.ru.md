@@ -95,10 +95,6 @@ npx claudeos-core health     # все валидаторы — единый ве
 npx claudeos-core lint       # только структурные инварианты CLAUDE.md (любой язык)
 ```
 
-### Проверка в реальных условиях
-
-v2.3.0 прошёл end-to-end-валидацию перед релизом на двух реальных корейских sibling-проектах: single-SPA Vite + React 19 frontend с 14 доменами и 8-sub-skill orchestrator `scaffold-page-feature`, и Spring Boot + MyBatis backend с 8 доменами и 8-sub-skill orchestrator `scaffold-crud-feature` в процессе миграции PostgreSQL → MariaDB. Оба остановились на **0 ошибках, 0 предупреждениях** в полной health-проверке — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 структурных инвариантов прошли — без единой ручной правки сгенерированного вывода.
-
 ---
 
 ## Поддерживаемые стеки

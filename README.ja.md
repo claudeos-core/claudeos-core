@@ -95,10 +95,6 @@ npx claudeos-core health     # すべての validator — 単一 go/no-go 判定
 npx claudeos-core lint       # CLAUDE.md 構造不変条件のみ (任意の言語)
 ```
 
-### 実世界検証
-
-v2.3.0 はリリース前に、実世界の韓国語姉妹プロジェクト 2 つで end-to-end 検証されました: 14 ドメイン + 8 サブスキルの `scaffold-page-feature` orchestrator を持つ single-SPA Vite + React 19 フロントエンド 1 つと、8 ドメイン + 8 サブスキルの `scaffold-crud-feature` orchestrator を持ち PostgreSQL → MariaDB 移行中の Spring Boot + MyBatis バックエンド 1 つ。両者とも full health check で **エラー 0、警告 0** に落ち着きました — `STALE_PATH` 0、`MANIFEST_DRIFT` 0、25/25 の構造不変条件すべて通過 — 生成された出力への手動編集は一切なし。
-
 ---
 
 ## 対応スタック

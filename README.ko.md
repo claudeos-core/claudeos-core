@@ -95,10 +95,6 @@ npx claudeos-core health     # 모든 validator — 단일 go/no-go 판정
 npx claudeos-core lint       # CLAUDE.md 구조 불변 조건만 (모든 언어)
 ```
 
-### 실전 검증
-
-v2.3.0은 릴리즈 전 두 개의 실제 한국어 자매 프로젝트에서 end-to-end로 검증되었습니다: 14 도메인 + 8-sub-skill `scaffold-page-feature` orchestrator를 가진 single-SPA Vite + React 19 frontend 1개와, 8 도메인 + 8-sub-skill `scaffold-crud-feature` orchestrator를 가지고 PostgreSQL → MariaDB 마이그레이션을 진행 중인 Spring Boot + MyBatis backend 1개. 둘 모두 full health check에서 **오류 0개, 경고 0개**에 안착했습니다 — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 구조 불변 조건 통과 — 생성된 결과에 대한 수동 편집 없이.
-
 ---
 
 ## 지원 스택

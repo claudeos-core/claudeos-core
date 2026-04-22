@@ -95,10 +95,6 @@ npx claudeos-core health     # tất cả validator — một phán quyết go/n
 npx claudeos-core lint       # chỉ bất biến cấu trúc CLAUDE.md (bất kỳ ngôn ngữ nào)
 ```
 
-### Xác minh thực tế
-
-v2.3.0 đã được xác minh end-to-end trên hai dự án tiếng Hàn sibling thực tế trước khi phát hành: một frontend single-SPA Vite + React 19 với 14 domain và orchestrator `scaffold-page-feature` 8 sub-skill, và một backend Spring Boot + MyBatis với 8 domain và orchestrator `scaffold-crud-feature` 8 sub-skill đang trong quá trình migration PostgreSQL → MariaDB. Cả hai đều dừng lại ở **0 lỗi, 0 cảnh báo** trong health check đầy đủ — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 bất biến cấu trúc đều pass — mà không có bất kỳ chỉnh sửa thủ công nào trên output được sinh ra.
-
 ---
 
 ## Stack Được Hỗ Trợ

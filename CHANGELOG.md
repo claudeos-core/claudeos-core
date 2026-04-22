@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.3.1] — 2026-04-23
+
+Patch release. Fixes Windows CI breakage in `npm test`.
+
+- **CI — cross-platform `npm test`**. Windows cmd.exe does not expand `*`
+  glob patterns, so `node --test tests/*.test.js` received the literal
+  string and exited 1 on every Windows runner. Replaced with a thin
+  `scripts/run-tests.js` wrapper that uses the existing `glob` dep to
+  enumerate test files before forwarding to `node --test`. Also replaced
+  the `pretest` `2>/dev/null` stderr redirect (which spuriously triggered
+  "The system cannot find the path specified" on Windows) with a Node
+  `try/catch` so the probe is silent on all platforms. No new dependencies.
+
+No source, template, or test changes. Test count unchanged at 662.
+
 ## [2.3.0] — 2026-04-23
 
 Adds language-invariant structural validation for generated `CLAUDE.md`.

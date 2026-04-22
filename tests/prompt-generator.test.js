@@ -503,3 +503,185 @@ describe("scanPythonDomains — flat project fallback", () => {
     assert.equal(backendDomains[0].totalFiles, 1, "should exclude setup.py and conftest.py");
   });
 });
+
+// ─── v2.3.0: scaffold meta-header demotion ───────────────────────
+//
+// Rationale: when scaffold is embedded into pass3-prompt, its meta-section
+// headers (## Why this scaffold exists, ## Hard constraints, ## Examples,
+// etc.) must be demoted from ## to ###. Otherwise the LLM sees 40+ ## lines
+// in the prompt — far more than the 8 it must produce — and develops a
+// pattern bias toward over-generating ## sections in its output. The
+// demotion is code-block-aware: ## inside ```/~~~ fences is preserved so
+// the scaffold's example CLAUDE.md structure (## 1 .. ## 8) stays intact.
+
+describe("prompt-generator — scaffold meta-header demotion (v2.3.0)", () => {
+  let tmpTemplates, tmpGenerated;
+
+  beforeEach(() => {
+    tmpTemplates = makeTmpDir();
+    tmpGenerated = makeTmpDir();
+    // Minimum template layout for generatePrompts.
+    mkdirp(path.join(tmpTemplates, "common"));
+    mkdirp(path.join(tmpTemplates, "node-vite"));
+    writeFile(path.join(tmpTemplates, "common/header.md"), "# Prompt header\n");
+    writeFile(path.join(tmpTemplates, "common/pass3-footer.md"), "## Footer\n");
+    writeFile(path.join(tmpTemplates, "node-vite/pass3.md"), "stack body\n");
+  });
+
+  afterEach(() => {
+    cleanup(tmpTemplates);
+    cleanup(tmpGenerated);
+  });
+
+  it("demotes scaffold meta-section ## headers to ### when embedded", () => {
+    // Scaffold with meta-sections (outside fences) and an 8-section example
+    // (inside a ```markdown fence). Only the meta-sections should be demoted.
+    const scaffold = [
+      "# CLAUDE.md Scaffold Template",
+      "",
+      "## Why this scaffold exists",
+      "Explanation prose.",
+      "",
+      "## Hard constraints",
+      "More prose.",
+      "",
+      "## Template structure",
+      "",
+      "```markdown",
+      "## 1. Role Definition",
+      "body",
+      "",
+      "## 2. Project Overview",
+      "body",
+      "",
+      "## 8. Common Rules & Memory (L4)",
+      "body",
+      "```",
+      "",
+      "## Validation checks",
+      "Final prose.",
+    ].join("\n");
+    writeFile(path.join(tmpTemplates, "common/claude-md-scaffold.md"), scaffold);
+
+    generatePrompts(
+      { backend: null, frontend: "node-vite" },
+      "en",
+      tmpTemplates,
+      tmpGenerated
+    );
+    const out = fs.readFileSync(
+      path.join(tmpGenerated, "pass3-prompt.md"),
+      "utf8"
+    );
+
+    // Meta-sections (outside fences) must have been demoted.
+    assert.ok(
+      !/^## Why this scaffold exists/m.test(out),
+      "## Why this scaffold exists should be demoted"
+    );
+    assert.ok(
+      /^### Why this scaffold exists/m.test(out),
+      "should become ### Why this scaffold exists"
+    );
+    assert.ok(
+      !/^## Hard constraints/m.test(out),
+      "## Hard constraints should be demoted"
+    );
+    assert.ok(
+      !/^## Validation checks/m.test(out),
+      "## Validation checks should be demoted"
+    );
+
+    // Example CLAUDE.md structure inside the fenced block must be preserved.
+    assert.ok(
+      /^## 1\. Role Definition/m.test(out),
+      "## 1. Role Definition (inside fence) must be preserved"
+    );
+    assert.ok(
+      /^## 8\. Common Rules & Memory \(L4\)/m.test(out),
+      "## 8. Common Rules & Memory (L4) (inside fence) must be preserved"
+    );
+  });
+
+  it("preserves ## inside ~~~ fences as well as ``` fences", () => {
+    const scaffold = [
+      "## Demote me",
+      "",
+      "~~~",
+      "## 1. Keep me",
+      "~~~",
+      "",
+      "## Demote me too",
+    ].join("\n");
+    writeFile(path.join(tmpTemplates, "common/claude-md-scaffold.md"), scaffold);
+
+    generatePrompts(
+      { backend: null, frontend: "node-vite" },
+      "en",
+      tmpTemplates,
+      tmpGenerated
+    );
+    const out = fs.readFileSync(
+      path.join(tmpGenerated, "pass3-prompt.md"),
+      "utf8"
+    );
+
+    assert.ok(/^## 1\. Keep me/m.test(out), "fence content preserved (~~~)");
+    assert.ok(
+      !/^## Demote me$/m.test(out),
+      "non-fence ## demoted (first)"
+    );
+    assert.ok(
+      !/^## Demote me too$/m.test(out),
+      "non-fence ## demoted (last)"
+    );
+  });
+
+  it("overall pass3-prompt has limited ## headers after embedding real scaffold", () => {
+    // Use the actual scaffold file to catch regressions in real-world shape.
+    const realScaffoldPath = path.resolve(
+      __dirname,
+      "..",
+      "pass-prompts/templates/common/claude-md-scaffold.md"
+    );
+    if (!fs.existsSync(realScaffoldPath)) {
+      // Skip gracefully if run outside the repo checkout.
+      return;
+    }
+    writeFile(
+      path.join(tmpTemplates, "common/claude-md-scaffold.md"),
+      fs.readFileSync(realScaffoldPath, "utf8")
+    );
+
+    generatePrompts(
+      { backend: null, frontend: "node-vite" },
+      "en",
+      tmpTemplates,
+      tmpGenerated
+    );
+    const out = fs.readFileSync(
+      path.join(tmpGenerated, "pass3-prompt.md"),
+      "utf8"
+    );
+
+    const h2Count = (out.match(/^## /gm) || []).length;
+
+    // After v2.3.0 demotion, the scaffold contributes exactly 8 ## headers
+    // (inside the Template structure code block). The surrounding prompt
+    // (phase 1 / phase 2 / footer sections) adds a small fixed number
+    // (≤ ~10). The pre-v2.3.0 total was 40+; anything above ~25 indicates
+    // demotion regressed.
+    assert.ok(
+      h2Count < 25,
+      `expected pass3-prompt ## count < 25 after demotion, got ${h2Count}`
+    );
+
+    // The 8 canonical section examples must be present.
+    for (let i = 1; i <= 8; i++) {
+      assert.ok(
+        new RegExp(`^## ${i}\\. `, "m").test(out),
+        `## ${i}. (canonical example) must be present`
+      );
+    }
+  });
+});

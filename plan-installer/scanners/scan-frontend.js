@@ -372,7 +372,39 @@ async function scanFrontendDomains(stack, ROOT) {
     }
     // Dedupe (the three globs can produce overlapping matches in some layouts)
     const seenPlatformDirs = new Set();
+
+    // v2.3.0 — Single-platform skip rule.
+    // Scanner designed for dual-platform layouts where the same subapp
+    // is implemented twice (e.g., `src/pc/admin/` + `src/mobile/admin/`).
+    // When platform keywords match only ONE distinct root — as in a
+    // single-SPA project with `src/admin/` but no sibling platform —
+    // the "subapps" underneath are not subapps at all; they are
+    // internal layers of one SPA (api, context, dto, routers, …).
+    // Emitting those as domains fragments one logical app into 5+
+    // pseudo-domains, which in turn primes Pass 3 to fabricate
+    // prefixed filenames (featureRoutePath.ts, admin-api.service.ts) —
+    // the hallucination class observed in frontend-react-B dogfooding.
+    //
+    // Detection of "single-SPA" mode: inspect the top-level platform
+    // segment for every glob match and count distinct values. If only
+    // one platform is present, skip subapp emission entirely and let
+    // the downstream scanners (routes/pages/components/FSD) identify
+    // real feature domains inside that single SPA.
+    //
+    // Overrides: `frontendScan.forceSubappSplit` in .claudeos-scan.json
+    // opts back into the old behavior for projects that intentionally
+    // treat their lone platform's children as feature domains.
+    const distinctPlatforms = new Set();
     for (const dir of platformDirs) {
+      const dirFwd = dir.replace(/\\/g, "/").replace(/\/$/, "");
+      const parts = dirFwd.split("/");
+      const platformIdx = parts.findIndex(seg => PLATFORM_KEYWORDS.includes(seg));
+      if (platformIdx >= 0) distinctPlatforms.add(parts[platformIdx]);
+    }
+    const forceSubappSplit = overrides.forceSubappSplit === true;
+    const singleSpaMode = distinctPlatforms.size <= 1 && !forceSubappSplit;
+
+    for (const dir of (singleSpaMode ? [] : platformDirs)) {
       const dirFwd = dir.replace(/\\/g, "/").replace(/\/$/, "");
       if (seenPlatformDirs.has(dirFwd)) continue;
       seenPlatformDirs.add(dirFwd);

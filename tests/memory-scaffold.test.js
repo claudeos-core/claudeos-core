@@ -94,170 +94,47 @@ test("scaffoldRules: rule file paths reference memory/ not runtime/", () => {
   fs.rmSync(d, { recursive: true, force: true });
 });
 
-// ─── appendClaudeMdL4Memory ───────────────────────────────────
+// ─── appendClaudeMdL4Memory (retired in v2.3.0 — see note below) ───
+//
+// The historical test suite for `appendClaudeMdL4Memory` covered a rich
+// behavior surface: append-if-missing, idempotency, multi-language
+// marker detection, heading-scoped regex vs body-text false positives,
+// preservation of user content, and so on. All of that behavior was
+// premised on the function actually appending `## N. Memory (L4)` to
+// CLAUDE.md as a static fallback.
+//
+// In v2.3.0 the entire append path was retired. The current Pass 3
+// scaffold authors Section 8 "Common Rules & Memory (L4)" directly
+// inside CLAUDE.md and the memory file table is located there
+// exactly once. The v2.3.0 claude-md-validator then enforces that
+// single-occurrence structure ([S1] 8 sections, [M-*] one table row
+// per memory file, [F2-*] all memory rows inside Section 8). If the
+// deprecated function were to append anything — even conditionally —
+// it would drive every generated CLAUDE.md into validator errors.
+//
+// The export is preserved as an unconditional `return true` no-op so
+// any caller outside the repo that still imports it continues to work
+// without surprises. That minimal contract is verified in the new
+// `tests/pass4-claude-md-untouched.test.js` suite, alongside grep-
+// style guards against re-introducing the append code path from
+// either the prompt or the orchestrator.
 
-test("appendClaudeMdL4Memory: appends section to existing CLAUDE.md", () => {
-  const d = tmpDir("ms-claude-");
+test("appendClaudeMdL4Memory: retired in v2.3.0 — no-op, preserves CLAUDE.md byte-for-byte", () => {
+  // A single positive assertion of the no-op contract is enough here.
+  // Detailed invariants (multi-language marker handling, missing file
+  // handling, prompt/orchestrator grep-guards) live in the new
+  // pass4-claude-md-untouched suite.
+  const d = tmpDir("ms-claude-retired-");
   const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, "# CLAUDE.md\n\nExisting content.\n");
+  const original = "# CLAUDE.md\n\nExisting content.\n\n## 8. Common Rules & Memory (L4)\n\nstub.\n";
+  fs.writeFileSync(claudeMd, original);
   const ok = appendClaudeMdL4Memory(claudeMd);
-  assert.equal(ok, true);
-  const c = fs.readFileSync(claudeMd, "utf-8");
-  assert.match(c, /Existing content/);
-  assert.match(c, /\(L4\)/);
-  assert.match(c, /Memory/);
-  // Must NOT contain Runtime content anymore
-  assert.doesNotMatch(c, /L4\/L5/);
-  assert.doesNotMatch(c, /session-state\.md/);
-  fs.rmSync(d, { recursive: true, force: true });
-});
-
-test("appendClaudeMdL4Memory: idempotent — does not append twice", () => {
-  const d = tmpDir("ms-claude-idem-");
-  const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, "# CLAUDE.md\n");
-  appendClaudeMdL4Memory(claudeMd);
-  const once = fs.readFileSync(claudeMd, "utf-8");
-  appendClaudeMdL4Memory(claudeMd);
-  const twice = fs.readFileSync(claudeMd, "utf-8");
-  assert.equal(once, twice, "second call should be a no-op");
-  fs.rmSync(d, { recursive: true, force: true });
-});
-
-test("appendClaudeMdL4Memory: returns false if CLAUDE.md does not exist", () => {
-  const ok = appendClaudeMdL4Memory("/tmp/nonexistent-claudemd-" + Date.now() + ".md");
-  assert.equal(ok, false);
-});
-
-test("appendClaudeMdL4Memory: static fallback defers to Claude-driven translated section", () => {
-  // Priority policy: Claude-driven Pass 4 output (in user's chosen language)
-  // always wins over the static English fallback. This test uses a Korean
-  // translation as an example, but the detection mechanism is
-  // language-agnostic — see the next test for the multi-language proof.
-  const d = tmpDir("ms-claude-translated-");
-  const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, `# CLAUDE.md
-
-## 메모리 (L4)
-
-Translated section written by Claude-driven Pass 4 (e.g. --lang ko).
-`);
-  const ok = appendClaudeMdL4Memory(claudeMd);
-  assert.equal(ok, true, "should return true (already present — no-op)");
-  const c = fs.readFileSync(claudeMd, "utf-8");
-  // Must not append the English static fallback on top of the translated section
-  assert.ok(!c.includes("This project uses the ClaudeOS-Core L4 Memory layer"),
-    "English fallback must not override Claude-driven translated section");
-  const markerCount = (c.match(/\(L4\)/g) || []).length;
-  assert.equal(markerCount, 1, `should have exactly one (L4) marker, got ${markerCount}`);
-  fs.rmSync(d, { recursive: true, force: true });
-});
-
-test("appendClaudeMdL4Memory: (L4) marker detection is language-agnostic", () => {
-  // The `(L4)` token is language-independent — Claude may translate the
-  // heading to any supported language and detection must still work.
-  // This guards the init.js gap-fill pattern: after Claude-driven Pass 4
-  // writes a translated section, init.js re-calls this function as a
-  // safety net. It must recognise the translated section in any language
-  // and return true (no-op) rather than appending a duplicate English one.
-  const translations = [
-    ["ko", "메모리 (L4)"],
-    ["ja", "メモリ (L4)"],
-    ["zh-CN", "内存 (L4)"],
-    ["es", "Memoria (L4)"],
-    ["de", "Speicher (L4)"],
-  ];
-  for (const [code, heading] of translations) {
-    const d = tmpDir(`ms-claude-${code}-`);
-    const claudeMd = path.join(d, "CLAUDE.md");
-    fs.writeFileSync(claudeMd, `# CLAUDE.md\n\n## ${heading}\n\nTranslated section.\n`);
-    appendClaudeMdL4Memory(claudeMd);
-    const c = fs.readFileSync(claudeMd, "utf-8");
-    const markerCount = (c.match(/\(L4\)/g) || []).length;
-    assert.equal(markerCount, 1, `${code} translation: expected 1 marker (no duplicate), got ${markerCount}`);
-    fs.rmSync(d, { recursive: true, force: true });
-  }
-});
-
-test("appendClaudeMdL4Memory: empty CLAUDE.md receives English fallback (default policy)", () => {
-  // Default language policy: when the (L4) marker is absent (either Claude
-  // failed or never ran), the static English fallback is appended. English
-  // is chosen as the fallback language because it is the lowest common
-  // denominator and avoids maintaining 10 hardcoded translations of the
-  // entire section body. The normal path (Claude-driven Pass 4 success)
-  // uses the user's --lang choice; this fallback only fires when Claude
-  // cannot generate the section.
-  const d = tmpDir("ms-claude-fallback-");
-  const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, "# CLAUDE.md\n");
-  const ok = appendClaudeMdL4Memory(claudeMd);
-  assert.equal(ok, true);
-  const c = fs.readFileSync(claudeMd, "utf-8");
-  assert.ok(c.includes("## Memory (L4)"),
-    "English heading must be present in fallback");
-  assert.ok(c.includes("This project uses the ClaudeOS-Core L4 Memory layer"),
-    "English fallback body must be present");
-  fs.rmSync(d, { recursive: true, force: true });
-});
-
-test("appendClaudeMdL4Memory: preserves user-added content after the L4 section", () => {
-  // Regression test: if the user adds their own section after L4,
-  // subsequent init runs (which call this function for gap-fill) must not
-  // clobber user content.
-  const d = tmpDir("ms-claude-user-");
-  const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, "# CLAUDE.md\n");
-  appendClaudeMdL4Memory(claudeMd);  // first run adds L4
-  // User adds their own section afterwards
-  fs.appendFileSync(claudeMd, "\n## My Custom Notes\n\nImportant user content.\n");
-  const beforeSecondCall = fs.readFileSync(claudeMd, "utf-8");
-  appendClaudeMdL4Memory(claudeMd);  // second run should be no-op
-  const afterSecondCall = fs.readFileSync(claudeMd, "utf-8");
-  assert.equal(beforeSecondCall, afterSecondCall,
-    "second call must not modify file when (L4) marker is present");
-  assert.ok(afterSecondCall.includes("My Custom Notes"),
-    "user-added section must be preserved");
-  assert.ok(afterSecondCall.includes("Important user content"));
-  fs.rmSync(d, { recursive: true, force: true });
-});
-
-test("appendClaudeMdL4Memory: marker is heading-scoped — body text with (L4) does not trigger false positive", () => {
-  // Regression guard: the marker must only match `(L4)` inside Markdown
-  // headings (e.g. `## Memory (L4)`), NOT body text. Without this guard,
-  // users who mention "Layer 4 (L4)" or OSI networking terms in their
-  // CLAUDE.md would inadvertently block the fallback from adding the
-  // actual Memory section.
-  const d = tmpDir("ms-claude-bodytext-");
-  const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd,
-    "# CLAUDE.md\n\nThis uses (L4) load balancer terminology.\nNothing to do with memory.\n");
-  const ok = appendClaudeMdL4Memory(claudeMd);
-  assert.equal(ok, true);
-  const c = fs.readFileSync(claudeMd, "utf-8");
-  // Fallback should have been applied because no heading contains (L4)
-  assert.ok(c.includes("## Memory (L4)"),
-    "fallback heading must be appended when (L4) only appears in body text");
-  assert.ok(c.includes("This project uses the ClaudeOS-Core L4 Memory layer"),
-    "fallback body must be present");
-  // User's original text must be preserved
-  assert.ok(c.includes("load balancer terminology"),
-    "user body text must be preserved");
-  fs.rmSync(d, { recursive: true, force: true });
-});
-
-test("appendClaudeMdL4Memory: marker works for `### Memory (L4)` subheadings too", () => {
-  // Flexibility: the marker regex accepts `##`, `###`, `####` etc. so that
-  // Claude can translate the section and nest it under an existing heading
-  // structure without the fallback re-appending.
-  const d = tmpDir("ms-claude-subheading-");
-  const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, "# CLAUDE.md\n\n## Documentation\n\n### Memory (L4)\n\nSubheading.\n");
-  const ok = appendClaudeMdL4Memory(claudeMd);
-  assert.equal(ok, true);
-  const c = fs.readFileSync(claudeMd, "utf-8");
-  // No English fallback body should be added
-  assert.ok(!c.includes("This project uses the ClaudeOS-Core L4 Memory layer"),
-    "fallback must not append when a subheading already contains (L4)");
+  assert.equal(ok, true, "signature preserved: always returns true post-v2.3.0");
+  assert.equal(
+    fs.readFileSync(claudeMd, "utf-8"),
+    original,
+    "CLAUDE.md content MUST remain byte-for-byte identical"
+  );
   fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -547,43 +424,53 @@ test("ai-work-rules: 'Established conventions take precedence' rule (B+C initial
 
 // ─── Integration: full static fallback ────────────────────────
 
-test("static fallback integration: scaffolds memory + rules + standard + CLAUDE.md", () => {
+test("static fallback integration: scaffolds memory + rules + standard, leaves CLAUDE.md untouched (v2.3.0)", () => {
+  // v2.3.0 semantic: CLAUDE.md is Pass 3's responsibility. The static
+  // fallback only writes memory files, rule files, and the standard
+  // doc-writing guide. Invoking appendClaudeMdL4Memory (retired) does
+  // nothing; the test pins that the integration path neither creates
+  // nor mutates CLAUDE.md content.
   const d = tmpDir("ms-integration-");
   const memoryDir = path.join(d, "claudeos-core/memory");
   const planDir = path.join(d, "claudeos-core/plan");
   const standardCoreDir = path.join(d, "claudeos-core/standard/00.core");
   const rulesDir = path.join(d, ".claude/rules");
   const claudeMd = path.join(d, "CLAUDE.md");
-  fs.writeFileSync(claudeMd, "# CLAUDE.md\n\nInitial.\n");
+  // Pretend Pass 3 already wrote CLAUDE.md with Section 8 in place —
+  // that is the real-world state the fallback runs against.
+  const pass3Output = "# CLAUDE.md\n\n## 8. Common Rules & Memory (L4)\n\nPass 3 authored.\n";
+  fs.writeFileSync(claudeMd, pass3Output);
   fs.mkdirSync(standardCoreDir, { recursive: true });
 
   scaffoldMemory(memoryDir);
   scaffoldRules(rulesDir);
   scaffoldDocWritingGuide(standardCoreDir);
-  // scaffoldMasterPlans is a no-op in this version; call it to verify
-  // nothing breaks but do not assert any plan file on disk.
-  scaffoldMasterPlans(planDir, memoryDir);
-  const appended = appendClaudeMdL4Memory(claudeMd);
+  scaffoldMasterPlans(planDir, memoryDir);  // no-op
+  const retiredOk = appendClaudeMdL4Memory(claudeMd);  // no-op
 
-  assert.equal(appended, true);
-  // Memory files
+  // Retired function still returns true for caller summary compatibility.
+  assert.equal(retiredOk, true);
+  // Memory files written.
   for (const name of Object.keys(MEMORY_FILES)) {
     assert.ok(fs.existsSync(path.join(memoryDir, name)));
   }
-  // Rules files
+  // Rules files written.
   for (const name of Object.keys(RULE_FILES_00)) {
     assert.ok(fs.existsSync(path.join(rulesDir, "00.core", name)));
   }
   for (const name of Object.keys(RULE_FILES_60)) {
     assert.ok(fs.existsSync(path.join(rulesDir, "60.memory", name)));
   }
-  // Master plan is NOT generated in this version (no-op).
-  assert.ok(!fs.existsSync(path.join(planDir, "50.memory-master.md")),
-    "plan/50.memory-master.md must NOT be generated (scaffoldMasterPlans is now a no-op)");
-  // Standard (any XX.doc-writing-guide.md)
+  // Master plan is a no-op.
+  assert.ok(!fs.existsSync(path.join(planDir, "50.memory-master.md")));
+  // Standard doc-writing-guide written.
   const stdFiles = fs.readdirSync(standardCoreDir).filter(f => f.endsWith("doc-writing-guide.md"));
   assert.equal(stdFiles.length, 1);
-  // CLAUDE.md should contain (L4) marker
-  assert.match(fs.readFileSync(claudeMd, "utf-8"), /\(L4\)/);
+  // v2.3.0 invariant: CLAUDE.md byte-for-byte unchanged.
+  assert.equal(
+    fs.readFileSync(claudeMd, "utf-8"),
+    pass3Output,
+    "CLAUDE.md must not be mutated by the static fallback (Pass 3's output is authoritative)"
+  );
   fs.rmSync(d, { recursive: true, force: true });
 });

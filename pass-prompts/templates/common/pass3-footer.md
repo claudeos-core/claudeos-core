@@ -67,7 +67,7 @@ INCLUDE:
 DO NOT INCLUDE:
 - "DO NOT Read" / "context waste" / "Avoid reading" sections listing
   `claudeos-core/generated/`, `claudeos-core/guide/`, `claudeos-core/mcp-guide/`,
-  `build/`, `mz-common/`, or any "negative list". CLAUDE.md Section 7
+  `build/`, `internal/`, or any "negative list". CLAUDE.md Section 7
   (DO NOT Read) is the single source of truth for that information, and it
   is more complete (includes project-specific paths like `build/` and
   external modules). Replicating this list inside `00.standard-reference.md`
@@ -157,22 +157,64 @@ Before finalizing, verify:
   - `### L4 Memory (on-demand reference)` — intro + 4-row memory file
     table + 6-step workflow, EACH APPEARING EXACTLY ONCE
 
-Do NOT add any of these as `##`-level sections (forbidden at top level
-— match by semantic meaning in ANY output language; canonical English
-labels below):
-- "Required to Observe While Working"
-- "Rules Summary"
-- "Documentation Writing Rules" (as standalone `##`)
-- "AI Common Rules" / "AI Work Rules" (as standalone `##`)
-- "L4 Memory Integration Rules" / "Memory Layer (L4)" (as standalone
-  `##` — L4 memory belongs as sub-section inside Section 8)
-- "Common Rules" (as standalone `##` — common rules belong as sub-section
-  inside Section 8, NOT as their own top-level section)
-- "L4 Memory Files (Re-declaration)" / any restatement of the memory
-  table — the L4 memory table appears EXACTLY ONCE in the entire
-  CLAUDE.md, inside Section 8 sub-section 2
-- Any `##`-level title with the semantic meaning of "rules" beyond
-  Section 8's "Common Rules & Memory (L4)" top-level title
+FORBIDDEN `##`-level sections (beyond the canonical 8):
+
+RULE: No `##` section may have a title whose semantic category is "rules",
+"memory", "L4", "guardrails", or any rephrasing thereof. The 8 canonical
+sections above are the COMPLETE set of allowed top-level headings.
+
+This rule is LANGUAGE-INVARIANT. When generating in a non-English output
+language, apply this rule to the translated heading, not just the English
+one. The LLM's task is NOT to match a finite blocklist of English strings;
+it is to reject ANY 9th `##` section regardless of wording.
+
+Examples of forbidden `##` sections (canonical English label → common
+translated variants that are ALSO forbidden):
+
+- "Memory Layer (L4)" →
+  Korean (ko):    "메모리 (L4)", "메모리 레이어 (L4)", "L4 메모리"
+  Japanese (ja):  "メモリ (L4)", "メモリレイヤー (L4)", "L4 メモリ"
+  Chinese (zh):   "记忆层 (L4)", "内存 (L4)", "L4 记忆", "记忆 (L4)"
+  Spanish (es):   "Capa de Memoria (L4)", "Memoria (L4)", "L4 Memoria"
+  Vietnamese (vi):"Lớp Bộ nhớ (L4)", "Bộ nhớ (L4)", "L4 Bộ nhớ"
+  Hindi (hi):     "मेमोरी लेयर (L4)", "मेमोरी (L4)", "L4 मेमोरी"
+  Russian (ru):   "Слой памяти (L4)", "Память (L4)", "L4 Память"
+  French (fr):    "Couche Mémoire (L4)", "Mémoire (L4)", "L4 Mémoire"
+  German (de):    "Speicherebene (L4)", "Speicher (L4)", "L4 Speicher"
+  All forbidden; L4 memory belongs as a SUB-SECTION inside Section 8.
+
+- "Common Rules" →
+  Korean (ko):    "공통 규칙", "공통 가드레일"
+  Japanese (ja):  "共通ルール", "共通ガードレール"
+  Chinese (zh):   "通用规则", "公共规则"
+  Spanish (es):   "Reglas Comunes", "Guardarraíles Comunes"
+  Vietnamese (vi):"Quy tắc Chung", "Lan can Chung"
+  Hindi (hi):     "सामान्य नियम", "सामान्य गार्डरेल"
+  Russian (ru):   "Общие правила", "Общие ограждения"
+  French (fr):    "Règles Communes", "Garde-fous Communs"
+  German (de):    "Allgemeine Regeln", "Allgemeine Leitplanken"
+  All forbidden; common rules belong as a SUB-SECTION inside Section 8.
+
+- "L4 Memory Files (Re-declaration)" or any restated memory table →
+  Any heading in any language under which the L4 Memory Files table is
+  restated is forbidden. The table appears EXACTLY ONCE in the whole
+  document (inside Section 8 sub-section 2).
+
+- "Documentation Writing Rules", "AI Work Rules", "Required to Observe
+  While Working", "Rules Summary" →
+  Same prohibition across all 10 output languages (ko, ja, zh-CN, es,
+  vi, hi, ru, fr, de, en). These are rule content, not CLAUDE.md
+  content; move their bodies to `.claude/rules/*`.
+
+DECISION RULE (apply before writing any `##` heading):
+1. Is this heading one of the 8 canonical sections? → Proceed.
+2. Does this heading's meaning fall under "rules", "memory", "L4",
+   "guardrails", or "procedures to follow"? → STOP. The content belongs
+   in `.claude/rules/*` or inside Section 8 as a sub-section.
+3. Anything else → Re-check whether this content actually belongs in
+   CLAUDE.md at all; most extra `##` sections are signs that the content
+   should live in `.claude/rules/*`, `claudeos-core/standard/*`, or
+   `claudeos-core/memory/*`.
 
 Where common-rule information DOES belong:
 - `##`-level: Section 8 sub-section 1 (`### Common Rules (auto-loaded
@@ -187,18 +229,154 @@ Where common-rule information DOES belong:
   auto-loaded; CLAUDE.md only summarizes "what this rule enforces",
   one line per rule.
 
-POST-GENERATION CHECK (mandatory):
-After writing CLAUDE.md, count `^## ` headings. The count MUST be exactly 8.
-If 9 or more, locate the surplus section(s) and apply the correct remedy:
-- Surplus "Common Rules" (`##` level) → convert content into Section 8 sub-section 1
-- Surplus "Memory Layer (L4)" / "L4 Memory Files (Re-declaration)" →
-  DELETE it entirely; the L4 memory belongs exactly once in Section 8
-  sub-section 2
-- Surplus "Required to Observe While Working" / "Rules Summary" → move
-  enforcement content into `.claude/rules/*`, do not carry into CLAUDE.md
-- Surplus structural information → merge into the matching Section 1-7
-Do not move on until the count is exactly 8 AND Section 8 contains
-exactly 2 sub-sections with no internal duplication.
+POST-GENERATION CHECK (MANDATORY — execute as the last step before
+declaring CLAUDE.md generation complete):
+
+STEP 1 — Count. Run a mental grep for `^## ` in your generated CLAUDE.md.
+Record the count.
+
+STEP 2 — Assert. The count MUST equal 8. Not 7. Not 9. Exactly 8.
+This is LANGUAGE-INVARIANT and TITLE-INVARIANT: a 9th `##` section is
+forbidden regardless of its title, in any of the 10 supported output
+languages.
+
+STEP 3 — Repair (only if count ≠ 8). Locate the deviation and apply:
+- Count = 9 or more → identify the surplus section(s); for EACH surplus:
+  - If it contains memory-file references (`decision-log.md`,
+    `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`) →
+    DELETE the entire section; its content already lives in Section 8
+    sub-section 2
+  - If it contains rule-summary content → MERGE into Section 8
+    sub-section 1 (not as a new section)
+  - If it contains procedural/enforcement content → MOVE to
+    `.claude/rules/*`, not CLAUDE.md
+  - Otherwise → MERGE into the best-fitting Section 1-7
+- Count = 7 or fewer → a required section is missing; add it following
+  the scaffold's canonical order
+
+STEP 4 — Verify repair. Re-count `^## `. If still ≠ 8, repeat STEP 3.
+Do NOT declare CLAUDE.md generation complete until count = 8 AND
+Section 8 contains exactly 2 `###` sub-sections.
+
+STEP 4b — Title determinism check. For each of the 8 `## N.` headings,
+confirm that the English canonical phrase is present as the primary
+heading text (a native-language translation may follow in parentheses).
+This rule is LANGUAGE-INVARIANT — applied regardless of `{OUTPUT_LANG}`:
+
+    ✅ `## 7. DO NOT Read`
+    ✅ `## 7. DO NOT Read (직접 읽지 말아야 할 파일)`
+    ❌ `## 7. 읽지 말 것 (Files Not to Be Read Directly)`
+       — English canonical must be PRIMARY, not parenthetical
+
+Required canonical tokens by section number:
+    §1 → "Role Definition"
+    §2 → "Project Overview"
+    §3 → "Build" (as in "Build & Run Commands")
+    §4 → "Core Architecture"
+    §5 → "Directory Structure"
+    §6 → "Standard" (as in "Standard / Rules / Skills Reference")
+    §7 → "DO NOT Read"
+    §8 → "Memory" (as in "Common Rules & Memory (L4)")
+
+WHY: Multi-repo consumers (Claude Code sessions spanning sibling
+projects, organization-wide grep, cross-repo navigation) must be able
+to find Section N in every CLAUDE.md by a single English keyword search.
+Without this invariant, one project's §7 reads "DO NOT Read (읽지 말 것)"
+and a sibling's reads "읽지 말 것 (DO NOT Read)" — identical meaning,
+but `grep "## 7. DO NOT Read"` silently misses the second.
+
+If any heading lacks its canonical token, rewrite it before finalizing.
+
+STEP 5 — External validation available. After saving CLAUDE.md, the
+user can run `npx claudeos-core lint` to independently verify structure
+via the language-invariant validator (v2.3.0+). This is purely a safety
+net; the LLM should not rely on it — the structure must be correct at
+write time.
+
+CRITICAL — Path fact grounding (MANDATORY):
+
+Every `src/...` (or equivalent language-specific source root) path you
+write in rules, standard, or CLAUDE.md MUST be a literal, verbatim path
+from `pass2-merged.json` / `project-analysis.json` / `pass1-*.json`.
+Do not invent, augment, or "normalize" filenames.
+
+The single most common Pass 3 hallucination pattern is inferring a
+filename from its parent directory:
+
+    Directory seen in facts:  src/feature/routers/
+    File seen in facts:       src/feature/routers/routePath.ts
+                              src/feature/routers/routeComponentMap.ts
+
+    ❌ WRONG: write `src/feature/routers/featureRoutePath.ts`
+                       (prepended "feature" because the dir is `feature/`)
+    ❌ WRONG: write `src/feature/routers/FEATURE_COMPONENT_MAP.ts`
+                       (uppercased to match the TS constant name)
+    ✅ RIGHT: write `src/feature/routers/routePath.ts`
+
+Mechanism of the error: the model sees a constant named
+`FEATURE_ROUTE_PATH` (a TypeScript identifier) and "renormalizes" the
+filename to match it. TypeScript identifiers and filenames are
+independent — do NOT let the constant's name drive the filename you
+write. The filename in `pass2-merged.json` is authoritative.
+
+Same rule applies to domain prefixes in general:
+- `src/feature/X.ts` is the correct reference even when the file's
+  exported symbols start with `Feature*` or `FEATURE_*`.
+- Do NOT prepend the parent directory name to the filename as a
+  disambiguator. The directory path is already the scope.
+
+Library-convention hallucination class (equally important):
+
+When generating a standard file about testing, mocking, styling,
+state management, or similar library-centric topics, do NOT reach
+for "the canonical file location" from the library's own docs. There
+is no canonical location — every project chooses its own.
+
+    ❌ WRONG: writing `testing-strategy.md` and referencing
+       `src/__mocks__/handlers.ts`, `src/test/setup.ts`,
+       `src/setupTests.ts`, or `src/test-utils.tsx` because MSW,
+       Vitest, or Jest docs show these paths.
+    ❌ WRONG: writing `styling-patterns.md` and referencing a
+       `src/styles/globals.css` or `src/theme.ts` because the
+       framework's quick-start uses them.
+
+    ✅ RIGHT: if pass3a-facts.md lists no test setup file (e.g.,
+       the project has 0% coverage with vitest installed but
+       no tests), write the testing guidance in abstract terms
+       ("a shared setup module in a test directory of your
+       choice") without naming a specific path.
+    ✅ RIGHT: for any library-centric standard, if the specific
+       file is not in pass3a-facts.md, describe the pattern
+       by role (what the file does) rather than by name (what
+       it is called).
+
+Critical triggers for this class:
+- `testing-strategy.md` / `testing-patterns.md` — almost always
+  tries to name a mock handler file or test setup file.
+- `styling-patterns.md` — almost always tries to name a global
+  stylesheet or theme file.
+- `state-management.md` — almost always tries to name a store
+  bootstrap file (Redux, Zustand, etc.) even when the project
+  uses only React Context.
+
+The rule in all cases: if pass3a-facts.md has the concrete path,
+use it verbatim; if not, describe the role without naming a file.
+
+This rule is enforced post-generation by `content-validator [10/10]
+path-claim verification`. Fabricated paths will be flagged as
+`STALE_PATH` errors with the path quoted back, forcing re-generation.
+
+CRITICAL — MANIFEST ↔ CLAUDE.md §6 Skills consistency:
+
+If `claudeos-core/skills/00.shared/MANIFEST.md` registers skill files
+under its skill table, CLAUDE.md §6 Skills sub-section MUST mention
+every one of those skill paths (at minimum a bullet reference is
+enough; the full description may live in MANIFEST itself). Likewise,
+every skill listed in CLAUDE.md §6 MUST exist in MANIFEST.
+
+Asymmetry breaks the "single source of truth" claim and is detected by
+`content-validator [10/10]` as `MANIFEST_DRIFT`. When in doubt, sync
+both directions when Pass 3 finishes — do not defer.
 
 CRITICAL — CLAUDE.md Does Not Duplicate Rules:
 CLAUDE.md describes STRUCTURE (overview, architecture, directory, references),

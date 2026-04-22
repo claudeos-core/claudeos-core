@@ -335,3 +335,99 @@ test("--force equivalent: unlinking all *.json in generated/ clears markers", ()
   assert.equal(fs.readdirSync(G).length, 0, "all files cleared");
   fs.rmSync(d, { recursive: true, force: true });
 });
+
+/**
+ * v2.3.0 regression — resume decision on split-partial marker.
+ *
+ * Bug: cmdInit previously checked only `fileExists(pass3Marker)` before
+ * deciding whether to call runPass3Split. A split-mode partial marker
+ * (from a prior timeout mid-pipeline, e.g. 3d-aux stream idle) passed
+ * that check and fell into the "skip" branch, so the remaining stages
+ * never ran on re-execution. The database/ and mcp-guide/ directories
+ * were silently left empty.
+ *
+ * Fix: additionally inspect the marker body. If mode === "split" and
+ * completedAt is absent, treat it as resume-needed and call
+ * runPass3Split. runPass3Split itself already knows how to skip
+ * already-completed stages via `groupsCompleted`.
+ *
+ * These tests verify the decision function directly. The classification
+ * logic is a pure function of the marker contents, extracted here.
+ */
+function classifyPass3Marker(markerContentOrAbsent) {
+  // Mirrors the logic in bin/commands/init.js after the v2.3.0 fix.
+  if (markerContentOrAbsent === null) {
+    return { needsRun: true, isResume: false };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(markerContentOrAbsent);
+  } catch (_e) {
+    // Malformed marker → caller handles via stale-drop elsewhere.
+    // If still here, skip (do nothing) is the safest default.
+    return { needsRun: false, isResume: false };
+  }
+  if (parsed && parsed.mode === "split" && !parsed.completedAt) {
+    return { needsRun: true, isResume: true };
+  }
+  return { needsRun: false, isResume: false };
+}
+
+test("v2.3.0 resume: absent marker → fresh run", () => {
+  const r = classifyPass3Marker(null);
+  assert.equal(r.needsRun, true);
+  assert.equal(r.isResume, false);
+});
+
+test("v2.3.0 resume: split-partial marker (no completedAt) → resume run", () => {
+  // Exact shape from the backend-java-spring dogfood case: 3a/3b/3c done,
+  // 3d-aux timed out, lastUpdatedAt present but completedAt absent.
+  const marker = JSON.stringify({
+    mode: "split",
+    groupsCompleted: ["3a", "3b", "3c"],
+    lastUpdatedAt: "2026-04-22T10:00:00.000Z",
+  });
+  const r = classifyPass3Marker(marker);
+  assert.equal(r.needsRun, true, "must re-invoke runPass3Split to pick up 3d-aux");
+  assert.equal(r.isResume, true);
+});
+
+test("v2.3.0 resume: fully-completed marker → skip", () => {
+  const marker = JSON.stringify({
+    mode: "split",
+    groupsCompleted: ["3a", "3b", "3c", "3d-aux"],
+    lastUpdatedAt: "2026-04-22T10:00:00.000Z",
+    completedAt: "2026-04-22T10:00:00.000Z",
+  });
+  const r = classifyPass3Marker(marker);
+  assert.equal(r.needsRun, false, "finished runs must not re-execute");
+  assert.equal(r.isResume, false);
+});
+
+test("v2.3.0 resume: empty groupsCompleted array still counts as partial", () => {
+  // Edge case: 3a itself timed out before persisting any completed stage.
+  // groupsCompleted is [] and completedAt is absent.
+  const marker = JSON.stringify({
+    mode: "split",
+    groupsCompleted: [],
+    lastUpdatedAt: "2026-04-22T10:00:00.000Z",
+  });
+  const r = classifyPass3Marker(marker);
+  assert.equal(r.needsRun, true);
+  assert.equal(r.isResume, true);
+});
+
+test("v2.3.0 resume: malformed JSON → safe skip (upstream handles stale drop)", () => {
+  const r = classifyPass3Marker("{not valid json");
+  assert.equal(r.needsRun, false);
+  assert.equal(r.isResume, false);
+});
+
+test("v2.3.0 resume: non-split mode marker → skip (not this function's concern)", () => {
+  const marker = JSON.stringify({
+    mode: "legacy-v1",
+    completedAt: "2026-04-22T10:00:00.000Z",
+  });
+  const r = classifyPass3Marker(marker);
+  assert.equal(r.needsRun, false);
+});

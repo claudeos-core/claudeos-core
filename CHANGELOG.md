@@ -1,5 +1,747 @@
 # Changelog
 
+## [2.3.0] — 2026-04-23
+
+Adds language-invariant structural validation for generated `CLAUDE.md`.
+Dogfooding v2.2.0 on a Korean-output Vite + React project (`frontend-react-A`)
+surfaced the §9 L4-memory re-declaration anti-pattern *despite* the scaffold,
+expanded blocklist, and post-generation self-check all being present in the
+embedded Pass 3 prompt. Root cause: forbidden-section enforcement depended
+on the LLM matching English canonical labels (`"Memory Layer (L4)"`) against
+its own translated output (`"메모리 (L4)"`, `"メモリ (L4)"`, etc.) — a
+natural-language equivalence judgment the LLM does not perform reliably
+across 10 supported languages.
+
+Dogfooding v2.3.0's initial build on a sibling project (`frontend-react-B`,
+same organization, same language, same stack family) then surfaced a second
+multi-repo invariant failure: the §9 problem was fixed, but the *wording*
+of section headings drifted freely. One project's §7 read
+`"DO NOT Read (직접 읽지 말아야 할 파일)"` while the sibling's read
+`"읽지 말 것 (Files Not to Be Read Directly)"`. Both were "equivalent in
+meaning" per the scaffold, but `grep "## 7. DO NOT Read"` matched the
+first and missed the second — multi-repo discoverability broken.
+
+v2.3.0 addresses both failures by shifting structural enforcement from
+LLM self-check to deterministic code-level validation that does not depend
+on natural-language matching, and adds a cross-repo title-determinism
+invariant (English canonical primary + optional translation parenthetical).
+
+Continued dogfooding on `frontend-react-B` then surfaced two more failure
+classes unrelated to CLAUDE.md structure:
+
+1. **Path hallucination in rules/standard**. Pass 3 generated rule files
+   referencing `src/feature/routers/featureRoutePath.ts` when the actual
+   file was `src/feature/routers/routePath.ts`. Root cause: the LLM saw
+   the parent directory `src/feature/` and a TypeScript constant
+   `FEATURE_ROUTE_PATH` and "renormalized" the filename to match. Pre-v2.3.0
+   validation did not check whether path claims resolved to real files.
+
+2. **MANIFEST ↔ CLAUDE.md §6 Skills drift**. Four skills registered in
+   `claudeos-core/skills/00.shared/MANIFEST.md`, only one of them
+   mentioned in CLAUDE.md §6. No existing tool detected the mismatch.
+
+Both are now detected by a new `content-validator [10/10] path-claim
+verification` check. The check uses only structural signals (backticked
+paths, file-system existence, MANIFEST vs CLAUDE.md cross-reference) —
+no natural-language matching, so it works identically for all 10 output
+languages.
+
+Running the initial v2.3.0 build against `frontend-react-B` surfaced a
+third, upstream issue in the frontend domain scanner. The project has
+a single-SPA layout (`src/admin/{api,context,dto,routers,pages/*}/`,
+plus a separate `src/guide/` for documentation). The subapp scanner,
+designed for dual-platform layouts (`src/pc/admin/` + `src/mobile/admin/`),
+interpreted `admin` as a platform keyword and emitted the architectural
+layers beneath it as pseudo-domains: `admin-api`, `admin-context`,
+`admin-dto`, `admin-routers`. That fragmented one SPA into 5+ spurious
+domains and, critically, primed Pass 3 to fabricate filenames with the
+`admin` prefix — the root cause of the `featureRoutePath.ts` hallucination
+pattern. v2.3.0 adds a single-SPA detection rule: when only ONE distinct
+platform keyword matches across the project tree, subapp emission is
+suppressed by default, and feature domains are left to the downstream
+page/FSD/components scanners to discover correctly.
+
+Running the v2.3.0 build against `backend-java-spring` then surfaced a
+long-standing resume bug in the init pipeline. When a prior `init` run
+is interrupted mid-Pass-3 — most commonly a stream idle timeout during
+the 3d-aux (database + mcp-guide) stage — `pass3-complete.json` is
+persisted in partial form (`mode: "split"`, `groupsCompleted: [...]`,
+no `completedAt`). On the next run, the init orchestrator branched
+solely on `fileExists(pass3Marker)` and fell into the "skip" branch
+for any existing marker, even partial ones. The result: remaining
+Pass 3 stages never ran, `database/` and `mcp-guide/` directories
+were left empty, and the final `pass3-complete.json` retained the
+partial shape — which `pass-json-validator` later caught as a
+`MISSING_KEY: completedAt` error after the fact. v2.3.0 fixes the
+orchestrator to inspect marker contents: when the marker is partial,
+`runPass3Split` is re-invoked and its internal `groupsCompleted`
+logic resumes from the next unstarted stage; only fully-completed
+markers are skipped.
+
+Finally, the full v2.3.0 pipeline run against `frontend-react-B` (14
+domains, Korean output) surfaced a structural regression the validator
+itself caught and flagged: `## 9. 메모리 운영 (L4)` appeared in
+`CLAUDE.md` as a re-declaration of the memory file table already
+present in Section 8. This was the exact anti-pattern v2.3.0 was
+designed to prevent, now reappearing despite the scaffold's explicit
+constraints. Root-cause analysis traced it to a legacy Pass 4
+behavior preserved from pre-v2.3.0: `pass4.md` instructed the LLM to
+**append** a new `## N. ... (L4)` section to `CLAUDE.md`, and
+`init.js` also called `appendClaudeMdL4Memory()` from
+`lib/memory-scaffold.js` as a static fallback doing the same. Both
+predated the current Pass 3 scaffold design where Section 8 "Common
+Rules & Memory (L4)" is authored directly by Pass 3 and is the single
+canonical home for both the Common Rules table and the L4 Memory
+file table + workflow. With Pass 3 already writing that content,
+every additional Pass 4 append produced the [S1]/[M-*]/[F2-*]
+duplications the validator was built to catch. The validator was
+working correctly; the generator was self-contradicting. v2.3.0 fix:
+retire the Pass 4 CLAUDE.md append path completely. Pass 4 continues
+to generate memory files, memory rules, and the doc-writing guide,
+but never touches `CLAUDE.md`. The `appendClaudeMdL4Memory()` export
+is preserved as a no-op for any external caller depending on its
+signature.
+
+Post-retirement dogfooding on `frontend-react-B` surfaced a final class
+of issue: four `STALE_PATH` errors in Pass 4-generated rule and
+standard files (`src/feature/main.tsx` assumed from Vite convention;
+`src/feature/routers/featureRoutePath.ts` invented by prepending the
+parent directory name to the filename; `src/components/utils/classNameMaker.ts`
+fabricated as a plausible-sounding utility). The root cause was
+parallel to the §9 issue: Pass 3's path grounding rules live in
+`pass3-footer.md`, which Pass 4 never reads. Pass 4 was invoking
+prior training knowledge to fabricate concrete paths instead of
+grounding them in `pass3a-facts.md`. v2.3.0 adds `pass3a-facts.md`
+as a mandatory read for Pass 4, plus a dedicated "Path fact
+grounding" CRITICAL section in the prompt with all three flagship
+hallucination anti-patterns documented as explicit ❌ examples.
+The guidance also teaches the positive pattern: when in doubt,
+scope a rule to a directory (`src/admin/api/`) rather than
+inventing a specific filename.
+
+Re-running `init` on `backend-java-spring` with the Fix A build proved
+path-grounding works in practice — STALE_PATH dropped from the
+expected 4 to 0 across all Pass 4-generated rule and standard
+files — but left 8 MANIFEST_DRIFT errors in place. Analysis
+traced these to a structural ordering problem, not an LLM
+compliance problem: Pass 3b writes CLAUDE.md Section 6 BEFORE
+Pass 3c generates the skills directory + `MANIFEST.md`. When a
+skill ships as an orchestrator + sub-skills pair — e.g.
+`10.backend-crud/01.scaffold-crud-feature.md` plus eight
+sub-skills under `scaffold-crud-feature/` — Pass 3b cannot
+enumerate the sub-skills because they don't exist yet, and
+forcing it to predict filenames would just move the problem
+into a new form of hallucination (it would write
+`01.entity.md` while Pass 3c emits `01.dto.md`, etc.).
+
+The correct design is role-separated: `CLAUDE.md` Section 6 is an
+**entry point** that names categories and orchestrators; `MANIFEST.md`
+is the **authoritative registry** for the full sub-skill list. v2.3.0
+implements both halves of this split:
+
+1. `content-validator [10/10]` gains an orchestrator-aware
+   exception: a registered sub-skill is suppressed from
+   `MANIFEST_DRIFT` when its orchestrator (matching
+   `{category}/{*}.{parent-stem}.md`) is referenced anywhere in
+   CLAUDE.md. Integrity checks (`STALE_SKILL_ENTRY` for missing
+   files, unrelated-parent drift) are preserved.
+
+2. `pass3b-core-header.md` gains a "CLAUDE.md Section 6 — Skills
+   sub-section (entry point only)" guidance block that tells the
+   LLM to list only MANIFEST + orchestrators, never to predict
+   sub-skill filenames, and that cites the v2.3.0 validator's
+   exception so the instruction and the detection layer remain
+   in lockstep.
+
+Together, Fix A (Pass 4 path grounding) and Fix B
+(orchestrator/sub-skill exception + §6 guidance) close the last
+two classes of dogfood-observed content-validator errors. The
+remaining validator surface continues to enforce the strict
+invariants — fabricated paths, missing skill files, unrelated-
+parent drift, §9 re-declaration, T1 heading drift, etc. — without
+relaxation.
+
+Re-running `init` on `frontend-react-B` with the Fix A + Fix B
+build produced `0 MANIFEST_DRIFT` (Fix B suppressed all 8
+sub-skill drift rows) but left 1 residual `STALE_PATH` in
+`claudeos-core/standard/50.verification/02.testing-strategy.md`
+referencing `src/__mocks__/handlers.ts`. Analysis showed a
+library-convention hallucination class that the original three
+anti-patterns did not cover: testing documents reach for MSW /
+Vitest / Jest / React Testing Library conventional paths even
+when the project has zero test coverage and no such files exist.
+Analogous traps exist for `styling-patterns.md` (global
+stylesheet/theme files) and `state-management.md` (store
+bootstrap files). v2.3.0 adds a "Library-convention hallucination
+class" block to both `pass3-footer.md` and `pass4.md` documenting
+the four concrete MSW/testing anti-patterns plus the three
+trigger document types, and the positive pattern: when
+`pass3a-facts.md` has no concrete test/style/store files listed,
+describe testing/styling/state guidance in abstract terms
+(directory scope or role-based) without naming a specific path.
+
+Final validation pass on both dogfood projects with the complete
+v2.3.0 build:
+
+- `frontend-react-B` (Korean output, 14 frontend domains,
+  dual-entry Vite + React 19, single-SPA admin layout,
+  scaffold-page-feature orchestrator with 8 sub-skills):
+  **12 errors → 0 errors** (100% improvement), full health
+  check green, 25/25 CLAUDE.md lint checks passed.
+- `backend-java-spring` (Korean output, 8 backend domains,
+  Java 17 + Spring Boot + MyBatis, scaffold-crud-feature
+  orchestrator with 8 sub-skills, multi-dialect DB migration
+  in progress): **8 errors → 0 errors** (100% improvement),
+  full health check green, complete first-try run in 45m 29s
+  including the resume-from-partial-marker code path hitting
+  for the first time from a real-world partial Pass 3 run.
+
+Both projects exercise distinct v2.3.0 code paths (Fix A + Fix B,
+single-SPA rule, Pass 3 resume, library-convention anti-pattern,
+orchestrator/sub-skill exception), and both settled at 0 errors
+without any manual file edits to the generated output. This is
+the first release where the full end-to-end pipeline produces a
+clean `content-validator [10/10]` report on real-world sibling
+Korean projects — the core criterion for v2.3.0 being
+publish-ready.
+
+### Added
+
+- **`claude-md-validator/`** (new package, ~430 lines across 3 files).
+  Post-generation structural validator for `CLAUDE.md`. Every check uses
+  only signals that survive translation:
+  - **Markdown syntax**: `^## `, `^### `, `^#### `, `^```` — not localized.
+  - **Literal file names**: `decision-log.md`, `failure-patterns.md`,
+    `compaction.md`, `auto-rule-update.md` — never translated.
+  - **Counts and table-row positions**: section count, sub-section count
+    per section, memory-file table-row count inside vs outside Section 8.
+  The same validator, byte-for-byte, produces identical verdicts on a
+  `CLAUDE.md` generated in English, Korean, Japanese, Vietnamese, Hindi,
+  Russian, etc. — proven by cross-language bad-case fixtures in the test
+  suite.
+  - `structural-checks.js` — individual check functions (`checkH2Count`,
+    `checkH3Counts`, `checkH4Counts`, `checkMemoryFileUniqueness`,
+    `checkMemoryScopedToSection8`, `checkSectionsHaveContent`,
+    `checkCanonicalHeadings`) plus a fence-aware section splitter
+    (`splitByH2`) that correctly ignores `##` lines inside ``` and
+    `~~~` code blocks.
+  - `index.js` — high-level `validate(path)` API and standalone CLI entry.
+    Transparently strips a leading UTF-8 BOM (U+FEFF) from the input
+    before running checks, so CLAUDE.md files written by Windows editors
+    or cross-platform generators validate identically to those without
+    a BOM (otherwise the first `## ` reads as `\ufeff## ` and silently
+    under-counts by one).
+  - `reporter.js` — human-readable report formatter with remediation
+    guidance for every failure class.
+
+- **`npx claudeos-core lint`** command. Runs the structural validator
+  against `CLAUDE.md` at the project root. Exit code 0 on pass, 1 on fail
+  — suitable for CI pipelines. The command renders per-failure remediation
+  guidance so users can fix issues directly without re-running the full
+  4-Pass pipeline.
+
+- **`bin/commands/lint.js`** (new). Wraps the validator for CLI use;
+  delegates to `claude-md-validator/` so the validator remains usable
+  as a library from other contexts (future `init` auto-lint, CI action,
+  etc.).
+
+- **T1 — Canonical heading invariant (cross-repo title determinism).**
+  Each of the 8 `## N.` section headings in every generated `CLAUDE.md`
+  must contain the English canonical token for that section, regardless
+  of the `--lang` output language. A native-language translation may be
+  appended in parentheses but MUST NOT replace the English canonical as
+  primary text. Required tokens:
+  `§1=Role Definition, §2=Project Overview, §3=Build, §4=Core Architecture,
+  §5=Directory Structure, §6=Standard, §7=DO NOT Read, §8=Memory`.
+  The validator enforces this via `checkCanonicalHeadings` (IDs `T1-1`
+  through `T1-8`), and the scaffold documents it as a mandatory format
+  rule reinforced by Pass 3 POST-GEN CHECK step 4b. This closes a
+  multi-repo discoverability gap discovered during `frontend-react-B`
+  dogfooding: sibling projects generated §7 as `"DO NOT Read (직접 읽지
+  말아야 할 파일)"` and `"읽지 말 것 (Files Not to Be Read Directly)"`
+  respectively — both "equivalent in meaning" but breaking
+  `grep "## 7. DO NOT Read"` across the organization's repos.
+
+- **`content-validator [10/10]` — path-claim + MANIFEST drift.**
+  A new check appended to the existing 9-stage validator in
+  `content-validator/index.js`. Single check, two failure classes:
+  - **`STALE_PATH`** — any `src/...\.(ts|tsx|js|jsx)` reference
+    appearing in `.claude/rules/**/*.md` or
+    `claudeos-core/standard/**/*.md` must resolve to a real file on
+    disk. Fenced code blocks (``` and ~~~) and placeholder paths
+    (`src/{domain}/feature.ts`) are excluded, matching the scaffold
+    convention that placeholders stand for scaffold examples, not
+    actual project paths.
+  - **`STALE_SKILL_ENTRY`** — every skill path registered in
+    `claudeos-core/skills/00.shared/MANIFEST.md` (extracted from
+    backticked `claudeos-core/skills/...` references) must exist on
+    disk. `MANIFEST.md` itself is excluded from the set to avoid
+    self-reference false positives.
+  - **`MANIFEST_DRIFT`** — every skill registered in MANIFEST must be
+    mentioned somewhere in CLAUDE.md. The check looks at the whole
+    body (not just §6 Skills) to avoid depending on sub-section
+    heading wording, which varies by output language.
+  The check is intentionally language-invariant: it uses literal
+  file-path patterns and file-system existence, never parsing section
+  headings or reasoning about Korean/Japanese/etc. text.
+
+- **`bin/commands/init.js` — Guard 4 (non-blocking).** After Pass 4 and
+  structural lint, init runs `content-validator` in a child process
+  and surfaces the summary inline. If drift is detected, init prints a
+  pointer to `stale-report.json` and the standalone command to re-run
+  — but does NOT throw, unset `pass3-complete.json`, or abort the run.
+  This is a deliberate choice: LLM hallucinations may not be
+  deterministically fixable by re-running Pass 3, so a blocking guard
+  would deadlock users in an `init --force` loop. The detection signal
+  (non-zero `content-validator` exit code + stale-report entry) is
+  sufficient for CI pipelines and human triage.
+
+- **`pass-prompts/templates/common/pass3-footer.md` — Path fact
+  grounding (MANDATORY).** Two new CRITICAL blocks added:
+  - The parent-directory prefix anti-pattern (the exact
+    `featureRoutePath.ts` case from frontend-react-B dogfooding) is
+    documented with ✅/❌ examples and explanation of *why* the LLM
+    mis-infers (TypeScript identifier name vs filename are
+    independent — the constant `FEATURE_ROUTE_PATH` does not imply
+    filename `featureRoutePath.ts`).
+  - The MANIFEST ↔ CLAUDE.md §6 symmetry rule is stated explicitly,
+    with post-generation enforcement noted (`content-validator [10/10]
+    → MANIFEST_DRIFT`).
+
+- **`plan-installer/scanners/scan-frontend.js` — Single-SPA detection
+  rule.** The subapp scanner was designed for dual-platform layouts
+  (same subapp implemented for two platforms, e.g., `src/pc/admin/`
+  + `src/mobile/admin/` → `pc-admin`, `mobile-admin`). When applied
+  to a single-SPA project (only one platform keyword matches, as in
+  `frontend-react-B`'s `src/admin/...`), the scanner misinterpreted the
+  SPA's architectural layers (`api`, `context`, `dto`, `routers`) as
+  subapps and emitted them as pseudo-domains — both cluttering the
+  domain plan and priming Pass 3 toward filename hallucinations with
+  the platform-name prefix.
+  - **New behavior**: before the subapp-emission loop, count the
+    number of distinct platform keywords present in the project.
+    When the count is ≤ 1, skip subapp emission entirely and let
+    downstream scanners (pages, FSD, components, fallback) identify
+    real feature domains within the single SPA.
+  - **Opt-out**: `.claudeos-scan.json` accepts a new override
+    `frontendScan.forceSubappSplit: true` to restore the legacy
+    single-platform emission for projects that genuinely treat the
+    lone platform's children as feature domains.
+  - **No change to multi-platform behavior**: two or more distinct
+    platform keywords (e.g., `pc` + `mobile`) trigger subapp
+    emission exactly as before.
+
+- **`bin/commands/init.js` — Pass 3 split-partial resume fix.** The
+  orchestrator previously decided whether to invoke `runPass3Split`
+  by checking only `fileExists(pass3-complete.json)`. Any existing
+  marker — including partial markers from a prior run's timeout —
+  fell into the "skip" branch, causing the remaining Pass 3 stages
+  to never execute on re-run. The detection block at the top of
+  that function already identified partial markers and logged
+  "runPass3Split will resume" but the actual call was gated by the
+  broken check, so the log was misleading.
+  - Now the orchestrator inspects the marker body: if
+    `mode === "split"` and `completedAt` is absent, `runPass3Split`
+    is invoked and its existing `groupsCompleted` tracking resumes
+    from the next unstarted stage. Only markers with `completedAt`
+    set are skipped.
+  - This repairs the dogfood case where Pass 3d-aux timed out
+    mid-stream on `backend-java-spring`: on the next `init`, stages 3a-3c
+    were correctly preserved but 3d-aux was silently skipped,
+    leaving `claudeos-core/database/` and `claudeos-core/mcp-guide/`
+    empty and the marker stuck in partial shape.
+
+- **`tests/pass3-marker.test.js` — 6 new regression tests** covering
+  the resume-decision classification function: absent marker → fresh
+  run; split-partial (no `completedAt`) → resume; fully completed →
+  skip; empty `groupsCompleted` still counts as partial; malformed
+  JSON → safe skip; non-split mode → skip.
+
+- **Pass 4 CLAUDE.md append retirement.** Changes span three files:
+  - `pass-prompts/templates/common/pass4.md` — the "Append a new
+    section to existing `CLAUDE.md`" instruction block is removed
+    wholesale and replaced with a mandatory prohibition block
+    ("CLAUDE.md MUST NOT BE MODIFIED") that names the exact
+    validator errors ([S1], [M-*], [F2-*]) that this prohibition
+    prevents, and explains that Section 8 in Pass 3's output is the
+    single canonical home for the Common Rules table and the L4
+    Memory table/workflow. The remaining output sections are
+    renumbered (section 12 → 11). The Output Discipline section
+    loses its "Do NOT overwrite CLAUDE.md content — **append only**"
+    bullet, which is replaced with "Do NOT touch CLAUDE.md."
+  - `bin/commands/init.js` — the two call sites of
+    `appendClaudeMdL4Memory()` (inside `applyStaticFallback()` and
+    inside the Pass 4 gap-fill path) are removed. The
+    `gapResults` reporting no longer includes a `CLAUDE.md#(L4)`
+    entry. The `require` destructure drops the function.
+  - `lib/memory-scaffold.js` — `appendClaudeMdL4Memory()` is
+    converted to a 3-line no-op that returns `true`
+    unconditionally. The function's public signature, name, and
+    module export are preserved so any external caller continues
+    to work; an extensive deprecation comment documents why the
+    behavior was retired and points at the validator errors it
+    was causing. The `CLAUDE_MD_APPEND` template constant is left
+    exported for test compatibility but is now unreferenced by
+    production code.
+  This fix closes the final regression surfaced by end-to-end
+  dogfooding on `frontend-react-B`: the validator was correctly
+  reporting an `S1` (9 sections) and four `M-*`/`F2-*` errors
+  against a `CLAUDE.md` whose second memory table had been
+  appended by Pass 4, not written by Pass 3. The fix keeps the
+  validator strict and removes the duplication at its source.
+
+- **`tests/pass4-claude-md-untouched.test.js`** (new, 5 tests). A
+  dedicated suite guarding the retirement against regression. Tests
+  cover: the `pass4.md` prompt no longer contains the "Append a new
+  section" instruction and DOES contain the "MUST NOT BE MODIFIED"
+  prohibition; `init.js` neither imports nor calls
+  `appendClaudeMdL4Memory`; the retired function's contract (always
+  returns `true`, never mutates `CLAUDE.md`) holds under happy path,
+  missing-file, and empty/structured-input variants.
+  Complementary updates: 8 legacy `appendClaudeMdL4Memory` tests in
+  `tests/memory-scaffold.test.js` are consolidated into a single
+  retirement contract test; 3 lang-aware tests in
+  `tests/lang-aware-fallback.test.js` are rewritten to verify the
+  lang-invariant no-op semantics; one `generatePrompts` test in
+  `tests/pass4-prompt.test.js` is flipped from "prompt contains
+  CLAUDE.md append instructions" to "prompt contains the
+  prohibition and does NOT contain the legacy append header".
+
+- **Pass 4 path fact grounding (MANDATORY).** `pass4.md` now includes
+  `pass3a-facts.md` in its required-reads list at the top of the
+  prompt (previously only `project-analysis.json` and
+  `pass2-merged.json` were listed), and adds a full `## CRITICAL —
+  Path fact grounding (MANDATORY)` section below the header. The
+  section states the rule first — every `src/...` path written in a
+  rule or standard file must appear verbatim in `pass3a-facts.md` or
+  `pass2-merged.json` — then documents the three flagship
+  hallucination anti-patterns observed in `frontend-react-B`
+  dogfooding: Vite-convention assumption (`src/feature/main.tsx`),
+  parent-directory prefix (`src/feature/routers/featureRoutePath.ts`),
+  and plausible-but-unverified utility (`src/components/utils/classNameMaker.ts`).
+  Each anti-pattern is accompanied by the concrete mechanism that
+  caused it ("invented based on Vite's stock convention";
+  "prepending the parent directory name to the filename"; etc.) so
+  the LLM sees both the output to avoid and the reasoning to avoid.
+  The positive pattern — "when in doubt, scope a rule to a
+  directory (`src/admin/api/`) rather than inventing a filename" —
+  is documented explicitly, and the section cross-references the
+  downstream enforcement (`content-validator [10/10]` →
+  `STALE_PATH`) so the LLM understands the validator will reject
+  fabricated paths. Guarded in tests by a new `generatePrompts`
+  assertion that all three anti-patterns, the MANDATORY tag, the
+  positive pattern, and the validator cross-reference are present
+  in the rendered pass4 prompt.
+
+- **Orchestrator/sub-skill MANIFEST-drift exception.** Changes
+  span two files:
+  - `content-validator/index.js` — Stage 2 of the MANIFEST drift
+    check (MANIFEST ↔ CLAUDE.md cross-reference) now recognizes
+    the orchestrator/sub-skill layout pattern. A registered skill
+    whose path matches
+    `claudeos-core/skills/{category}/{parent-stem}/{NN}.{name}.md`
+    is considered covered when CLAUDE.md mentions an orchestrator
+    file anywhere under the same `{category}/` whose basename
+    (minus any leading `NN.`) equals `{parent-stem}`. The
+    exception is scoped narrowly: it applies ONLY to
+    `MANIFEST_DRIFT`, and ONLY to sub-skills under a confirmed
+    orchestrator match. Integrity checks continue to fire at full
+    strength — `STALE_SKILL_ENTRY` for registered sub-skills
+    whose files are missing from disk, and `MANIFEST_DRIFT` for
+    standalone skills (sub-skill paths whose parent stem does not
+    match any referenced orchestrator).
+  - `pass-prompts/templates/common/pass3b-core-header.md` — a new
+    "CLAUDE.md Section 6 — Skills sub-section (entry point only)"
+    block tells Pass 3b to list only `MANIFEST.md` plus
+    orchestrator files in Section 6, never to predict sub-skill
+    filenames (which don't exist yet at Pass 3b time because
+    Pass 3c hasn't run). The guidance explains both failure modes
+    — hallucinated filenames and silent staleness — and cites the
+    `content-validator` exception so the prompt-side and detector-
+    side are consistent.
+  This fix closes the final class of dogfood-observed errors on
+  `backend-java-spring` (8 MANIFEST_DRIFT rows, all for
+  `scaffold-crud-feature/0N.*.md` sub-skills) and the equivalent
+  shape on `frontend-react-B` (8 rows under
+  `scaffold-page-feature/0N.*.md`). The structural
+  `CLAUDE.md §6 = entry, MANIFEST = registry` split also
+  eliminates the recurring regeneration churn where adding or
+  renaming a sub-skill in Pass 3c would otherwise have required
+  CLAUDE.md to be rewritten.
+
+- **`tests/content-validator.test.js` — 5 new orchestrator/sub-skill
+  exception tests.** Coverage: (1) orchestrator mentioned +
+  sub-skills registered → 0 drift (backend-java-spring replica);
+  (2) orchestrator mentioned + one sub-skill file deleted → still
+  emits 1 `STALE_SKILL_ENTRY` (integrity not suppressed);
+  (3) orchestrator NOT mentioned → all 5 registered skills drift
+  (control case — exception requires orchestrator reference);
+  (4) sub-skill under a parent stem that does NOT match any
+  referenced orchestrator → still drifts (guard against
+  over-exception); (5) sibling layout — a standalone "playground"
+  skill, not a sub-skill of the referenced orchestrator — still
+  drifts (guard against conflating one-level-deep standalone
+  skills with sub-skills).
+
+- **Library-convention hallucination class (MSW / Vitest / Jest /
+  RTL hotfix).** Extends the Fix A anti-pattern block in
+  `pass4.md` and mirrors the same guidance into `pass3-footer.md`
+  so Pass 3b and Pass 4 both observe the same rule when they
+  generate `testing-strategy.md`, `styling-patterns.md`, or
+  `state-management.md`. The block documents four concrete
+  library-convention traps — `src/__mocks__/handlers.ts`,
+  `src/test/setup.ts`, `src/test-utils.tsx`, `src/setupTests.ts` —
+  and explicitly names the three trigger document types that
+  most often produce this class of hallucination. The positive
+  rule: if `pass3a-facts.md` has no concrete test/style/store
+  file listed, describe guidance by role (a shared setup module
+  under a test directory of your choice) rather than by name,
+  and defer concrete paths until the files actually exist.
+  Regression-guarded by expanded assertions in
+  `tests/pass4-prompt.test.js` that verify all four MSW/testing
+  anti-patterns, the library-ecosystem naming, the
+  testing-specific positive pattern, and the
+  pass3a-facts.md-based negation ("these paths do not exist")
+  are all present in the rendered prompt.
+
+- **`tests/content-validator.test.js`** (new, ~270 lines). 10
+  regression tests across 3 describe blocks:
+  - Path-claim positive and negative cases (hallucination detected;
+    fenced examples, placeholders, and existing paths do not trigger).
+  - MANIFEST drift scenarios (stale entry, drift, referenced skill,
+    self-reference exclusion, absent MANIFEST).
+  - Full frontend-react-B simulation: 2 STALE_PATH + 2 STALE_SKILL_ENTRY
+    + 3 MANIFEST_DRIFT, asserted with exact counts to prevent silent
+    regression as the validator evolves.
+
+- **`tests/claude-md-validator.test.js`** — structural invariant tests
+  parameterized across all 10 supported output languages. Coverage includes:
+  valid fixtures for each `--lang` code; bad fixtures in 6 languages
+  demonstrating identical error signatures (§9 anti-pattern detected
+  byte-for-byte the same regardless of script); fence-aware section
+  splitting against both ``` and ~~~ fences; table-row vs prose-mention
+  disambiguation; file-not-found handling; and T1 title-determinism
+  coverage (scaffold/validator token alignment, English-only acceptance,
+  anti-pattern rejection, case-insensitivity, graceful skip when section
+  count is wrong).
+
+- **Language-independence proof fixtures** under `tests/fixtures/claude-md/`
+  covering all 10 supported output languages:
+  - Valid fixtures (same 8-section structure, different languages, all
+    following the T1 canonical-heading format `## N. <English canonical>
+    (<translation>)`): `valid-en.md`, `valid-ja.md`, `valid-zh-CN.md`,
+    `valid-es.md`, `valid-vi.md`, `valid-hi.md`, `valid-ru.md`,
+    `valid-fr.md`, `valid-de.md`, plus `frontend-react-A-fixed.md`
+    (Korean, real dogfooding case with §9 removed and headings
+    retrofitted to T1 format). Each passes the same 25 structural
+    checks — empirical proof of language invariance across CJK,
+    Cyrillic, Devanagari, Latin, and Vietnamese scripts.
+  - Bad fixtures (same valid structure + §9 memory re-declaration
+    appended): `frontend-react-A-bad.md` (Korean, real), `bad-ja.md`,
+    `bad-zh-CN.md`, `bad-ru.md`, `bad-hi.md`, `bad-es.md`. All six
+    produce a **byte-for-byte identical 9-error signature**
+    (1 S1 + 4 M-* + 4 F2-*), confirming the validator detects the
+    same anti-pattern independently of output language and script.
+
+### Changed
+
+- **`bin/cli.js`** — registers the `lint` command, help text updated,
+  examples include the new command.
+
+- **`bin/commands/init.js`** — automatically invokes the structural
+  validator after Pass 4 completes. Failures are reported inline but
+  do NOT abort the run; the generated content is preserved and the
+  user is pointed at `npx claudeos-core lint` for full remediation
+  guidance or `init --force` for regeneration. This design choice
+  follows Rule B (idempotency): lint is informational at install time,
+  advisory at lint time, blocking only in CI contexts.
+
+- **`package.json`**:
+  - `version` → 2.3.0.
+  - `files` includes `claude-md-validator/` so the module ships with
+    the npm package.
+  - `scripts.lint` convenience alias for `node bin/cli.js lint`.
+  - `scripts.test` pattern updated to `node --test tests/*.test.js`
+    (was the bare directory form, which fails on Node 22+).
+
+### Prevention layer (prompt-time improvements)
+
+Detection alone (the validator above) catches §9 after it is already
+written. v2.3.0 also reduces the probability that LLMs write §9 in the
+first place, by reshaping the Pass 3 prompt so the structural signal is
+less ambiguous. These changes are complementary to the validator: the
+validator is the guaranteed safety net, the prompt improvements lower
+how often that net is needed.
+
+- **`plan-installer/prompt-generator.js`** — `demoteScaffoldMetaHeaders()`
+  utility added. When embedding `claude-md-scaffold.md` into the Pass 3
+  prompt, scaffold meta-section headings (`## Why this scaffold exists`,
+  `## Hard constraints`, `## Per-section generation rules`,
+  `## Validation checks`, `## Examples`, `## Usage from pass3 prompts`,
+  etc.) are demoted from `##` to `###`. The demotion is code-block-aware:
+  `##` lines inside ``` or ~~~ fences are preserved so the scaffold's
+  Template structure example (`## 1. Role Definition` ... `## 8. Common
+  Rules & Memory (L4)`) remains intact.
+
+  Rationale: a pre-v2.3.0 Pass 3 prompt contained **40+ `##` headings**
+  (scaffold meta + footer sections + phase instructions + 8 canonical
+  example headings). The LLM, tasked with writing a CLAUDE.md whose
+  target structure has exactly 8 `##` sections, was pattern-matching
+  against a prompt that modeled `##` as a very common structural unit —
+  an implicit signal that extra `##` sections were natural. After
+  demotion the Pass 3 prompt contains approximately 12 `##` headings,
+  of which **exactly 8 are the scaffold's canonical target inside the
+  fenced Template example**. The LLM now sees "the ## level is used for
+  exactly 8 things in this prompt, and those 8 things are the sections
+  I must write" — a far cleaner mapping between prompt structure and
+  desired output structure.
+
+- **`pass-prompts/templates/common/pass3-footer.md`** —
+  `POST-GENERATION CHECK` block rewritten as an imperative 5-STEP
+  procedure (count → assert → repair → verify → external validation),
+  with `LANGUAGE-INVARIANT and TITLE-INVARIANT` explicitly named as
+  a core property. The repair step supplies a concrete action matrix
+  keyed to the surplus section's content type (memory-file references →
+  DELETE; rule-summary content → MERGE into Section 8 sub-section 1;
+  procedural/enforcement content → MOVE to `.claude/rules/*`). STEP 5
+  announces the v2.3.0+ external validator as a safety net while
+  clarifying the LLM should not rely on it — structure must be correct
+  at write time.
+
+- **`pass-prompts/templates/common/pass3-footer.md`** — FORBIDDEN
+  `##`-level section list rewritten to stop depending on an English-
+  label blocklist. The new framing states the RULE first (no `##` may
+  have a title whose semantic category is "rules", "memory", "L4",
+  "guardrails", or any rephrasing), then gives concrete **translated
+  examples in Korean, Japanese, and Chinese** (`메모리 (L4)`,
+  `メモリ (L4)`, `记忆层 (L4)`, and analogues for Common Rules). The
+  goal is to make the LLM's translation decision explicit: it must
+  apply the forbidden rule to its translated heading, not just the
+  English original. A DECISION RULE block at the end gives a 3-step
+  check the LLM runs before writing any `##` heading.
+
+- **`pass-prompts/templates/common/claude-md-scaffold.md`** — the
+  "L4 Memory Files (Re-declaration)" anti-pattern reference (which,
+  by naming the anti-pattern explicitly, paradoxically risked priming
+  the LLM to reproduce it — a "pink elephant" failure mode) was
+  replaced with a positively-phrased "Section 8 single-occurrence
+  rule": the L4 Memory Files table, Memory Workflow, and Common Rules
+  meta-summary table each appear EXACTLY ONCE, with their canonical
+  home named explicitly. Two `no "Re-declaration" duplicate` phrases
+  in the validation checklist were similarly simplified to
+  `appear EXACTLY ONCE in the whole document`.
+
+- **`tests/prompt-generator.test.js`** — 3 new tests covering the
+  demotion utility:
+  - Meta-section `##` headers outside fences are demoted to `###`
+  - `##` headers inside ``` and ~~~ fenced blocks are preserved
+  - Real scaffold embedded into real pass3-prompt produces < 25 `##`
+    headings total and preserves all 8 canonical example sections.
+
+- **`tests/claude-md-validator.test.js`** — parameterized across all
+  10 supported languages. 10 valid-fixture tests (one per `--lang` code)
+  plus 5 bad-fixture tests (ko/ja/zh-CN/ru/hi/es each asserting the
+  identical 9-error signature).
+
+Total tests: **662. All pass.**
+(v2.2.0 baseline 602 + v2.3.0 net additions 60 = 662. The "net"
+accounting reflects that 8 legacy `appendClaudeMdL4Memory` behavior
+tests were consolidated into a single no-op contract test when that
+function was retired; the full set of new tests added across v2.3.0
+totals 68 across path-claim verification, single-SPA scanner,
+Pass 3 resume classification, Pass 4 CLAUDE.md immutability,
+Pass 4 path fact grounding, and the orchestrator/sub-skill
+MANIFEST-drift exception.)
+
+### Why this matters
+
+The §9 re-declaration anti-pattern was the flagship problem v2.2.0 aimed
+to solve, and the scaffold + prompt-level blocklist reduced incidence
+substantially. Dogfooding on a real Korean-output project produced a
+`CLAUDE.md` with `## 9. 메모리 (L4)` anyway — the LLM successfully matched
+`## 8. 공통 규칙 및 메모리 (L4)` as its Section 8, then created a §9
+section whose title (`메모리 (L4)`) was not semantically recognized as
+equivalent to the blocklisted English `"Memory Layer (L4)"`.
+
+Extending the fix by maintaining per-language blocklists would create
+unbounded maintenance surface: 10 supported languages × 6-8 forbidden
+labels × every future phrasing variant. Each new language addition
+would require re-auditing the entire translation table. Each miss
+re-introduces the bug.
+
+The v2.3.0 approach sidesteps this entirely. A post-generation code-level
+validator that reasons about markdown syntax and literal file names does
+not need a per-language dictionary. The same 22 checks run identically on
+Korean, Japanese, English, or any future language added to the `--lang`
+flag. Proof: the validator produces a byte-for-byte identical 9-error
+signature when applied to synthesized Japanese §9 and the actual Korean
+§9 that triggered this investigation. See the fixtures for reproducible
+evidence.
+
+This also aligns the final Pass of the pipeline with claudeos-core's core
+principle **"LLMs guess, code confirms"**. Earlier passes already enforce
+this: stack-detector confirms LLM-guessed ports via `.env.example` parsing
+(v2.2.0), pass2-merged.json grounds the stack facts in real files (v2.0).
+Pass 3/4 output structure was the remaining gap — LLM generates it, and
+no code confirmed the result. v2.3.0 closes that gap without sacrificing
+Pass 3/4's generative flexibility: LLM still writes content; code now
+confirms the structural invariants hold.
+
+v2.3.0 ships both a detection layer (the validator) and a prevention
+layer (the prompt-time improvements listed under "Prevention layer"
+above). The prevention layer reshapes the Pass 3 prompt so the LLM
+sees a cleaner mapping between prompt structure and target output
+structure — primarily by demoting scaffold meta-section `##` headers
+to `###` when embedded, cutting the prompt's total `##` count from
+40+ down to about 12, of which exactly 8 are the canonical section
+examples the LLM must reproduce. This does not eliminate structural
+drift (LLM output is probabilistic), but it reduces the rate at which
+the detection layer has to fire. The two layers together form a belt-
+and-suspenders design: prevention lowers baseline incidence, detection
+guarantees a clear user-visible signal when incidence > 0.
+
+### Migration
+
+No regeneration required. v2.3.0 is purely additive — the validator
+runs on existing v2.2.0-generated `CLAUDE.md` files and flags drift
+where present.
+
+- **For new projects**: `npx claudeos-core init --lang <code>` runs lint
+  automatically at the end; inspect any flagged drift before committing.
+- **For existing v2.2.0 projects**: `npx claudeos-core lint` runs the
+  validator against the current `CLAUDE.md` and reports issues. No code
+  changes to `CLAUDE.md`, `.claude/rules/`, or `claudeos-core/*` are made
+  — the validator is read-only.
+- **For projects with flagged drift**: regenerate via
+  `npx claudeos-core init --force`, or hand-edit using the per-failure
+  remediation guidance the validator emits.
+
+CI-friendly exit codes: `lint` returns 0 on pass and 1 on fail, suitable
+for a GitHub Actions step or pre-commit hook.
+
+### Notes
+
+- The validator is deliberately narrow in scope: it verifies *structural*
+  invariants, not semantic correctness. Content quality (Section 1 Level-2
+  abstraction discipline, Section 4 pattern-naming accuracy, etc.) remains
+  the scaffold's and the LLM's responsibility. A future release may add
+  complementary content-level checks.
+- The table-row-based detector distinguishes the L4 Memory Files *table*
+  declaration from prose mentions of memory filenames in Section 8's
+  workflow steps. A prior iteration during implementation flagged every
+  mention as a duplicate (false-positive on normal valid output); the
+  final design matches only markdown table-row patterns (`| \`...memory/X\` |`),
+  which produce clean true-positive signals on the real bad fixture and
+  zero flags on all three good fixtures.
+- Fenced code block handling in `splitByH2` was validated against the
+  embedded scaffold in `pass3-prompt.md` itself, which contains an
+  example CLAUDE.md structure (`## 1. Role Definition` ... `## 8. ...`)
+  inside a ```markdown fence. Without fence-awareness, this would inflate
+  any section count run against the prompt — a reminder that markdown
+  validators must understand markdown, not just regex-match headings.
+
+---
+
 ## [2.2.0] — 2026-04-21
 
 Adds deterministic CLAUDE.md structure. Generated `CLAUDE.md` files now follow

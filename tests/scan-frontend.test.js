@@ -548,8 +548,33 @@ describe("countFrontendStats — non-standard paths", () => {
 // ─── Platform-root pattern (Block A) ────────────────────────
 
 describe("scanFrontendDomains — platform-root pattern", () => {
+  // v2.3.0 — The platform-root subapp scanner is now gated by a
+  // single-SPA detection rule: if only ONE distinct platform keyword
+  // appears in the project, subapp splitting is skipped by default
+  // (the "platform" is assumed to be a single SPA's root, and its
+  // children are internal layers, not feature domains). This avoids
+  // the frontend-react-B failure mode where `src/admin/{api,dto,context,
+  // routers}` were emitted as pseudo-domains.
+  //
+  // Every existing test in this describe was written under the older
+  // assumption that a single `src/<platform>/<subapp>/` always yields
+  // a `<platform>-<subapp>` domain. Those tests verify the SUBAPP
+  // SCANNER MECHANICS — how the scanner extracts platform, subapp,
+  // applies skip lists, counts files, etc. — which is still
+  // meaningful behavior; it's just now opt-in. We preserve the tests
+  // by opting in per describe via `.claudeos-scan.json`'s
+  // `forceSubappSplit: true` override.
+  //
+  // New tests for the single-SPA skip default live in a separate
+  // describe block below.
   let tmp;
-  beforeEach(() => { tmp = makeTmpDir(); });
+  beforeEach(() => {
+    tmp = makeTmpDir();
+    fs.writeFileSync(
+      path.join(tmp, ".claudeos-scan.json"),
+      JSON.stringify({ frontendScan: { forceSubappSplit: true } })
+    );
+  });
   afterEach(() => cleanup(tmp));
 
   it("detects src/{platform}/{subapp}/ as `{platform}-{subapp}` domain", async () => {
@@ -825,7 +850,7 @@ describe("scanFrontendDomains — platform-root pattern", () => {
 
   it("`.claudeos-scan.json` adds custom platform keywords", async () => {
     fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), JSON.stringify({
-      frontendScan: { platformKeywords: ["kiosk"] },
+      frontendScan: { platformKeywords: ["kiosk"], forceSubappSplit: true },
     }));
     touch(path.join(tmp, "src/kiosk/register/routes/Checkout.tsx"));
     touch(path.join(tmp, "src/kiosk/register/routes/Payment.tsx"));
@@ -837,7 +862,7 @@ describe("scanFrontendDomains — platform-root pattern", () => {
 
   it("`.claudeos-scan.json` adds custom skip subapp names", async () => {
     fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), JSON.stringify({
-      frontendScan: { skipSubappNames: ["legacy"] },
+      frontendScan: { skipSubappNames: ["legacy"], forceSubappSplit: true },
     }));
     touch(path.join(tmp, "src/desktop/legacy/routes/OldPage.tsx"));
     touch(path.join(tmp, "src/desktop/legacy/routes/OldList.tsx"));
@@ -852,7 +877,7 @@ describe("scanFrontendDomains — platform-root pattern", () => {
 
   it("`.claudeos-scan.json` overrides minSubappFiles threshold", async () => {
     fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), JSON.stringify({
-      frontendScan: { minSubappFiles: 3 },
+      frontendScan: { minSubappFiles: 3, forceSubappSplit: true },
     }));
     touch(path.join(tmp, "src/desktop/small/routes/A.tsx"));
     touch(path.join(tmp, "src/desktop/small/routes/B.tsx"));
@@ -867,13 +892,21 @@ describe("scanFrontendDomains — platform-root pattern", () => {
   });
 
   it("malformed `.claudeos-scan.json` falls back to defaults", async () => {
+    // A malformed config cannot opt into forceSubappSplit. With defaults
+    // (v2.3.0+ single-SPA rule), a solo `src/desktop/shop/` does NOT emit
+    // `desktop-shop`. The multi-platform variant below verifies that
+    // subapp scan still runs after the fall-back — i.e., defaults are
+    // applied, not frozen to zero domains.
     fs.writeFileSync(path.join(tmp, ".claudeos-scan.json"), "{ not valid json");
     touch(path.join(tmp, "src/desktop/shop/routes/Home.tsx"));
     touch(path.join(tmp, "src/desktop/shop/routes/Cart.tsx"));
+    touch(path.join(tmp, "src/mobile/shop/routes/Home.tsx"));
+    touch(path.join(tmp, "src/mobile/shop/routes/Cart.tsx"));
 
     const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
     const names = frontendDomains.map(d => d.name);
-    assert.ok(names.includes("desktop-shop"), `defaults should apply on malformed config, got: ${names.join(", ")}`);
+    assert.ok(names.includes("desktop-shop"), `multi-platform defaults should apply on malformed config, got: ${names.join(", ")}`);
+    assert.ok(names.includes("mobile-shop"), `multi-platform defaults should apply on malformed config, got: ${names.join(", ")}`);
   });
 
   it("detects deeply nested files under a platform subapp (Windows path regression)", async () => {
@@ -903,6 +936,141 @@ describe("scanFrontendDomains — platform-root pattern", () => {
     const names = frontendDomains.map(d => d.name);
     assert.ok(!names.includes("desktop-empty-app"), `empty app should not produce domain`);
     assert.ok(names.includes("desktop-real-app"), `real-app should produce domain`);
+  });
+});
+
+describe("scanFrontendDomains — single-SPA skip rule (v2.3.0)", () => {
+  // The default behavior change introduced in v2.3.0: if only ONE
+  // distinct platform keyword appears in the project tree, subapp
+  // emission is suppressed. The "platform" directory is assumed to
+  // be the root of a single SPA, and its children are architectural
+  // layers (api, dto, context, routers, ...) rather than feature
+  // domains.
+  //
+  // The tests below use the dogfooding discovery case (frontend-react-B,
+  // `src/admin/{api,context,dto,routers,pages/*}/`) as the canonical
+  // shape. Downstream page/FSD/components scanners still run and
+  // pick up real feature domains (orders, profile, …) inside
+  // `src/admin/pages/*`.
+  let tmp;
+  beforeEach(() => {
+    tmp = makeTmpDir();
+  });
+  afterEach(() => cleanup(tmp));
+
+  it("single-platform tree does NOT emit `<platform>-<child>` subapp domains by default", async () => {
+    // Reproduce the frontend-react-B layer set.
+    touch(path.join(tmp, "src/admin/api/client.ts"));
+    touch(path.join(tmp, "src/admin/api/types.ts"));
+    touch(path.join(tmp, "src/admin/context/AuthContext.ts"));
+    touch(path.join(tmp, "src/admin/context/MenuContext.ts"));
+    touch(path.join(tmp, "src/admin/dto/user.ts"));
+    touch(path.join(tmp, "src/admin/dto/role.ts"));
+    touch(path.join(tmp, "src/admin/routers/routePath.ts"));
+    touch(path.join(tmp, "src/admin/routers/componentMap.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+
+    // None of the architectural layers should be emitted as subapps.
+    for (const pseudo of ["admin-api", "admin-context", "admin-dto", "admin-routers"]) {
+      assert.ok(
+        !names.includes(pseudo),
+        `${pseudo} must not be emitted as a pseudo-domain in single-SPA mode, got: ${names.join(", ") || "(none)"}`
+      );
+    }
+  });
+
+  it("real feature domains under src/admin/pages/* are still detected", async () => {
+    // Architectural layers — should be skipped.
+    touch(path.join(tmp, "src/admin/api/client.ts"));
+    touch(path.join(tmp, "src/admin/dto/user.ts"));
+    // Real features — should be detected by the pages scanner.
+    touch(path.join(tmp, "src/admin/pages/orders/index.tsx"));
+    touch(path.join(tmp, "src/admin/pages/orders/helper.ts"));
+    touch(path.join(tmp, "src/admin/pages/profile/index.tsx"));
+    touch(path.join(tmp, "src/admin/pages/profile/helper.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+
+    assert.ok(names.includes("orders"), `pages scanner should find orders, got: ${names.join(", ")}`);
+    assert.ok(names.includes("profile"), `pages scanner should find profile, got: ${names.join(", ")}`);
+    // And still no pseudo-subapps.
+    assert.ok(!names.includes("admin-api"));
+    assert.ok(!names.includes("admin-dto"));
+    assert.ok(!names.includes("admin-pages"), `pages is in SKIP_SUBAPP_NAMES and single-SPA anyway`);
+  });
+
+  it("forceSubappSplit=true override restores legacy single-platform emission", async () => {
+    fs.writeFileSync(
+      path.join(tmp, ".claudeos-scan.json"),
+      JSON.stringify({ frontendScan: { forceSubappSplit: true } })
+    );
+    touch(path.join(tmp, "src/admin/api/client.ts"));
+    touch(path.join(tmp, "src/admin/api/types.ts"));
+    touch(path.join(tmp, "src/admin/dto/user.ts"));
+    touch(path.join(tmp, "src/admin/dto/role.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+
+    assert.ok(
+      names.includes("admin-api"),
+      `forceSubappSplit:true should restore legacy behavior, got: ${names.join(", ")}`
+    );
+    assert.ok(names.includes("admin-dto"));
+  });
+
+  it("multi-platform tree keeps subapp emission by default (no opt-in needed)", async () => {
+    // Two distinct platforms → single-SPA detection does NOT fire, and
+    // subapps are emitted as before.
+    touch(path.join(tmp, "src/desktop/admin/routes/Home.tsx"));
+    touch(path.join(tmp, "src/desktop/admin/routes/Detail.tsx"));
+    touch(path.join(tmp, "src/mobile/admin/routes/Home.tsx"));
+    touch(path.join(tmp, "src/mobile/admin/routes/Detail.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+
+    assert.ok(names.includes("desktop-admin"), `multi-platform should still split, got: ${names.join(", ")}`);
+    assert.ok(names.includes("mobile-admin"), `multi-platform should still split, got: ${names.join(", ")}`);
+  });
+
+  it("two distinct platforms crosses the single-SPA threshold", async () => {
+    // Boundary case: exactly 2 platforms. Subapp emission must run.
+    touch(path.join(tmp, "src/pc/home/App.tsx"));
+    touch(path.join(tmp, "src/pc/home/index.tsx"));
+    touch(path.join(tmp, "src/mobile/home/App.tsx"));
+    touch(path.join(tmp, "src/mobile/home/index.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+    assert.ok(names.includes("pc-home"));
+    assert.ok(names.includes("mobile-home"));
+  });
+
+  it("admin + guide dual SPA (frontend-react-B pattern, both are platform keywords)", async () => {
+    // frontend-react-B has `src/admin/` and `src/guide/`. Of these,
+    // `admin` is a platform keyword but `guide` is not. So only ONE
+    // distinct platform is detected — single-SPA rule fires.
+    // Real feature domains come from pages scanner.
+    touch(path.join(tmp, "src/admin/api/client.ts"));
+    touch(path.join(tmp, "src/admin/dto/user.ts"));
+    touch(path.join(tmp, "src/admin/pages/orders/index.tsx"));
+    touch(path.join(tmp, "src/admin/pages/orders/helper.ts"));
+    touch(path.join(tmp, "src/guide/pages/playground/index.tsx"));
+    touch(path.join(tmp, "src/guide/pages/playground/helper.ts"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react" }, tmp);
+    const names = frontendDomains.map(d => d.name);
+
+    // Architectural layers suppressed.
+    assert.ok(!names.includes("admin-api"));
+    assert.ok(!names.includes("admin-dto"));
+    // Real features picked up by pages scanner.
+    assert.ok(names.includes("orders"), `got: ${names.join(", ")}`);
+    assert.ok(names.includes("playground"), `got: ${names.join(", ")}`);
   });
 });
 

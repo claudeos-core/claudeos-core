@@ -69,6 +69,38 @@ Dieser Unterschied summiert sich. 10 Aufgaben/Tag × 20 Minuten gespart = **übe
 
 ---
 
+## Qualitätssicherung nach der Generierung (v2.3.0)
+
+Die Generierung ist nur die halbe Miete. Die andere Hälfte besteht darin, **zu wissen, dass die Ausgabe korrekt ist** — über 10 Ausgabesprachen, 11 Stack-Templates und Projekte jeder Größe hinweg. v2.3.0 fügt zwei deterministische Validatoren hinzu, die nach der Generierung laufen und nicht auf LLM-Selbstprüfungen angewiesen sind.
+
+### `claude-md-validator` — strukturelle Invarianten
+
+Jede generierte `CLAUDE.md` wird gegen 25 strukturelle Invarianten geprüft, die nur sprachinvariante Signale verwenden: Markdown-Syntax (`^## `, `^### `), literale Dateinamen (`decision-log.md`, `failure-patterns.md` — werden nie übersetzt), Anzahl der Abschnitte, Anzahl der Unterabschnitte pro Abschnitt und Anzahl der Tabellenzeilen. Derselbe Validator liefert Byte für Byte identische Urteile für eine `CLAUDE.md`, die in Englisch, Koreanisch, Japanisch, Vietnamesisch, Hindi, Russisch, Spanisch, Chinesisch, Französisch oder Deutsch generiert wurde.
+
+Die sprachübergreifende Garantie wird durch Test-Fixtures in allen 10 Sprachen verifiziert, einschließlich Bad-Case-Fixtures in 6 dieser Sprachen, die identische Fehlersignaturen erzeugen. Wenn eine Invariante bei einem vietnamesischen Projekt fehlschlägt, ist die Lösung dieselbe wie bei einem deutschen Projekt.
+
+### `content-validator [10/10]` — Prüfung von Pfadangaben und MANIFEST-Konsistenz
+
+Liest jede in Backticks eingefasste Pfadreferenz (`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`) aus allen generierten `.md`-Dateien und verifiziert sie gegen das tatsächliche Dateisystem. Fängt zwei Klassen von LLM-Fehlern ab, die bisher kein Tool erkannt hat:
+
+- **`STALE_PATH`** — wenn Pass 3 oder Pass 4 einen plausiblen, aber nicht existierenden Pfad erfindet. Typische Fälle: Ableitung von `featureRoutePath.ts` aus einer TypeScript-Konstante namens `FEATURE_ROUTE_PATH`, obwohl die tatsächliche Datei `routePath.ts` heißt; Annahme von `src/main.tsx` nach Vite-Konvention in einem Multi-Entry-Projekt; Annahme von `src/__mocks__/handlers.ts` aus der MSW-Dokumentation, obwohl das Projekt keine Tests hat.
+- **`MANIFEST_DRIFT`** — wenn `claudeos-core/skills/00.shared/MANIFEST.md` einen Skill registriert, den `CLAUDE.md §6` nicht erwähnt (oder umgekehrt). Erkennt das häufige Orchestrator-plus-Sub-Skills-Layout, bei dem `CLAUDE.md §6` ein Einstiegspunkt und `MANIFEST.md` das vollständige Register ist — Sub-Skills werden als über ihren übergeordneten Orchestrator abgedeckt betrachtet.
+
+Der Validator ist gepaart mit Prompt-Time-Prävention in `pass3-footer.md` und `pass4.md`: Anti-Pattern-Blöcke dokumentieren die spezifischen Halluzinationsklassen (Parent-Directory-Präfix, Vite/MSW/Vitest/Jest/RTL-Bibliothekskonventionen), und explizite positive Guidance weist an, Regeln nach Verzeichnis zu scopen, wenn ein konkreter Dateiname nicht in `pass3a-facts.md` steht.
+
+### Validierung auf beliebigem Projekt ausführen
+
+```bash
+npx claudeos-core health     # alle Validatoren — einzelnes Go/No-Go-Urteil
+npx claudeos-core lint       # nur strukturelle Invarianten von CLAUDE.md (beliebige Sprache)
+```
+
+### Verifizierung in der realen Welt
+
+v2.3.0 wurde vor dem Release end-to-end auf zwei realen koreanischen Schwesterprojekten validiert: einem Single-SPA-Vite-+-React-19-Frontend mit 14 Domänen und einem 8-Sub-Skill-`scaffold-page-feature`-Orchestrator sowie einem Spring-Boot-+-MyBatis-Backend mit 8 Domänen und einem 8-Sub-Skill-`scaffold-crud-feature`-Orchestrator, das sich mitten in einer PostgreSQL-→-MariaDB-Migration befindet. Beide landeten bei **0 Fehlern, 0 Warnungen** im kompletten Health-Check — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 strukturelle Invarianten bestanden — ohne eine einzige manuelle Bearbeitung der generierten Ausgabe.
+
+---
+
 ## Unterstützte Stacks
 
 | Stack | Erkennung | Analysetiefe |

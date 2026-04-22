@@ -1251,7 +1251,44 @@ async function cmdInit(parsedArgs) {
     }
   } catch (_e) { /* best-effort log only */ }
 
-  if (!fileExists(pass3Marker)) {
+  // Decide whether Pass 3 needs to run (from scratch, resumed, or skipped).
+  //
+  // Three states of pass3-complete.json:
+  //   (a) absent — fresh run; call runPass3Split.
+  //   (b) present + mode:"split" + no completedAt — partial marker from a
+  //       prior run that was interrupted mid-pipeline (most commonly a
+  //       Pass 3d-aux stream timeout). runPass3Split inspects
+  //       groupsCompleted and resumes from the next unstarted stage.
+  //       MUST call runPass3Split here.
+  //   (c) present + completedAt set — finished; skip.
+  //
+  // Pre-v2.3.0 bug: the code branched only on fileExists(pass3Marker),
+  // so case (b) fell into the skip branch and the remaining stages
+  // (usually 3d-aux → database/ + mcp-guide/) were silently dropped on
+  // re-run. The detection block earlier in this function correctly
+  // identified the partial marker and logged "runPass3Split will
+  // resume", but resumption never actually happened.
+  let pass3NeedsRun = !fileExists(pass3Marker);
+  let pass3IsResume = false;
+  if (!pass3NeedsRun) {
+    try {
+      const parsed = JSON.parse(readFile(pass3Marker));
+      if (parsed && parsed.mode === "split" && !parsed.completedAt) {
+        pass3NeedsRun = true;
+        pass3IsResume = true;
+      }
+    } catch (_e) {
+      // Malformed marker — the earlier stale check already handles this
+      // path (dropStalePass3Marker). If we still reach here with a bad
+      // marker, fall through to skip; runPass3Split's own resume logic
+      // would throw on malformed input.
+    }
+  }
+
+  if (pass3NeedsRun) {
+    if (pass3IsResume) {
+      log("    ↪️  Resuming Pass 3 split from partial marker");
+    }
     await runPass3Split({
       GENERATED_DIR, PROJECT_ROOT, TOOLS_DIR,
       pass3Marker, claudeMdPath,
@@ -1265,7 +1302,7 @@ async function cmdInit(parsedArgs) {
     progressBar(completedSteps, `Pass 3 complete (split mode)`);
     log("");
   } else {
-    log("    ⏭️  pass3-complete.json already exists, skipping");
+    log("    ⏭️  pass3-complete.json already complete, skipping");
     completedSteps++;
   }
   log("");
@@ -1276,7 +1313,7 @@ async function cmdInit(parsedArgs) {
   const pass4Marker = path.join(GENERATED_DIR, "pass4-memory.json");
   const pass4PromptFile = path.join(GENERATED_DIR, "pass4-prompt.md");
 
-  const { scaffoldMemory, scaffoldRules, appendClaudeMdL4Memory, scaffoldMasterPlans, scaffoldDocWritingGuide, scaffoldSkillsManifest } = require("../../lib/memory-scaffold");
+  const { scaffoldMemory, scaffoldRules, scaffoldMasterPlans, scaffoldDocWritingGuide, scaffoldSkillsManifest } = require("../../lib/memory-scaffold");
   const { writeFileSafe } = require("../../lib/safe-fs");
 
   const memoryPath = path.join(PROJECT_ROOT, "claudeos-core/memory");
@@ -1292,7 +1329,13 @@ async function cmdInit(parsedArgs) {
       scaffoldDocWritingGuide(standardCorePath, { lang });
       scaffoldMasterPlans(planPath, memoryPath, { lang });
       scaffoldSkillsManifest(skillsSharedPath, { lang });
-      appendClaudeMdL4Memory(claudeMdPath, { lang });
+      // v2.3.0: do NOT append an L4 memory section to CLAUDE.md. Pass 3
+      // already authored Section 8 "Common Rules & Memory (L4)" covering
+      // all of the content the append function would have added. An
+      // additional `## N. ... (L4)` section would duplicate the memory
+      // file table (one row per file in §8, another row per file in the
+      // appended §9), triggering [S1]/[M-*]/[F2-*] validator errors.
+      // See CHANGELOG v2.3.0 — "Pass 4 CLAUDE.md append retired."
     } catch (err) {
       // When lang !== "en", translation is REQUIRED. If it fails, we surface
       // a clear error rather than silently writing English (which would
@@ -1453,7 +1496,8 @@ async function cmdInit(parsedArgs) {
         const docR   = scaffoldDocWritingGuide(standardCorePath, { lang });
         const planR  = scaffoldMasterPlans(planPath, memoryPath, { lang });
         const manifestR = scaffoldSkillsManifest(skillsSharedPath, { lang });
-        const claudeOk = appendClaudeMdL4Memory(claudeMdPath, { lang });
+        // v2.3.0: CLAUDE.md is never modified by Pass 4 anymore. See the
+        // matching comment in applyStaticFallback above.
         // Collect all statuses into one flat array for summary reporting.
         gapResults = [
           ...memR,
@@ -1461,7 +1505,6 @@ async function cmdInit(parsedArgs) {
           ...planR,
           { file: docR.file, status: docR.status },
           { file: "skills/00.shared/" + manifestR.file, status: manifestR.status },
-          { file: "CLAUDE.md#(L4)", status: claudeOk ? "present-or-appended" : "error" },
         ];
       } catch (err) {
         throw new InitError(
@@ -1485,9 +1528,8 @@ async function cmdInit(parsedArgs) {
         log(`       📋 Gap-fill: all ${skipped} expected files already present`);
       }
       // Surface which files errored so the user can investigate (instead of
-      // silently rolling them into a count). Common causes: write permission,
-      // disk full, or appendClaudeMdL4Memory returned false (CLAUDE.md missing
-      // or unwritable). All erroredItems are non-fatal — Pass 4 marker still
+      // silently rolling them into a count). Common causes: write permission
+      // or disk full. All erroredItems are non-fatal — Pass 4 marker still
       // gets written, but the user should know what was incomplete.
       for (const item of erroredItems) {
         log(`       ❌ ${item.file} — write failed (check disk space, permissions)`);
@@ -1527,6 +1569,83 @@ async function cmdInit(parsedArgs) {
   // ─── Complete ─────────────────────────────────────────────
   const totalFiles = countFiles();
   const pass1Files = countPass1Files();
+
+  // ─── Structural lint (v2.3.0+) ────────────────────────────
+  // Run the language-invariant CLAUDE.md validator after all passes
+  // complete. This catches the §9 L4-memory re-declaration anti-pattern
+  // and other structural drift the scaffold + prompt-level instructions
+  // alone cannot reliably prevent across 10 output languages.
+  //
+  // Failures do NOT abort the run — the generated content is still
+  // useful and the user can either re-run with --force or hand-edit the
+  // flagged sections. The report is purely informational here.
+  try {
+    const { validate } = require("../../claude-md-validator");
+    const { formatSummaryLine } = require("../../claude-md-validator/reporter");
+    const claudeMdPath = path.join(PROJECT_ROOT, "CLAUDE.md");
+    if (fileExists(claudeMdPath)) {
+      log("  [Lint] Validating CLAUDE.md structure...");
+      const report = validate(claudeMdPath);
+      log(`    ${formatSummaryLine(report)}`);
+      if (!report.valid) {
+        for (const err of report.errors) {
+          log(`    ❌ [${err.id}] ${err.message}`);
+        }
+        log("");
+        log("    Run `npx claudeos-core lint` for full remediation guidance,");
+        log("    or `npx claudeos-core init --force` to regenerate.");
+      }
+      log("");
+    }
+  } catch (e) {
+    // Lint is best-effort; don't block init completion on a lint bug.
+    log(`    ⚠️  Lint step skipped: ${e.message || e}`);
+    log("");
+  }
+
+  // ─── Content integrity (Guard 4 — v2.3.0+) ─────────────────
+  // Runs content-validator's path-claim + MANIFEST drift checks as a
+  // non-blocking final step after all passes. We deliberately do NOT
+  // throw or unset pass3-complete.json here:
+  //   - Re-running Pass 3 is not guaranteed to fix LLM hallucinations
+  //     (the same fact JSON may trigger the same mis-inference again),
+  //     so a throw could deadlock the user in an `init --force` loop.
+  //   - The report + the non-zero exit of `npx claudeos-core lint`
+  //     already surface the issues. CI pipelines catch them via exit
+  //     code; local users see them inline here.
+  // When real drift is detected, we print a pointer to the standalone
+  // CLI so the user can re-run selectively without repeating init.
+  try {
+    const cvPath = path.join(__dirname, "..", "..", "content-validator", "index.js");
+    if (fileExists(cvPath)) {
+      log("  [Content] Checking path-claims and MANIFEST consistency...");
+      // Run in a child process so its process.exit(1) on errors does
+      // not terminate init. We only surface the exit code as a warning.
+      const { spawnSync } = require("child_process");
+      const result = spawnSync(process.execPath, [cvPath], {
+        cwd: PROJECT_ROOT,
+        env: { ...process.env, CLAUDEOS_ROOT: PROJECT_ROOT },
+        encoding: "utf-8",
+      });
+      // Echo only the final summary line(s) — full output goes to
+      // stale-report.json for later inspection.
+      const out = (result.stdout || "").trim().split(/\r?\n/);
+      const summary = out.slice(-3).join("\n"); // last 3 lines = summary
+      log(summary.split("\n").map((l) => "    " + l).join("\n"));
+      if (result.status !== 0) {
+        log("");
+        log("    ℹ️  Content drift detected. This does NOT invalidate the");
+        log("       generated documents, but indicates stale path references");
+        log("       or MANIFEST ↔ CLAUDE.md mismatch. Details:");
+        log("         - stale-report.json (full error list)");
+        log("         - Re-run: node content-validator/index.js");
+      }
+      log("");
+    }
+  } catch (e) {
+    log(`    ⚠️  Content check skipped: ${e.message || e}`);
+    log("");
+  }
 
   log("");
   const memoryReady = fileExists(path.join(PROJECT_ROOT, "claudeos-core/memory/decision-log.md"));

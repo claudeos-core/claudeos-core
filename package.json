@@ -1,6 +1,6 @@
 {
   "name": "claudeos-core",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Auto-generate Claude Code documentation from your actual source code — Standards, Rules, Skills, and Guides tailored to your project",
   "main": "bin/cli.js",
   "bin": {
@@ -9,6 +9,7 @@
   "files": [
     "bin/",
     "lib/",
+    "claude-md-validator/",
     "content-validator/",
     "health-checker/",
     "manifest-generator/",
@@ -34,11 +35,13 @@
   ],
   "scripts": {
     "init": "node bin/cli.js init",
+    "lint": "node bin/cli.js lint",
     "health": "node bin/cli.js health",
     "validate": "node bin/cli.js validate",
     "refresh": "node bin/cli.js refresh",
     "restore": "node bin/cli.js restore",
-    "test": "node --test",
+    "pretest": "node -e \"require('glob')\" 2>/dev/null || npm install",
+    "test": "node --test tests/*.test.js",
     "test:health": "node health-checker/index.js"
   },
   "keywords": [

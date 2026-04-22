@@ -92,12 +92,23 @@ describe("lang=en (default) — identical to English static content", () => {
     } finally { cleanup(d); }
   });
 
-  it("appendClaudeMdL4Memory appends English block for lang='en'", () => {
+  it("appendClaudeMdL4Memory is a no-op (retired v2.3.0) — does not mutate CLAUDE.md", () => {
+    // Retired in v2.3.0 — see tests/pass4-claude-md-untouched.test.js
+    // for the full rationale. Lang-specific behavior tests are obsolete
+    // because the function no longer touches CLAUDE.md regardless of
+    // `lang`. We keep one positive assertion here so that any future
+    // accidental revival of the append path is caught inside the
+    // lang-aware test file.
+    //
+    // makeTmp() seeds CLAUDE.md with "# Test Project\n", so the check
+    // is byte-for-byte preservation rather than absence.
     const d = makeTmp();
     try {
-      appendClaudeMdL4Memory(path.join(d, "CLAUDE.md"), { lang: "en" });
-      const content = fs.readFileSync(path.join(d, "CLAUDE.md"), "utf-8");
-      assert.ok(content.includes(CLAUDE_MD_APPEND.trim()));
+      const claudeMdPath = path.join(d, "CLAUDE.md");
+      const before = fs.readFileSync(claudeMdPath, "utf-8");
+      appendClaudeMdL4Memory(claudeMdPath, { lang: "en" });
+      const after = fs.readFileSync(claudeMdPath, "utf-8");
+      assert.equal(after, before, "retired no-op must not mutate CLAUDE.md");
     } finally { cleanup(d); }
   });
 
@@ -147,13 +158,27 @@ describe("lang=<non-en> without real Claude CLI — MUST throw (no silent Englis
     } finally { cleanup(d); }
   });
 
-  it("appendClaudeMdL4Memory throws for lang='zh-CN'", () => {
+  it("appendClaudeMdL4Memory is lang-invariant no-op (retired v2.3.0) — no throw on lang='zh-CN'", () => {
+    // Retired in v2.3.0. The pre-v2.3.0 invariant — "non-English lang
+    // MUST throw without real Claude CLI, to prevent silent English
+    // fallback into a translated project" — was tied to the append
+    // path being active. With the append retired, there is nothing to
+    // fall back silently INTO, so lang becomes irrelevant to this
+    // function. The no-op must simply not throw for any lang.
+    //
+    // makeTmp() seeds CLAUDE.md with "# Test Project\n"; the check
+    // here is that non-English lang does NOT throw and does NOT
+    // mutate the file.
     const d = makeTmp();
     try {
-      assert.throws(
-        () => appendClaudeMdL4Memory(path.join(d, "CLAUDE.md"), { lang: "zh-CN" }),
-        /translation|Claude/i
+      const claudeMdPath = path.join(d, "CLAUDE.md");
+      const before = fs.readFileSync(claudeMdPath, "utf-8");
+      assert.doesNotThrow(
+        () => appendClaudeMdL4Memory(claudeMdPath, { lang: "zh-CN" }),
+        "retired no-op must be lang-invariant"
       );
+      const after = fs.readFileSync(claudeMdPath, "utf-8");
+      assert.equal(after, before, "non-English lang must not mutate CLAUDE.md either");
     } finally { cleanup(d); }
   });
 
@@ -193,16 +218,21 @@ describe("unsupported lang — throws with clear message", () => {
   });
 });
 
-describe("appendClaudeMdL4Memory — idempotency is lang-independent", () => {
-  it("no-op on subsequent calls regardless of lang (marker prevents re-append)", () => {
+describe("appendClaudeMdL4Memory — retired v2.3.0, invariant under repeated calls", () => {
+  it("repeated calls do not mutate CLAUDE.md regardless of lang argument", () => {
     const d = makeTmp();
     try {
-      appendClaudeMdL4Memory(path.join(d, "CLAUDE.md"), { lang: "en" });
-      const after1 = fs.readFileSync(path.join(d, "CLAUDE.md"), "utf-8");
-      // Second call with different lang — marker exists, must not attempt translation
-      appendClaudeMdL4Memory(path.join(d, "CLAUDE.md"), { lang: "ko" });
-      const after2 = fs.readFileSync(path.join(d, "CLAUDE.md"), "utf-8");
-      assert.equal(after1, after2);
+      const claudeMdPath = path.join(d, "CLAUDE.md");
+      const original = "# CLAUDE.md\n\n## 8. Common Rules & Memory (L4)\n\nauthored by Pass 3\n";
+      fs.writeFileSync(claudeMdPath, original);
+
+      // Multiple calls with different langs must all be no-ops.
+      appendClaudeMdL4Memory(claudeMdPath, { lang: "en" });
+      appendClaudeMdL4Memory(claudeMdPath, { lang: "ko" });
+      appendClaudeMdL4Memory(claudeMdPath, { lang: "zh-CN" });
+
+      const after = fs.readFileSync(claudeMdPath, "utf-8");
+      assert.equal(after, original, "repeated calls must leave content byte-identical");
     } finally { cleanup(d); }
   });
 });

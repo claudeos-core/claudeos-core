@@ -47,6 +47,44 @@ DO NOT:
 - Restate the L4 memory table or workflow twice under different headings
   — it appears exactly once, only in Section 8 sub-section 2.
 
+## Section heading format (MANDATORY)
+
+The 8 canonical section headings below (`## 1. Role Definition` through
+`## 8. Common Rules & Memory (L4)`) use English as their canonical form.
+When generating CLAUDE.md in a non-English output language, the English
+canonical heading MUST remain the primary heading text. A native-language
+translation MAY be appended in parentheses, but is optional.
+
+This rule exists because multiple projects in the same organization will
+have their CLAUDE.md files consumed together (multi-repo grep, cross-repo
+navigation, side-by-side review). When every project uses a different
+native-language translation for the same section, even when the structure
+is otherwise identical, discoverability breaks: `grep "## 7. DO NOT Read"`
+no longer matches all siblings.
+
+Format rule:
+- Primary (required): English canonical heading exactly as listed.
+- Parenthetical (optional): native-language translation, added at the end.
+
+Examples (ko output):
+
+    ✅ `## 7. DO NOT Read`
+    ✅ `## 7. DO NOT Read (직접 읽지 말아야 할 파일)`
+    ❌ `## 7. 읽지 말 것 (Files Not to Be Read Directly)`
+        — English must be primary, not parenthetical
+    ❌ `## 7. 읽지 말 것`
+        — English canonical must appear
+
+Examples (ja output):
+
+    ✅ `## 7. DO NOT Read (直接読まないファイル)`
+    ❌ `## 7. 直接読まないファイル (DO NOT Read)`
+
+The same rule applies to all 8 sections. When in doubt, emit only the
+English canonical heading; the parenthetical translation is a courtesy,
+not a requirement. The CONTENT below the heading is still written
+entirely in the target language.
+
 DO:
 - Adapt content within each section to project facts from pass2-merged.json
 - Use placeholder values (`{PROJECT_CONTEXT}`, `{OUTPUT_LANG}`) where specified
@@ -227,7 +265,7 @@ Generate `{PROJECT_CONTEXT}` as a single sentence combining:
 - Specific file paths (apiClient.ts, vite.config.desktop.ts)
 - Specific counts (18 domains, 3 layers)
 - Specific versions (React 19.1.0, Spring Boot 3.2)
-- Specific domain names (admin, guide, spocis)
+- Specific domain names (admin, guide, orders)
 
 **Source**: pass2-merged.json architecture/stack sections.
 
@@ -525,14 +563,18 @@ Workflow: `#### Memory Workflow` — FIXED 6-step numbered list
 5. Periodic compaction — memory compact command
 6. Review rule-update proposals — auto-rule-update review
 
-**DO NOT INCLUDE ANYWHERE IN SECTION 8**:
-- Restatement of common rules (51·52) content in the L4 sub-section
-- Restatement of L4 memory table in the Common Rules sub-section
-- "L4 Memory Files (Re-declaration)" — the memory table appears exactly
-  ONCE, only in sub-section 2. Restating it as a sibling heading is the
-  exact anti-pattern that created §9 in earlier generations.
-- Master plan references — plan/ removed in v2.1.0
-- Project-specific memory details — those go inside memory/*.md files
+**Section 8 single-occurrence rule** (enforces the "one canonical home"
+principle):
+- The L4 Memory Files table appears EXACTLY ONCE in the entire document
+  — inside sub-section 2 (`L4 Memory`). No other location.
+- The Memory Workflow (6-step numbered list) appears EXACTLY ONCE — same
+  location, after the L4 Memory Files table.
+- The Common Rules meta-summary table appears EXACTLY ONCE — inside
+  sub-section 1. No sibling, no echo, no restatement.
+
+**Out-of-scope content** (do NOT place under Section 8):
+- Project-specific memory details — those go inside `memory/*.md` files
+- Master plan references — `plan/` was removed in v2.1.0
 
 **Language**: Use `{OUTPUT_LANG}` throughout this section. All headings,
 table column labels, intro sentences, and workflow step labels shown
@@ -597,7 +639,7 @@ Before finalizing, verify:
 - [ ] Section 8 sub-section 1 meta-summary column is 1 line per row, NOT a rule-body copy
 - [ ] Section 8 sub-section 2 L4 memory table has exactly 4 rows
 - [ ] Section 8 sub-section 2 workflow has exactly 6 steps
-- [ ] Section 8 L4 table and workflow appear EXACTLY ONCE (no "Re-declaration" duplicate)
+- [ ] Section 8 L4 table and workflow appear EXACTLY ONCE in the whole document
 - [ ] Section 1 PROJECT_CONTEXT contains NO hardcoded component/product names
 
 ---

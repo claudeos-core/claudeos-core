@@ -408,6 +408,231 @@ async function main() {
     warnings.push({ file: "claudeos-core/memory/", type: "MISSING", msg: "memory directory not found (run pass 4)" });
   }
 
+  // ─── 10. Path-claim verification ──────────────────────────
+  // Catches two dogfood-surfaced failure classes:
+  //   (a) Pass 3 hallucinations: rules/standard files reference
+  //       src/... paths the LLM fabricated from directory context
+  //       (e.g., `src/feature/routers/featureRoutePath.ts` when the actual
+  //       file is `src/feature/routers/routePath.ts` — "feature" came from
+  //       the parent dir, not the filename).
+  //   (b) MANIFEST ↔ CLAUDE.md §6 Skills drift: a skill is registered
+  //       in claudeos-core/skills/00.shared/MANIFEST.md but missing
+  //       from CLAUDE.md §6 Skills list (or vice versa).
+  //
+  // Both manifest as a stale path reference, so a single structural
+  // check covers both. No natural-language matching involved.
+  console.log("  [10/10] path-claim verification (hallucination + MANIFEST drift)...");
+
+  // Regex: matches `src/...` paths to TS/TSX/JS/JSX files, not inside
+  // inline code already fenced. We still strip fenced blocks first so
+  // example blocks inside ```...``` don't produce false positives.
+  const SRC_PATH_RE = /\bsrc\/[\w\-./]+\.(?:ts|tsx|js|jsx)\b/g;
+  // Placeholder paths like `src/{domain}/...` are scaffold templates,
+  // not real path claims. Skip them.
+  const hasPlaceholder = (p) => /\{[^}]+\}/.test(p);
+
+  // Strip fenced code blocks (``` and ~~~) so examples inside code
+  // blocks don't trigger the check — they're illustrations, not claims.
+  function stripFences(text) {
+    const lines = text.split(/\r?\n/);
+    let inFence = false;
+    let marker = null;
+    const out = [];
+    for (const line of lines) {
+      const t = line.trimStart();
+      const m = t.match(/^(```+|~~~+)/);
+      if (m) {
+        if (!inFence) { inFence = true; marker = m[1][0]; }
+        else if (t.startsWith(marker)) { inFence = false; marker = null; }
+        out.push(""); // preserve line count but blank the fence markers
+        continue;
+      }
+      out.push(inFence ? "" : line);
+    }
+    return out.join("\n");
+  }
+
+  // Scan rules/ and standard/ for src/... path claims.
+  const pathClaimTargets = [
+    { label: "rules",    dir: RULES_DIR,    glob: "**/*.md" },
+    { label: "standard", dir: STANDARD_DIR, glob: "**/*.md" },
+  ];
+  let pathClaimsChecked = 0;
+  let pathClaimErrors = 0;
+  for (const target of pathClaimTargets) {
+    if (!fs.existsSync(target.dir)) continue;
+    const files = await glob(target.glob, { cwd: target.dir, absolute: true });
+    for (const file of files) {
+      const raw = fs.readFileSync(file, "utf-8");
+      const stripped = stripFences(raw);
+      const seen = new Set(); // dedupe within a single file
+      let m;
+      SRC_PATH_RE.lastIndex = 0;
+      while ((m = SRC_PATH_RE.exec(stripped)) !== null) {
+        const claimed = m[0];
+        if (seen.has(claimed)) continue;
+        seen.add(claimed);
+        if (hasPlaceholder(claimed)) continue;
+        pathClaimsChecked++;
+        const absolutePath = path.join(ROOT, claimed);
+        if (!fs.existsSync(absolutePath)) {
+          pathClaimErrors++;
+          errors.push({
+            file: rel(file),
+            type: "STALE_PATH",
+            msg: `References "${claimed}" which does not exist in the repository. ` +
+                 `Likely Pass 3 hallucination — re-run with \`init --force\` after ` +
+                 `verifying the correct path in pass2-merged.json.`,
+          });
+        }
+      }
+    }
+  }
+  console.log(`    ${pathClaimsChecked} path claim(s) checked, ${pathClaimErrors} stale`);
+
+  // MANIFEST ↔ CLAUDE.md §6 Skills drift check.
+  // MANIFEST registers skills in a 4-column table; each row's second
+  // cell contains a backtick-wrapped path to the skill's entry file.
+  // CLAUDE.md §6 lists skills under a `### Skills` sub-section (title
+  // localized, but structure is sub-section inside §6).
+  //
+  // We detect drift in BOTH directions:
+  //   - MANIFEST entry path does not exist on disk → STALE_SKILL_ENTRY
+  //   - MANIFEST entry not referenced in CLAUDE.md §6 → MANIFEST_DRIFT
+  const manifestPath = path.join(SKILLS_DIR, "00.shared", "MANIFEST.md");
+  let manifestErrors = 0;
+  if (fs.existsSync(manifestPath)) {
+    const manifest = fs.readFileSync(manifestPath, "utf-8");
+    const stripped = stripFences(manifest);
+
+    // Pull every `claudeos-core/skills/...` path that appears inside
+    // a backtick span in the MANIFEST. This catches the table's
+    // "entry" column regardless of the heading language ("등록된
+    // 스킬" / "Registered Skills" / "登録済みスキル" — all match).
+    const SKILL_PATH_RE = /`(claudeos-core\/skills\/[\w\-./]+\.md)`/g;
+    const registered = new Set();
+    let m;
+    while ((m = SKILL_PATH_RE.exec(stripped)) !== null) {
+      // Skip MANIFEST.md itself — it's always self-referenced but is
+      // a meta-file, not a skill.
+      if (m[1].endsWith("/MANIFEST.md")) continue;
+      registered.add(m[1]);
+    }
+
+    // Stage 1: each registered skill path must exist on disk.
+    for (const p of registered) {
+      const abs = path.join(ROOT, p);
+      if (!fs.existsSync(abs)) {
+        manifestErrors++;
+        errors.push({
+          file: "claudeos-core/skills/00.shared/MANIFEST.md",
+          type: "STALE_SKILL_ENTRY",
+          msg: `Registered skill "${p}" does not exist on disk. ` +
+               `Either create the skill file or remove the MANIFEST row.`,
+        });
+      }
+    }
+
+    // Stage 2: MANIFEST ↔ CLAUDE.md §6 cross-reference.
+    const claudeMdPathForSync = path.join(ROOT, "CLAUDE.md");
+    if (fs.existsSync(claudeMdPathForSync)) {
+      const claudeMd = fs.readFileSync(claudeMdPathForSync, "utf-8");
+      const mdStripped = stripFences(claudeMd);
+      // Extract every skill path referenced in the whole CLAUDE.md
+      // body. We intentionally don't try to scope to §6 alone — any
+      // registered skill mentioned anywhere is considered "referenced"
+      // and avoids false positives for alternate layouts.
+      const referenced = new Set();
+      SKILL_PATH_RE.lastIndex = 0;
+      while ((m = SKILL_PATH_RE.exec(mdStripped)) !== null) {
+        if (m[1].endsWith("/MANIFEST.md")) continue;
+        referenced.add(m[1]);
+      }
+
+      // v2.3.0 — Sub-skill exception for the orchestrator/sub-skill
+      // pattern. Rationale:
+      //
+      // Skills commonly ship as:
+      //   skills/{category}/{NN}.{name}.md            ← orchestrator
+      //   skills/{category}/{name}/{NN}.{step}.md     ← sub-skills
+      //
+      // (Example: 10.backend-crud/01.scaffold-crud-feature.md plus
+      //  10.backend-crud/scaffold-crud-feature/01.dto.md, 02.mapper.md, …)
+      //
+      // Structurally, Pass 3b writes CLAUDE.md §6 before Pass 3c creates
+      // the skills + MANIFEST. Pass 3b cannot list every sub-skill by
+      // name because they don't exist yet, and having it predict the
+      // full list produces filename hallucinations (02.entity.md when
+      // Pass 3c actually emits 02.mapper.md, etc.).
+      //
+      // The correct design is role-separated: CLAUDE.md §6 is an entry
+      // point that names categories and orchestrators; MANIFEST.md is
+      // the authoritative registry for sub-skill details. So when the
+      // orchestrator for a sub-skill is referenced anywhere in CLAUDE.md,
+      // we treat its sub-skills as covered transitively through the
+      // orchestrator row/MANIFEST indirection, and suppress
+      // MANIFEST_DRIFT for them. STALE_SKILL_ENTRY (sub-skill registered
+      // but file missing) still fires in Stage 1 above — that's a real
+      // MANIFEST integrity issue and is not subject to this relaxation.
+      //
+      // A sub-skill is identified by a trailing `{parent}/{NN}.{name}.md`
+      // segment whose `{parent}` directory sits one level below
+      // `skills/{category}/`. The orchestrator then lives at
+      // `skills/{category}/{NN-or-something}.{parent}.md`. We don't
+      // require a specific numeric prefix on the orchestrator — any
+      // file of the form `skills/{category}/*{parent}*.md` (excluding
+      // the sub-skill itself) counts as a plausible orchestrator.
+      function orchestratorFor(subSkillPath) {
+        const m = subSkillPath.match(
+          /^(claudeos-core\/skills\/[^/]+\/)([^/]+)\/\d+\.[^/]+\.md$/
+        );
+        if (!m) return null;
+        return { categoryDir: m[1], stem: m[2] };
+      }
+      function isOrchestratorReferenced(ref, { categoryDir, stem }) {
+        // CLAUDE.md mentions any file in the category directory whose
+        // basename (minus leading number + dot) matches the sub-skill
+        // parent stem. This accepts `01.scaffold-crud-feature.md`,
+        // `scaffold-crud-feature.md`, etc.
+        if (!ref.startsWith(categoryDir)) return false;
+        const tail = ref.slice(categoryDir.length);
+        // Must be a sibling file, not a nested path.
+        if (tail.includes("/")) return false;
+        // Strip leading "NN." if present, then compare stem.
+        const base = tail.replace(/^\d+\./, "").replace(/\.md$/, "");
+        return base === stem;
+      }
+
+      for (const p of registered) {
+        if (referenced.has(p)) continue;              // direct mention → OK
+
+        // Sub-skill exception.
+        const oc = orchestratorFor(p);
+        if (oc) {
+          const orchestratorMentioned = Array.from(referenced).some((ref) =>
+            isOrchestratorReferenced(ref, oc)
+          );
+          if (orchestratorMentioned) continue;        // covered via orchestrator
+        }
+
+        manifestErrors++;
+        errors.push({
+          file: "CLAUDE.md",
+          type: "MANIFEST_DRIFT",
+          msg: `Skill "${p}" is registered in MANIFEST.md but not ` +
+               `mentioned in CLAUDE.md. Add it to CLAUDE.md §6 Skills ` +
+               `sub-section, or remove the row from MANIFEST if no ` +
+               `longer active.`,
+        });
+      }
+    }
+    console.log(`    ${registered.size} skill(s) in MANIFEST, ${manifestErrors} drift issue(s)`);
+  } else {
+    // MANIFEST absence is not automatically an error — small projects
+    // may not use the skills system. Just note it.
+    console.log("    (no MANIFEST.md found — skipping)");
+  }
+
   // ─── Output results ─────────────────────────────────────────
   console.log(`\n  Checked ${checked} files\n`);
   if (errors.length) {

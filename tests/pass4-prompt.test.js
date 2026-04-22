@@ -111,8 +111,19 @@ test("generatePrompts: pass4 contains rule file generation instructions", () => 
   assert.match(body, /52\.ai-work-rules\.md/, "should list ai-work-rules");
   assert.match(body, /01\.decision-log\.md/, "should list decision-log rule");
   assert.match(body, /02\.failure-patterns\.md/, "should list failure-patterns rule");
-  assert.match(body, /CLAUDE\.md append/, "should instruct CLAUDE.md append");
-  assert.match(body, /Common rules/, "should instruct common rules table in CLAUDE.md append");
+  // v2.3.0: CLAUDE.md is NEVER modified by Pass 4 anymore. The prompt
+  // must contain the explicit prohibition, not the old append block.
+  assert.match(body, /CLAUDE\.md MUST NOT BE MODIFIED/,
+    "pass4 prompt must forbid CLAUDE.md modification in v2.3.0");
+  assert.match(body, /Pass 3 already authored all 8 sections/,
+    "pass4 prompt must reference Pass 3 as the authoritative author of CLAUDE.md");
+  // The old "### N. Append a new section to existing CLAUDE.md"
+  // instruction header must be gone.
+  assert.doesNotMatch(
+    body,
+    /^###\s+\d+\.\s+Append a new section to existing\s+`?CLAUDE\.md`?/m,
+    "old 'Append new section to CLAUDE.md' header must be retired"
+  );
   // Master plan reference must NOT be in the prompt — master plan generation
   // was removed in this version.
   assert.doesNotMatch(body, /50\.memory-master/,
@@ -122,6 +133,115 @@ test("generatePrompts: pass4 contains rule file generation instructions", () => 
   assert.doesNotMatch(body, /70\.memory/, "must not reference old 70.memory (renumbered to 60)");
   assert.doesNotMatch(body, /01\.session-state\.md/, "must not reference runtime session-state");
   assert.doesNotMatch(body, /32\.runtime-master/, "must not reference runtime master plan");
+
+  fs.rmSync(generatedDir, { recursive: true, force: true });
+});
+
+test("generatePrompts: pass4 enforces path fact grounding (v2.3.0 STALE_PATH prevention)", () => {
+  // v2.3.0 regression guard. frontend-react-B dogfooding surfaced four
+  // STALE_PATH errors in Pass 4 output (rules + standard files):
+  //   - src/feature/main.tsx (Vite convention hallucination)
+  //   - src/feature/routers/featureRoutePath.ts (prefix-from-parent-dir)
+  //   - src/components/utils/classNameMaker.ts (plausible but unverified)
+  // Root cause: Pass 4 prompt never referenced pass3a-facts.md, so the
+  // LLM wrote concrete paths from prior knowledge instead of from the
+  // analysis artifacts. The fix pulls pass3a-facts.md into the set of
+  // required reads and adds a MANDATORY "Path fact grounding" block with
+  // all three anti-patterns documented as ❌ examples.
+  //
+  // Checking on a frontend-only Vite stack because that's the exact
+  // configuration the bug was discovered on.
+  const templatesDir = path.join(__dirname, "../pass-prompts/templates");
+  const generatedDir = tmpDir("p4-grounding-");
+
+  generatePrompts(
+    { backend: null, frontend: "node-vite" },
+    "en",
+    templatesDir,
+    generatedDir
+  );
+
+  const pass4 = path.join(generatedDir, "pass4-prompt.md");
+  const body = fs.readFileSync(pass4, "utf-8");
+
+  // 1. pass3a-facts.md must be listed as a mandatory read at the top
+  //    of the prompt. Previously only project-analysis.json and
+  //    pass2-merged.json were listed.
+  assert.match(
+    body,
+    /pass3a-facts\.md.*\*\*MANDATORY\*\*/s,
+    "pass4 prompt must list pass3a-facts.md as a MANDATORY read"
+  );
+
+  // 2. The Path fact grounding block must be present with its
+  //    canonical section header.
+  assert.match(
+    body,
+    /## CRITICAL — Path fact grounding \(MANDATORY/,
+    "pass4 prompt must contain the Path fact grounding CRITICAL section"
+  );
+
+  // 3. All three flagship anti-pattern examples must be documented
+  //    verbatim so future dogfood-regression cases are named in-prompt.
+  assert.match(
+    body,
+    /❌ `src\/feature\/main\.tsx`/,
+    "must document the Vite-convention hallucination anti-pattern"
+  );
+  assert.match(
+    body,
+    /❌ `src\/feature\/routers\/featureRoutePath\.ts`/,
+    "must document the parent-dir-prefix hallucination anti-pattern"
+  );
+  assert.match(
+    body,
+    /❌ `src\/components\/utils\/classNameMaker\.ts`/,
+    "must document the plausible-but-unverified hallucination anti-pattern"
+  );
+
+  // 4a. MSW / testing-library convention class — added after
+  //     real-world dogfooding surfaced `src/__mocks__/handlers.ts`
+  //     as a Pass 3b hallucination in testing-strategy.md.
+  assert.match(
+    body,
+    /❌ `src\/__mocks__\/handlers\.ts`/,
+    "must document the MSW/testing-library convention hallucination class"
+  );
+  assert.match(
+    body,
+    /testing-library conventions \(MSW, Vitest, Jest,[\s\n]+React Testing Library\)/,
+    "must name the specific library ecosystem that triggers testing-path hallucinations"
+  );
+  assert.match(
+    body,
+    /these paths do not[\s\n]+exist/,
+    "must explicitly reject the premise that testing paths exist by convention"
+  );
+
+  // 5. The positive guidance — "use a directory-scoped rule instead
+  //    of inventing a filename" — must also be present. This is what
+  //    the LLM is supposed to do when in doubt.
+  assert.match(
+    body,
+    /directory-scoped rule is correct; an invented file path is a bug/,
+    "must document the positive pattern (directory scope over invented filename)"
+  );
+
+  // 5a. Testing-strategy-specific positive guidance — if no tests
+  //     exist, describe abstractly, don't name paths.
+  assert.match(
+    body,
+    /zero test coverage.*abstract terms|describe.*abstract.*without naming/s,
+    "must document the testing-strategy-specific positive pattern"
+  );
+
+  // 6. The block must explicitly connect the rule to the downstream
+  //    validator so the LLM understands why this matters.
+  assert.match(
+    body,
+    /content-validator.*STALE_PATH/s,
+    "must cross-reference content-validator's STALE_PATH detection"
+  );
 
   fs.rmSync(generatedDir, { recursive: true, force: true });
 });

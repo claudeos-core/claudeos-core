@@ -69,6 +69,38 @@ ClaudeOS-Core는 프로젝트가 `ApiResponse.ok()`를 쓴다는 것, MyBatis XM
 
 ---
 
+## 생성 후 품질 보증 (v2.3.0)
+
+문서를 생성하는 것은 문제의 절반일 뿐입니다. 나머지 절반은 **생성된 결과가 맞다는 것을 아는 것** — 10개 출력 언어, 11개 스택 템플릿, 모든 규모의 프로젝트에 걸쳐서 말입니다. v2.3.0은 생성 후 실행되며 LLM 자체 검증에 의존하지 않는 결정론적 validator 2개를 추가합니다.
+
+### `claude-md-validator` — 구조적 불변 조건
+
+생성된 모든 `CLAUDE.md`는 언어 불변 신호만을 사용하는 25개 구조적 불변 조건에 대해 검사됩니다: Markdown 구문(`^## `, `^### `), 번역되지 않는 리터럴 파일명(`decision-log.md`, `failure-patterns.md`), 섹션 수, 섹션별 하위 섹션 수, 테이블 행 수. 동일한 validator가 바이트 단위로 영어, 한국어, 일본어, 베트남어, 힌디어, 러시아어, 스페인어, 중국어, 프랑스어, 독일어로 생성된 `CLAUDE.md`에 동일한 판정을 내립니다.
+
+크로스-언어 보장은 10개 언어 전체의 테스트 fixture로 검증되며, 6개 언어의 불량 fixture가 동일한 오류 시그니처를 생성함을 확인했습니다. 베트남어 프로젝트에서 불변 조건이 실패하면, 그 수정 방법은 독일어 프로젝트에서 실패했을 때와 동일합니다.
+
+### `content-validator [10/10]` — 경로 주장 검증과 MANIFEST 일관성
+
+생성된 모든 `.md` 파일에서 백틱으로 감싼 경로 참조(`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`)를 읽어 실제 파일 시스템과 대조합니다. 이전에는 어떤 도구도 감지하지 못했던 두 가지 LLM 실패 클래스를 잡아냅니다:
+
+- **`STALE_PATH`** — Pass 3 또는 Pass 4가 그럴듯하지만 존재하지 않는 경로를 만들어낼 때. 전형적 사례: 실제 파일이 `routePath.ts`인데 TypeScript 상수 `FEATURE_ROUTE_PATH`에서 `featureRoutePath.ts`를 추론; multi-entry 프로젝트에서 Vite convention으로 `src/main.tsx` 가정; 프로젝트에 테스트가 없는데도 MSW 문서에서 `src/__mocks__/handlers.ts` 가정.
+- **`MANIFEST_DRIFT`** — `claudeos-core/skills/00.shared/MANIFEST.md`에 등록된 skill이 `CLAUDE.md §6`에 언급 안 되어 있거나 그 반대 상황. `CLAUDE.md §6`은 진입점이고 `MANIFEST.md`가 전체 레지스트리인 orchestrator + sub-skill 레이아웃을 인식해서, sub-skill은 부모 orchestrator를 통해 간접적으로 커버되는 것으로 판정합니다.
+
+validator는 `pass3-footer.md`와 `pass4.md`의 prompt-time prevention과 짝을 이룹니다: 특정 환각 클래스(상위 디렉터리 접두사, Vite/MSW/Vitest/Jest/RTL 라이브러리 관례)를 문서화한 anti-pattern 블록과, `pass3a-facts.md`에 구체적인 파일명이 없을 때 규칙을 디렉터리 단위로 범위 지정하라는 명시적 positive guidance.
+
+### 임의의 프로젝트에서 validation 실행
+
+```bash
+npx claudeos-core health     # 모든 validator — 단일 go/no-go 판정
+npx claudeos-core lint       # CLAUDE.md 구조 불변 조건만 (모든 언어)
+```
+
+### 실전 검증
+
+v2.3.0은 릴리즈 전 두 개의 실제 한국어 자매 프로젝트에서 end-to-end로 검증되었습니다: 14 도메인 + 8-sub-skill `scaffold-page-feature` orchestrator를 가진 single-SPA Vite + React 19 frontend 1개와, 8 도메인 + 8-sub-skill `scaffold-crud-feature` orchestrator를 가지고 PostgreSQL → MariaDB 마이그레이션을 진행 중인 Spring Boot + MyBatis backend 1개. 둘 모두 full health check에서 **오류 0개, 경고 0개**에 안착했습니다 — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 구조 불변 조건 통과 — 생성된 결과에 대한 수동 편집 없이.
+
+---
+
 ## 지원 스택
 
 | 스택 | 감지 기준 | 분석 깊이 |

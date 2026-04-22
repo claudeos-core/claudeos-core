@@ -44,13 +44,56 @@ function generatePrompts(templates, lang, templatesDir, generatedDir) {
   // claude-md-scaffold.md" in their instructions, and this embed makes that
   // reference resolvable via in-context content. Wrapped in explicit delimiters
   // so the LLM can reliably locate the scaffold block.
+  // v2.3.0: Demote scaffold meta-section `##` headers to `###` before
+  // embedding. Inside the embedded scaffold, the only `##`-level headings
+  // visible to the LLM should be the 8 canonical CLAUDE.md sections inside
+  // the Template structure code block (`## 1. Role Definition` ... `## 8.`).
+  // Scaffold meta-sections like `## Why this scaffold exists`, `## Hard
+  // constraints`, `## Per-section generation rules`, `## Validation checks`,
+  // `## Examples`, `## Usage from pass3 prompts` used to share the same
+  // `##` level, producing 40+ `##` lines in the prompt and creating an
+  // unintended pattern bias ("this prompt has many `##` sections → my
+  // output should too"). Demotion is code-block-aware: `##` lines inside
+  // ``` or ~~~ fenced blocks are preserved so the Template structure
+  // example remains intact.
+  function demoteScaffoldMetaHeaders(scaffoldContent) {
+    const lines = scaffoldContent.split(/\r?\n/);
+    let inFence = false;
+    let fenceMarker = null;
+    return lines.map(line => {
+      const trimmed = line.trimStart();
+      const fenceMatch = trimmed.match(/^(```+|~~~+)/);
+      if (fenceMatch) {
+        if (!inFence) {
+          inFence = true;
+          fenceMarker = fenceMatch[1][0];
+        } else if (trimmed.startsWith(fenceMarker)) {
+          inFence = false;
+          fenceMarker = null;
+        }
+        return line;
+      }
+      // Only demote outside fenced code blocks.
+      // Also preserve the top-level `# CLAUDE.md Scaffold Template ...`
+      // single `#` — it's the scaffold doc title, not a section.
+      if (!inFence && /^## (?!#)/.test(line)) {
+        return line.replace(/^## /, "### ");
+      }
+      return line;
+    }).join("\n");
+  }
+
   const scaffoldPath = path.join(commonDir, "claude-md-scaffold.md");
   const scaffold = existsSafe(scaffoldPath)
     ? "\n---\n\n# === EMBEDDED: claude-md-scaffold.md ===\n\n"
       + "The content below is the scaffold referenced by stack-specific sections\n"
       + "and the Pass 3 footer. Treat this embedded block as the authoritative\n"
       + "source when instructions mention `pass-prompts/templates/common/claude-md-scaffold.md`.\n\n"
-      + readFileSafe(scaffoldPath)
+      + "NOTE: Scaffold meta-section headers have been demoted from `##` to `###`\n"
+      + "when embedded here. The ONLY `##` headings visible in this block are the\n"
+      + "8 canonical CLAUDE.md sections inside the Template structure example —\n"
+      + "those 8 are the count your generated CLAUDE.md must match exactly.\n\n"
+      + demoteScaffoldMetaHeaders(readFileSafe(scaffoldPath))
       + "\n\n# === END EMBEDDED: claude-md-scaffold.md ===\n\n---\n\n"
     : "";
 

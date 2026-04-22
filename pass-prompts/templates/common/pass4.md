@@ -1,21 +1,91 @@
 # Pass 4 — L4 Memory & Feedback Layer
 
 You are generating the initial scaffolding for the L4 Memory layer on top of the
-existing ClaudeOS-Core output. Read these two files to understand the project:
+existing ClaudeOS-Core output. Read these three files to understand the project:
 
 - `{{PROJECT_ROOT}}/claudeos-core/generated/project-analysis.json`
 - `{{PROJECT_ROOT}}/claudeos-core/generated/pass2-merged.json`
+- `{{PROJECT_ROOT}}/claudeos-core/generated/pass3a-facts.md` ← **MANDATORY**
 
 Then generate the files listed below **exactly as specified**. Do NOT invent
 additional files. Do NOT modify existing Pass 3 output in `standard/`, `skills/`,
 `guide/`, `plan/`, `database/`, `mcp-guide/`.
 
-You **WILL** create new rule files in `.claude/rules/60.memory/`,
-and **append** a new section to the existing `CLAUDE.md`.
+You **WILL** create new rule files in `.claude/rules/60.memory/`.
+You **WILL NOT** modify `CLAUDE.md` — it was fully authored by Pass 3,
+and its Section 8 already covers Common Rules + L4 Memory completely.
 
-**Language rule:** All generated content (rule descriptions, CLAUDE.md append section,
+**Language rule:** All generated content (rule descriptions,
 compaction categories, decision-log seeds) must be written in **{{LANG_NAME}}**.
 Frontmatter keys (`name`, `paths`) and file paths remain in English.
+
+---
+
+## CRITICAL — Path fact grounding (MANDATORY for all rule and standard files)
+
+Every source-tree path (`src/...`, `packages/...`, `apps/...`, or equivalent
+language-specific source root) you write in any rule file or standard file
+MUST appear verbatim in `pass3a-facts.md` or `pass2-merged.json`. If a
+concrete path is not in those analysis artifacts, OMIT it — do NOT write it.
+
+Do NOT invent paths based on framework convention, prior training knowledge,
+or extrapolation from symbol names. The most common v2.3.0 dogfood failures
+observed were all in this class:
+
+❌ `src/feature/main.tsx`
+  — invented based on Vite's stock convention. This project may use a
+    different entry (e.g. `index.html` referencing a non-`main.tsx` file),
+    or may be a multi-entry project where no single `main.tsx` exists.
+    Check pass3a-facts.md; if no such path is listed, do not write it.
+
+❌ `src/feature/routers/featureRoutePath.ts`
+  — invented by prepending the parent directory name ("feature") to the
+    filename, or by converting a TypeScript constant name
+    (`FEATURE_ROUTE_PATH`) into a filename. TypeScript identifiers and
+    filenames are independent. The authoritative filename is in
+    pass3a-facts.md under the "Routing" or "Shared imports" section.
+    If pass3a-facts.md says `routePath.ts`, write `routePath.ts`, not
+    `featureRoutePath.ts`.
+
+❌ `src/components/utils/classNameMaker.ts`
+  — plausibly-named utility, but unverified. "Plausible" is not a
+    sufficient ground for a concrete path claim. If you want to reference
+    a utility layer in a rule file, reference the directory
+    (`src/components/utils/`) rather than inventing a filename.
+
+❌ `src/__mocks__/handlers.ts`, `src/test/setup.ts`, `src/test-utils.tsx`,
+   `src/setupTests.ts`
+  — invented based on testing-library conventions (MSW, Vitest, Jest,
+    React Testing Library). If the project has no tests (0% coverage in
+    pass3a-facts.md) or uses a different layout, these paths do not
+    exist. Anti-pattern triggers: writing a `testing-strategy.md` or
+    similar standard file and reaching for "the canonical test-setup
+    location" from the library's docs. There is no canonical location —
+    every project chooses its own, and only pass3a-facts.md knows which.
+    If pass3a-facts.md lists no test files, write the testing guidance
+    in general terms ("a shared setup module under a test directory of
+    your choice") rather than naming a specific path.
+
+✅ If pass3a-facts.md shows `ApiClient` (`src/admin/api/apiClient.ts`) as
+   the response wrapper, write `src/admin/api/apiClient.ts` verbatim.
+
+✅ When in doubt, write the rule in terms of the pattern (e.g., "handwritten
+   API modules under `src/admin/api/`") rather than a specific file name.
+   A directory-scoped rule is correct; an invented file path is a bug.
+
+✅ For testing-strategy documents specifically: if the project has zero
+   test coverage, describe the RECOMMENDED strategy in abstract terms
+   (test runner, assertion style, what to cover) without naming concrete
+   files. Paths are only appropriate once the tests exist and are in
+   pass3a-facts.md.
+
+This rule is enforced post-generation by `content-validator [10/10]
+path-claim verification`. Fabricated paths will be flagged as `STALE_PATH`
+errors — the same class that the v2.3.0 validator was created to detect.
+Every STALE_PATH in a Pass 4-generated file is a bug the user sees and
+reports; every STALE_PATH avoided here is one the user never hits.
+
+---
 
 Memory scaffold files (sections 1–4) follow these rules:
 - **Headings and description text** may be written in **{{LANG_NAME}}**.
@@ -190,34 +260,34 @@ Proposals with confidence >= 0.70 deserve serious consideration. Do NOT edit pro
 
 ---
 
-## Required output — CLAUDE.md append
+## CLAUDE.md MUST NOT BE MODIFIED
 
-### 11. Append a new section to existing `CLAUDE.md`
+CLAUDE.md has already been fully authored by Pass 3. Section 8 ("Common
+Rules & Memory (L4)") inside CLAUDE.md is the single canonical place
+that documents both the Common Rules table AND the L4 Memory table +
+workflow. Pass 4 MUST NOT write to, append to, or otherwise modify
+CLAUDE.md under any circumstances.
 
-Do NOT overwrite existing CLAUDE.md content — **append only** at the end.
-The new section must include the `(L4)` marker in its top heading (the
-marker string itself is language-independent so the CLI fallback can
-detect it). The heading word is translated into the target output
-language, while `(L4)` is preserved verbatim. Example: English emits
-`## Memory (L4)`; other languages emit the equivalent translation of
-"Memory" followed by the same `(L4)` suffix.
+Historical note (v2.3.0 fix): prior Pass 4 templates instructed the
+model to append a new `## N. ... (L4)` section to CLAUDE.md. That
+instruction interacted incorrectly with the current Pass 3 scaffold,
+which already produces Section 8 covering the same ground. The result
+was a CLAUDE.md with 9 top-level sections and every memory file
+appearing in two separate tables — precisely the `[S1]`, `[M-*]`, and
+`[F2-*]` anti-patterns the v2.3.0 validator was designed to catch. The
+validator is working as intended; the fix is to stop generating the
+duplication at its source, which is this prompt.
 
-Include:
-- Common rules table (references to `00.core/51.doc-writing-rules.md` and `52.ai-work-rules.md`)
-- L4 Memory table with 4 files (decision-log, failure-patterns, compaction, auto-rule-update)
-  — include Purpose and Action columns
-- Memory workflow (6 numbered steps: scan failure-patterns at session start →
-  skim recent decision-log → record decisions → record repeat errors →
-  periodic `memory compact` → review `auto-rule-update.md` proposals)
-
-Write this section in **{{LANG_NAME}}**, but keep the `(L4)` heading marker,
-file paths, and CLI command names in English.
+If the CLAUDE.md the model is reading already contains a `## 9.` (or
+`## 10.`, …) section with `(L4)` in its heading, that is stale output
+from an older build — leave it alone; it will be hand-removed by the
+user, not by Pass 4.
 
 ---
 
 ## Required output — Standard (`{{PROJECT_ROOT}}/claudeos-core/standard/00.core/`)
 
-### 12. `claudeos-core/standard/00.core/XX.doc-writing-guide.md`
+### 11. `claudeos-core/standard/00.core/XX.doc-writing-guide.md`
 Scan `claudeos-core/standard/00.core/` for existing numbered files. Use the **next sequential number**
 (e.g., if `01`, `02`, `03` exist, create `04.doc-writing-guide.md`).
 
@@ -282,10 +352,10 @@ After all files are written, create:
 - Do NOT modify existing `.claude/rules/10.backend/` through `.claude/rules/50.sync/` files.
 - DO create `.claude/rules/00.core/51.doc-writing-rules.md` and `.claude/rules/00.core/52.ai-work-rules.md` (Pass 4 output).
 - DO create `claudeos-core/standard/00.core/XX.doc-writing-guide.md` with the next sequential number (Pass 4 output).
-- Do NOT overwrite existing CLAUDE.md content — **append only**.
+- Do NOT touch CLAUDE.md. Pass 3 already authored all 8 sections, including Section 8's full Common Rules + L4 Memory content. No append, no edit, no create of a new CLAUDE.md.
 - Do NOT translate CLI-parsed keywords in memory files: `## Last Compaction`, `frequency:`, `importance:`, `last seen:`, `fix`, `solution`.
 - DO translate all other text in memory files (titles, descriptions, instructions) into **{{LANG_NAME}}**.
-- DO write rule files (sections 5–10), standard file (section 13), and CLAUDE.md append section in **{{LANG_NAME}}**.
+- DO write rule files (sections 5–10) and the standard file (section 11) in **{{LANG_NAME}}**.
 - Keep seed decision-log entries **grounded** in pass2-merged.json only. No hallucination.
 - Use the current date (UTC, YYYY-MM-DD) for dated headings — substitute the real date,
   never leave `<YYYY-MM-DD>` or any placeholder-looking token as literal text.

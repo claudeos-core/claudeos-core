@@ -69,6 +69,38 @@ Esta diferencia se acumula. 10 tareas/día × 20 minutos ahorrados = **más de 3
 
 ---
 
+## Aseguramiento de Calidad Post-Generación (v2.3.0)
+
+La generación es solo la mitad del problema. La otra mitad es **saber que la salida es correcta** — a través de 10 idiomas de salida, 11 plantillas de stack y proyectos de cualquier tamaño. v2.3.0 añade dos validadores deterministas que se ejecutan después de la generación y no dependen de auto-verificaciones del LLM.
+
+### `claude-md-validator` — invariantes estructurales
+
+Cada `CLAUDE.md` generado se verifica contra 25 invariantes estructurales que usan solo señales independientes del idioma: sintaxis markdown (`^## `, `^### `), nombres de archivo literales (`decision-log.md`, `failure-patterns.md` — nunca traducidos), recuento de secciones, recuento de sub-secciones por sección y recuento de filas de tabla. El mismo validador, byte por byte, produce veredictos idénticos sobre un `CLAUDE.md` generado en inglés, coreano, japonés, vietnamita, hindi, ruso, español, chino, francés o alemán.
+
+La garantía cross-idioma se verifica mediante fixtures de prueba en los 10 idiomas, incluyendo fixtures de casos malos en 6 de esos idiomas que producen firmas de error idénticas. Cuando un invariante falla en un proyecto en vietnamita, la solución es la misma que cuando falla en un proyecto en alemán.
+
+### `content-validator [10/10]` — verificación de afirmaciones de ruta y consistencia de MANIFEST
+
+Lee toda referencia de ruta entre backticks (`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`) de todos los archivos `.md` generados y las verifica contra el sistema de archivos real. Captura dos clases de fallo de LLM que ninguna herramienta detectaba antes:
+
+- **`STALE_PATH`** — cuando Pass 3 o Pass 4 inventa una ruta plausible pero inexistente. Casos típicos: inferir `featureRoutePath.ts` de una constante TypeScript llamada `FEATURE_ROUTE_PATH` cuando el archivo real es `routePath.ts`; asumir `src/main.tsx` por convención de Vite en un proyecto multi-entry; asumir `src/__mocks__/handlers.ts` por la documentación de MSW aunque el proyecto no tenga tests.
+- **`MANIFEST_DRIFT`** — cuando `claudeos-core/skills/00.shared/MANIFEST.md` registra un skill que `CLAUDE.md §6` no menciona (o viceversa). Reconoce el layout común orchestrator + sub-skills donde `CLAUDE.md §6` es un punto de entrada y `MANIFEST.md` es el registro completo — los sub-skills se consideran cubiertos vía su orchestrator padre.
+
+El validador se empareja con prevención en tiempo de prompt en `pass3-footer.md` y `pass4.md`: bloques de anti-patrón que documentan las clases específicas de alucinación (prefijo de directorio padre, convenciones de bibliotecas Vite/MSW/Vitest/Jest/RTL) y guía positiva explícita para definir el alcance de las reglas por directorio cuando un nombre de archivo concreto no está en `pass3a-facts.md`.
+
+### Ejecutar validación en cualquier proyecto
+
+```bash
+npx claudeos-core health     # todos los validadores — veredicto único go/no-go
+npx claudeos-core lint       # solo invariantes estructurales de CLAUDE.md (cualquier idioma)
+```
+
+### Verificación en el mundo real
+
+v2.3.0 fue validado end-to-end en dos proyectos hermanos reales en coreano antes del lanzamiento: un frontend Vite + React 19 single-SPA con 14 dominios y un orchestrator `scaffold-page-feature` de 8 sub-skills, y un backend Spring Boot + MyBatis con 8 dominios y un orchestrator `scaffold-crud-feature` de 8 sub-skills en plena migración PostgreSQL → MariaDB. Ambos se asentaron en **0 errores, 0 advertencias** en el health check completo — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 invariantes estructurales pasando — sin ninguna edición manual sobre la salida generada.
+
+---
+
 ## Stacks Soportados
 
 | Stack | Detección | Profundidad de análisis |

@@ -22,6 +22,7 @@ const path = require("path");
 const { TOOLS_DIR, PROJECT_ROOT, log, run, readFile } = require("./lib/cli-utils");
 const { cmdInit, InitError } = require("./commands/init");
 const { cmdMemory } = require("./commands/memory");
+const { cmdLint } = require("./commands/lint");
 
 // Set env var so sub-tools (plan-installer, etc.) correctly resolve the project root
 process.env.CLAUDEOS_ROOT = PROJECT_ROOT;
@@ -53,6 +54,7 @@ Usage:
 
 Commands:
   init               Run the full 4-Pass pipeline (analyze → merge → generate → memory scaffold)
+  lint               Validate CLAUDE.md structure (language-invariant post-generation check)
   health             Run all verification tools (health checker)
   validate           Check Plan ↔ disk consistency
   refresh            Sync disk changes → Master Plan
@@ -71,6 +73,7 @@ Examples:
   npx claudeos-core init --lang ko    # Generate in Korean
   npx claudeos-core init --lang ja    # Generate in Japanese
   npx claudeos-core init              # Interactive language selection
+  npx claudeos-core lint              # Validate CLAUDE.md structure (any language)
   npx claudeos-core health            # Check everything is consistent
   npx claudeos-core restore           # Recover from corrupted docs
 `);
@@ -126,6 +129,7 @@ if (command === "--version") {
 
 const commands = {
   init: () => cmdInit(parsedArgs),
+  lint: () => cmdLint(parsedArgs),
   health: cmdHealth,
   validate: cmdValidate,
   restore: cmdRestore,

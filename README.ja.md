@@ -69,6 +69,38 @@ ClaudeOS-Core は、プロジェクトが `ApiResponse.ok()`（`ResponseEntity.s
 
 ---
 
+## 生成後の品質保証 (v2.3.0)
+
+生成は問題の半分にすぎません。もう半分は **出力が正しいと分かること** です — 10 の出力言語、11 のスタックテンプレート、あらゆる規模のプロジェクトにわたって。v2.3.0 は生成後に実行され、LLM の自己チェックに依存しない決定論的な validator を 2 つ追加します。
+
+### `claude-md-validator` — 構造的不変条件
+
+生成されたすべての `CLAUDE.md` は、言語不変のシグナルのみを使う 25 の構造的不変条件に対して検証されます: Markdown 構文 (`^## `, `^### `)、翻訳されないリテラルファイル名 (`decision-log.md`, `failure-patterns.md`)、セクション数、セクションごとのサブセクション数、テーブル行数。同じ validator が、英語・韓国語・日本語・ベトナム語・ヒンディー語・ロシア語・スペイン語・中国語・フランス語・ドイツ語で生成された `CLAUDE.md` に対してバイト単位で同じ判定を下します。
+
+クロス言語保証は 10 言語すべてのテスト fixture で検証されており、6 言語の不良 fixture が同一のエラーシグネチャを生成することも確認済みです。ベトナム語プロジェクトで不変条件が失敗したとき、その修正方法はドイツ語プロジェクトで失敗したときと同じです。
+
+### `content-validator [10/10]` — パス主張検証と MANIFEST 一貫性
+
+生成されたすべての `.md` ファイルからバッククォート付きのパス参照 (`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`) を読み取り、実際のファイルシステムと照合します。これまでどのツールも検出できなかった 2 つの LLM 失敗クラスを捕捉します:
+
+- **`STALE_PATH`** — Pass 3 または Pass 4 がもっともらしいが実在しないパスを捏造した場合。典型例: 実際のファイルが `routePath.ts` なのに TypeScript 定数 `FEATURE_ROUTE_PATH` から `featureRoutePath.ts` を推論; multi-entry プロジェクトで Vite 慣習から `src/main.tsx` を仮定; プロジェクトにテストがないのに MSW ドキュメントから `src/__mocks__/handlers.ts` を仮定。
+- **`MANIFEST_DRIFT`** — `claudeos-core/skills/00.shared/MANIFEST.md` に登録された skill が `CLAUDE.md §6` に言及されていない (または逆)。`CLAUDE.md §6` がエントリーポイントで `MANIFEST.md` が完全なレジストリとなる orchestrator + sub-skill レイアウトを認識し、sub-skill は親 orchestrator を介して間接的にカバーされると判定します。
+
+validator は `pass3-footer.md` と `pass4.md` の prompt-time prevention とペアになります: 特定の幻覚クラス (親ディレクトリ接頭辞、Vite/MSW/Vitest/Jest/RTL ライブラリ慣習) を文書化した anti-pattern ブロックと、`pass3a-facts.md` に具体的なファイル名がない場合はルールをディレクトリ単位でスコープするという明示的な positive guidance。
+
+### 任意のプロジェクトで validation を実行
+
+```bash
+npx claudeos-core health     # すべての validator — 単一 go/no-go 判定
+npx claudeos-core lint       # CLAUDE.md 構造不変条件のみ (任意の言語)
+```
+
+### 実世界検証
+
+v2.3.0 はリリース前に、実世界の韓国語姉妹プロジェクト 2 つで end-to-end 検証されました: 14 ドメイン + 8 サブスキルの `scaffold-page-feature` orchestrator を持つ single-SPA Vite + React 19 フロントエンド 1 つと、8 ドメイン + 8 サブスキルの `scaffold-crud-feature` orchestrator を持ち PostgreSQL → MariaDB 移行中の Spring Boot + MyBatis バックエンド 1 つ。両者とも full health check で **エラー 0、警告 0** に落ち着きました — `STALE_PATH` 0、`MANIFEST_DRIFT` 0、25/25 の構造不変条件すべて通過 — 生成された出力への手動編集は一切なし。
+
+---
+
 ## 対応スタック
 
 | スタック | 検出方法 | 分析深度 |

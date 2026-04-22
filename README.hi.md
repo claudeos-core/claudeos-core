@@ -69,6 +69,38 @@ ClaudeOS-Core ऐसा डॉक्यूमेंटेशन बनाता 
 
 ---
 
+## जेनरेशन के बाद गुणवत्ता सुनिश्चिति (v2.3.0)
+
+जेनरेशन समस्या का सिर्फ आधा हिस्सा है। दूसरा आधा है **यह जानना कि आउटपुट सही है** — 10 आउटपुट भाषाओं में, 11 स्टैक टेम्प्लेट्स में, किसी भी आकार के प्रोजेक्ट्स में। v2.3.0 दो deterministic validators जोड़ता है जो जेनरेशन के बाद चलते हैं और LLM के स्वयं-जांच पर निर्भर नहीं करते।
+
+### `claude-md-validator` — स्ट्रक्चरल इनवेरिएंट्स
+
+हर जेनरेट किया गया `CLAUDE.md` 25 स्ट्रक्चरल इनवेरिएंट्स के खिलाफ चेक किया जाता है, जो केवल भाषा-निरपेक्ष सिग्नल्स का उपयोग करते हैं: markdown syntax (`^## `, `^### `), कभी अनुवादित नहीं होने वाले literal फ़ाइल नाम (`decision-log.md`, `failure-patterns.md`), section count, प्रत्येक section के sub-section count, और table-row count। यही validator, byte-by-byte, अंग्रेज़ी, कोरियाई, जापानी, वियतनामी, हिंदी, रूसी, स्पेनिश, चीनी, फ्रेंच, या जर्मन में जेनरेट किए गए `CLAUDE.md` पर समान निर्णय देता है।
+
+Cross-language गारंटी को सभी 10 भाषाओं में test fixtures द्वारा सत्यापित किया जाता है, जिसमें उन भाषाओं में से 6 में bad-case fixtures शामिल हैं जो समान error signatures उत्पन्न करती हैं। जब एक वियतनामी प्रोजेक्ट पर invariant विफल होता है, तो fix वही है जो जर्मन प्रोजेक्ट पर विफल होने पर होता है।
+
+### `content-validator [10/10]` — path-claim सत्यापन और MANIFEST स्थिरता
+
+सभी जेनरेट की गई `.md` फ़ाइलों से हर backticked path reference (`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`) पढ़ता है और उन्हें वास्तविक file system के खिलाफ सत्यापित करता है। दो क्लास की LLM failures पकड़ता है जो पहले कोई tool detect नहीं करता था:
+
+- **`STALE_PATH`** — जब Pass 3 या Pass 4 एक plausible-but-nonexistent path गढ़ देता है। विशिष्ट मामले: `FEATURE_ROUTE_PATH` नामक TypeScript constant से `featureRoutePath.ts` infer करना जब वास्तविक फ़ाइल `routePath.ts` है; multi-entry प्रोजेक्ट में Vite convention से `src/main.tsx` मान लेना; प्रोजेक्ट में कोई test नहीं होने के बावजूद MSW documentation से `src/__mocks__/handlers.ts` मान लेना।
+- **`MANIFEST_DRIFT`** — जब `claudeos-core/skills/00.shared/MANIFEST.md` एक skill रजिस्टर करता है जिसका `CLAUDE.md §6` में उल्लेख नहीं है (या इसके विपरीत)। सामान्य orchestrator + sub-skills layout को पहचानता है, जहाँ `CLAUDE.md §6` एक entry point है और `MANIFEST.md` पूर्ण registry है — sub-skills को उनके parent orchestrator के माध्यम से cover माना जाता है।
+
+Validator को `pass3-footer.md` और `pass4.md` में prompt-time prevention के साथ जोड़ा गया है: विशिष्ट hallucination classes (parent-directory prefix, Vite/MSW/Vitest/Jest/RTL library conventions) को document करने वाले anti-pattern blocks, और स्पष्ट positive guidance कि जब `pass3a-facts.md` में एक concrete filename नहीं है, तो rule को directory-scope से scope करें।
+
+### किसी भी प्रोजेक्ट पर validation चलाएँ
+
+```bash
+npx claudeos-core health     # सभी validators — एक single go/no-go verdict
+npx claudeos-core lint       # केवल CLAUDE.md structural invariants (किसी भी भाषा में)
+```
+
+### वास्तविक-दुनिया सत्यापन
+
+v2.3.0 को release से पहले दो वास्तविक कोरियाई sibling projects पर end-to-end validate किया गया था: एक 14-domain single-SPA Vite + React 19 frontend जिसमें 8 sub-skill `scaffold-page-feature` orchestrator है, और एक 8-domain Spring Boot + MyBatis backend जिसमें 8 sub-skill `scaffold-crud-feature` orchestrator है और PostgreSQL → MariaDB migration चल रहा है। दोनों पूर्ण health check पर **0 errors, 0 warnings** पर settle हुए — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 structural invariants pass — जेनरेटेड output पर कोई manual edit किए बिना।
+
+---
+
 ## सपोर्टेड स्टैक्स
 
 | स्टैक | डिटेक्शन | विश्लेषण गहराई |

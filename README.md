@@ -69,6 +69,38 @@ This difference compounds. 10 tasks/day × 20 minutes saved = **3+ hours/day**.
 
 ---
 
+## Post-Generation Quality Assurance (v2.3.0)
+
+Generation is only half the problem. The other half is **knowing the output is correct** — across 10 output languages, across 11 stack templates, across projects of any size. v2.3.0 adds two deterministic validators that run after generation and do not depend on LLM self-checks:
+
+### `claude-md-validator` — structural invariants
+
+Every generated `CLAUDE.md` is checked against 25 structural invariants that use only language-invariant signals: markdown syntax (`^## `, `^### `), literal file names (`decision-log.md`, `failure-patterns.md` — never translated), section counts, sub-section counts per section, and table-row counts. The same validator, byte-for-byte, produces identical verdicts on a `CLAUDE.md` generated in English, Korean, Japanese, Vietnamese, Hindi, Russian, Spanish, Chinese, French, or German.
+
+The cross-language guarantee is verified by test fixtures in all 10 languages, including bad-case fixtures in 6 of those languages that produce identical error signatures. When an invariant fails on a Vietnamese project, the fix is the same as when it fails on a German project.
+
+### `content-validator [10/10]` — path-claim verification and MANIFEST consistency
+
+Reads every backticked path reference (`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`) from all generated `.md` files and verifies them against the actual file system. Catches two classes of LLM failure that no tool detected before:
+
+- **`STALE_PATH`** — when Pass 3 or Pass 4 fabricates a plausible-but-nonexistent path. Typical cases: inferring `featureRoutePath.ts` from a TypeScript constant named `FEATURE_ROUTE_PATH` when the actual file is `routePath.ts`; assuming `src/main.tsx` from Vite convention in a multi-entry project; assuming `src/__mocks__/handlers.ts` from MSW documentation even when the project has no tests.
+- **`MANIFEST_DRIFT`** — when `claudeos-core/skills/00.shared/MANIFEST.md` registers a skill that `CLAUDE.md §6` doesn't mention (or vice versa). Recognizes the common orchestrator + sub-skills layout where `CLAUDE.md §6` is an entry point and `MANIFEST.md` is the full registry — sub-skills are considered covered via their parent orchestrator.
+
+The validator is paired with prompt-time prevention in `pass3-footer.md` and `pass4.md`: anti-pattern blocks documenting the specific hallucination classes (parent-directory prefix, Vite/MSW/Vitest/Jest/RTL library conventions), and explicit positive guidance to scope rules by directory when a concrete filename isn't in `pass3a-facts.md`.
+
+### Run validation on any project
+
+```bash
+npx claudeos-core health     # all validators — single go/no-go verdict
+npx claudeos-core lint       # CLAUDE.md structural invariants only (any language)
+```
+
+### Real-world verification
+
+v2.3.0 was validated end-to-end on two real-world Korean sibling projects before release: a single-SPA Vite + React 19 frontend with 14 domains and an 8-sub-skill `scaffold-page-feature` orchestrator, and a Spring Boot + MyBatis backend with 8 domains and an 8-sub-skill `scaffold-crud-feature` orchestrator undergoing a PostgreSQL → MariaDB migration. Both settled at **0 errors, 0 warnings** on the full health check — `STALE_PATH` 0, `MANIFEST_DRIFT` 0, 25/25 structural invariants passing — without any manual edits to the generated output.
+
+---
+
 ## Supported Stacks
 
 | Stack | Detection | Analysis Depth |
@@ -616,7 +648,8 @@ node claudeos-core-tools/sync-checker/index.js
 | **manifest-generator** | Builds metadata JSON (`rule-manifest.json`, `sync-map.json`, initializes `stale-report.json`); indexes 7 directories including `memory/` (`totalMemory` in summary). v2.1.0: `plan-manifest.json` is no longer generated since master plans were removed. |
 | **plan-validator** | Validates master plan `<file>` blocks against disk for projects that still have `claudeos-core/plan/` (legacy upgrade case). v2.1.0: skips `plan-sync-status.json` emission when `plan/` is absent or empty — `stale-report.json` still records a passing no-op. |
 | **sync-checker** | Detects unregistered files (on disk but not in plan) and orphaned entries — covers 7 directories (added `memory/` in v2.0.0). Exits cleanly when `sync-map.json` has no mappings (v2.1.0 default state). |
-| **content-validator** | 9-section quality check — empty files, missing ✅/❌ examples, required sections, plus L4 memory scaffold integrity (decision-log heading dates, failure-pattern required fields, fence-aware parsing) |
+| **content-validator** | 10-check quality gate. Checks 1–9 cover empty files, missing ✅/❌ examples, required sections, and L4 memory scaffold integrity (decision-log heading dates, failure-pattern required fields, fence-aware parsing). **Check 10 (v2.3.0)** adds path-claim verification across all generated `.md` files and MANIFEST ↔ CLAUDE.md §6 cross-reference — catches `STALE_PATH` (fabricated paths like `featureRoutePath.ts`, `src/__mocks__/handlers.ts`) and `MANIFEST_DRIFT` (registered skills not mentioned in CLAUDE.md or vice versa), with an orchestrator/sub-skill exception that recognizes the canonical "§6 entry point + MANIFEST registry" split. |
+| **claude-md-validator (v2.3.0)** | Structural invariant check on `CLAUDE.md` using only language-invariant signals (markdown syntax, literal file names, section/sub-section/table-row counts). 25 checks, language-agnostic — identical verdicts across all 10 output languages. Invoked via `npx claudeos-core lint`. |
 | **pass-json-validator** | Validates Pass 1–4 JSON structure plus the `pass3-complete.json` (split-mode shape, v2.1.0) and `pass4-memory.json` completion markers |
 
 ---

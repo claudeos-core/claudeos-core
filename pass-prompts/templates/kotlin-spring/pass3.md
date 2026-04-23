@@ -119,7 +119,7 @@ Generation targets:
      - `10.backend/*` rules: `paths: ["**/*"]` — always loaded (backend rules needed for any source editing)
      - `30.security-db/*` rules: `paths: ["**/*"]` — always loaded (cross-cutting concerns)
      - `40.infra/01.environment-config-rules.md` paths: `["**/*.properties", "**/*.yml", "**/*.yaml", "**/.env*", "**/config/**", "**/application*.properties"]` — Spring config files
-     - `40.infra/02.logging-monitoring-rules.md` paths: `["**/*.kt", "**/*.kts", "**/logback*.xml"]` — source code where logs live + log config
+     - `40.infra/02.logging-monitoring-rules.md` paths: `["**/*.kt", "**/*.kts", "**/logback*.xml", "**/logback*.groovy", "**/log4j*.xml", "**/log4j*.properties", "**/log4jdbc*.properties"]` — source code where logs live + log config (covers Logback XML/Groovy DSL, Log4j/Log4j2 XML/properties, and log4jdbc JDBC-logging adapter properties)
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.gradle*", "**/*.kt", "**/*.kts"]` — CI / build config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]` — loaded only when editing claudeos-core files
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.

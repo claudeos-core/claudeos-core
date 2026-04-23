@@ -29,48 +29,86 @@ MUST appear verbatim in `pass3a-facts.md` or `pass2-merged.json`. If a
 concrete path is not in those analysis artifacts, OMIT it — do NOT write it.
 
 Do NOT invent paths based on framework convention, prior training knowledge,
-or extrapolation from symbol names. The most common v2.3.0 dogfood failures
-observed were all in this class:
+or extrapolation from symbol names. The three most common hallucination
+failures are described below by MECHANISM (not by literal example path,
+because literal examples in educational prose have historically leaked
+into generated outputs as real claims):
 
-❌ `src/feature/main.tsx`
-  — invented based on Vite's stock convention. This project may use a
-    different entry (e.g. `index.html` referencing a non-`main.tsx` file),
-    or may be a multi-entry project where no single `main.tsx` exists.
-    Check pass3a-facts.md; if no such path is listed, do not write it.
+❌ **Framework-convention entry-point invention.**
+  Citing a framework's stock entry-point file (Vite's main module, Next.js
+  app-router files, Spring's default resource config, etc.) because the
+  framework docs show that as the canonical location. This project may use
+  a different entry, a renamed entry, or a multi-entry layout where no
+  single canonical file exists. Check pass3a-facts.md; if no such path is
+  listed, do NOT write it.
 
-❌ `src/feature/routers/featureRoutePath.ts`
-  — invented by prepending the parent directory name ("feature") to the
-    filename, or by converting a TypeScript constant name
-    (`FEATURE_ROUTE_PATH`) into a filename. TypeScript identifiers and
-    filenames are independent. The authoritative filename is in
-    pass3a-facts.md under the "Routing" or "Shared imports" section.
-    If pass3a-facts.md says `routePath.ts`, write `routePath.ts`, not
-    `featureRoutePath.ts`.
+❌ **Parent-directory or constant-name renormalization of a filename.**
+  Inventing a filename by prepending the parent directory's name to it
+  (the <dirname><actual-basename>.ts anti-pattern), or by converting a
+  TypeScript constant / Java annotation / Python decorator name into
+  a filename (an ALL_CAPS_CONSTANT becoming a camelCase or PascalCase
+  filename). Identifiers and filenames are independent. The
+  authoritative filename is whatever pass3a-facts.md lists under the
+  relevant section — use that verbatim, do not "normalize" it.
 
-❌ `src/components/utils/classNameMaker.ts`
-  — plausibly-named utility, but unverified. "Plausible" is not a
-    sufficient ground for a concrete path claim. If you want to reference
-    a utility layer in a rule file, reference the directory
-    (`src/components/utils/`) rather than inventing a filename.
+❌ **Plausibly-named utility invention.**
+  Writing a concrete filename for a utility that "would naturally" exist
+  under a seen directory (a class-name-builder helper under a `utils/`
+  directory, a string-formatter under a `helpers/` directory). "Plausible"
+  is not a sufficient ground for a concrete path claim. If you want to
+  reference a utility layer in a rule file, reference the directory
+  itself rather than inventing a filename.
 
-❌ `src/__mocks__/handlers.ts`, `src/test/setup.ts`, `src/test-utils.tsx`,
-   `src/setupTests.ts`
-  — invented based on testing-library conventions (MSW, Vitest, Jest,
-    React Testing Library). If the project has no tests (0% coverage in
-    pass3a-facts.md) or uses a different layout, these paths do not
-    exist. Anti-pattern triggers: writing a `testing-strategy.md` or
-    similar standard file and reaching for "the canonical test-setup
-    location" from the library's docs. There is no canonical location —
-    every project chooses its own, and only pass3a-facts.md knows which.
-    If pass3a-facts.md lists no test files, write the testing guidance
-    in general terms ("a shared setup module under a test directory of
-    your choice") rather than naming a specific path.
+❌ Library-convention canonical paths (testing / env typing / styling /
+   state management / routing conventions) — invented based on framework
+   or library documentation.
+  — Testing frameworks (MSW, Vitest, Jest, RTL) show canonical mock /
+    setup / test-utility locations in their docs; TypeScript + Vite /
+    CRA show a canonical `ImportMetaEnv` augmentation location; CSS-in-JS
+    and state-management libraries show canonical store / theme
+    locations. These are PROJECT-CHOICE files — every project picks its
+    own structure, and the library's canonical path may not exist here.
+    **Scope note (v2.3.2+):** this trap fires whenever the topic of a
+    generated file touches these areas (testing, env typing, styling,
+    state management), not only when the file is named after the topic.
+    It fires in `ai-work-rules.md`, onboarding guides, infra rules,
+    CRUD skills — anywhere the topic appears. If pass3a-facts.md lacks
+    the concrete file, describe the pattern by role ("a shared setup
+    module under a test directory of your choice", "augment
+    `ImportMetaEnv` in a type-declaration file of your choosing"), not
+    by filename. When illustrating bad path habits as an educational
+    example in a rule, use abstract placeholders (`{placeholder}`,
+    `src/*/dir/…`) rather than literal paths — literal example paths
+    are interpreted as real claims by `content-validator [10/10]`
+    regardless of surrounding prose.
 
-✅ If pass3a-facts.md shows `ApiClient` (`src/admin/api/apiClient.ts`) as
-   the response wrapper, write `src/admin/api/apiClient.ts` verbatim.
+❌ **Hypothetical / future-tense framing is NOT a loophole (v2.3.2+).**
+  Wrapping a framework-canonical path in conditional or future-tense
+  language (`if we adopted X`, `were this feature introduced, it
+  would live at …`, `for a future Y`, `when Z is added later`, etc.,
+  in ANY output language — translated conditional phrases do not
+  change the validator's literal-path detection) does NOT make the
+  literal path safe. The validator is content-blind and will flag
+  ``if middleware is added later, place it at `src/middleware.ts` ``
+  as a `STALE_PATH` advisory because the file does not exist on disk.
+  This is the Next.js / Vite / Spring blind spot: the LLM, when
+  discussing future extensions, reaches for the framework's canonical
+  path as the "natural" location and writes it verbatim. The correct
+  hypothetical form describes the ROLE or DIRECTORY without
+  committing to a filename (e.g., "If middleware is added, place it
+  at the path the routing convention expects — do not cite a
+  specific filename until the file actually exists"). When in doubt,
+  OMIT the hypothetical example entirely; an omitted example is
+  better than a fabricated path readers may treat as authoritative.
+
+✅ If pass3a-facts.md shows a specific filename and path for a role
+   (e.g., a response-wrapper module at a specific location under the
+   api directory), write that exact path verbatim — do not re-describe
+   it, do not abbreviate it, do not rename it.
 
 ✅ When in doubt, write the rule in terms of the pattern (e.g., "handwritten
-   API modules under `src/admin/api/`") rather than a specific file name.
+   API modules under the api directory listed in pass3a-facts.md") rather
+   than a specific file name invented on the spot.
    A directory-scoped rule is correct; an invented file path is a bug.
 
 ✅ For testing-strategy documents specifically: if the project has zero

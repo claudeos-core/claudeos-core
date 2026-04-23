@@ -638,7 +638,7 @@ describe("prompt-generator — scaffold meta-header demotion (v2.3.0)", () => {
   });
 
   it("overall pass3-prompt has limited ## headers after embedding real scaffold", () => {
-    // Use the actual scaffold file to catch regressions in real-world shape.
+    // Use the actual scaffold file to catch regressions in its shape.
     const realScaffoldPath = path.resolve(
       __dirname,
       "..",

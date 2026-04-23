@@ -149,7 +149,7 @@ function captureThrow(fn) {
   throw new Error("expected function to throw but it did not");
 }
 
-test("guard 3: empty guide/ after rules succeed → throws (the real-world bug)", () => {
+test("guard 3: empty guide/ after rules succeed → throws (canonical bug)", () => {
   const d = tmpDir();
   try {
     // Rules are fine, but guide/ is empty (Claude truncated mid-response).

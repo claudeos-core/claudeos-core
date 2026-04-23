@@ -1,6 +1,60 @@
 Read claudeos-core/generated/project-analysis.json and
 perform a deep analysis of the following domains only: {{DOMAIN_GROUP}}
 
+## MANDATORY: Configuration file verification (read before analysis)
+
+Before analyzing domain source code, read the following configuration
+files if they exist in the project root. The stack metadata in
+`project-analysis.json` is produced by a regex-based static analyzer
+and may be incomplete for modern Gradle/Maven projects. Reading these
+files directly gives you the ground truth for Java version, server
+port, active profile, datasource configuration, and logging setup.
+
+Required reads (if the file exists):
+
+1. **`build.gradle` or `build.gradle.kts`** (or **`pom.xml`** for Maven).
+   Specifically check:
+   - Java version: look inside `java { ... }`, `java { toolchain { ... } }`,
+     `sourceCompatibility`, `targetCompatibility`, or `<java.version>` /
+     `<maven.compiler.source>` in pom.xml. If the value is a variable
+     reference (e.g., `sourceCompatibility = "${javaVersion}"`), resolve
+     the variable inside `ext { ... }` or `<properties>`. Record the
+     ACTUAL Java version — do NOT infer "Java 17+" from the Spring
+     Boot version.
+   - Spring Boot version: verify it matches `project-analysis.json`'s
+     frameworkVersion field; if they disagree, trust the build file.
+   - Dependencies that indicate specific patterns (MyBatis/iBatis/JPA,
+     multiple DB drivers, Jasypt, JWT library, Logback extras).
+
+2. **`application.yml` / `application.yaml` / `application.properties`
+   and their profile variants** (`application-{profile}.{yml,yaml,properties}`).
+   Specifically check:
+   - Server port: look for `server.port`. Spring Boot accepts property
+     placeholders with defaults like `port: ${G_PORT:8090}` — extract the
+     default value (the post-colon number) as the ACTUAL port. Do NOT
+     assume "port 8080" from the Spring Boot framework default.
+   - Active profile(s): `spring.profiles.active` and `spring.profiles.group`.
+   - Datasource: every `spring.datasource.*` block (multi-dialect projects
+     declare more than one; a `group` profile block like
+     `"local": "local,postgres"` reveals which DB is active per profile).
+   - Logging configuration file reference: `logging.config` points to
+     the real log setup (e.g., `classpath:logback-app.xml`). Read that
+     file too to understand appenders, levels, and JDBC logging
+     adapters like `log4jdbc`.
+
+3. **Any referenced logging configuration files**: `logback*.xml`,
+   `logback*.groovy`, `log4j*.xml`, `log4j*.properties`,
+   `log4jdbc*.properties`. These reveal the actual logging framework
+   in use (Logback is the Spring Boot default but legacy projects may
+   use Log4j2 or mix with JDBC adapters).
+
+When `project-analysis.json` and the configuration files disagree,
+record the configuration-file value as the truth and note the
+discrepancy in your analysis output. This is the path to eliminate
+"Java 17+" / "port 8080" hallucinations observed in pre-v2.3.2 runs.
+
+## Domain analysis
+
 For each domain, select one representative file per layer, read its code, and analyze it.
 Prioritize files with the richest patterns.
 

@@ -259,14 +259,30 @@ Do NOT declare CLAUDE.md generation complete until count = 8 AND
 Section 8 contains exactly 2 `###` sub-sections.
 
 STEP 4b — Title determinism check. For each of the 8 `## N.` headings,
-confirm that the English canonical phrase is present as the primary
-heading text (a native-language translation may follow in parentheses).
-This rule is LANGUAGE-INVARIANT — applied regardless of `{OUTPUT_LANG}`:
+confirm that:
+  (a) the English canonical phrase is present as the primary heading text
+      (LANGUAGE-INVARIANT — applied regardless of `{OUTPUT_LANG}`), AND
+  (b) if `{OUTPUT_LANG}` != `en`, the canonical native-language gloss is
+      appended in parentheses (REQUIRED, not optional). If `{OUTPUT_LANG}`
+      == `en`, no gloss is emitted. The canonical gloss table lives in
+      `claude-md-scaffold.md` under "Section heading format".
 
-    ✅ `## 7. DO NOT Read`
-    ✅ `## 7. DO NOT Read (직접 읽지 말아야 할 파일)`
-    ❌ `## 7. 읽지 말 것 (Files Not to Be Read Directly)`
-       — English canonical must be PRIMARY, not parenthetical
+    en output:
+        ✅ `## 7. DO NOT Read`
+        ❌ `## 7. DO NOT Read (Files Not to Be Read Directly)`
+           — no gloss when OUTPUT_LANG == en
+
+    ko output:
+        ✅ `## 7. DO NOT Read (직접 읽지 말아야 할 파일)`
+        ❌ `## 7. DO NOT Read`
+           — gloss is required when OUTPUT_LANG != en
+        ❌ `## 7. 읽지 말 것 (Files Not to Be Read Directly)`
+           — English canonical must be PRIMARY, not parenthetical
+
+    ja output:
+        ✅ `## 7. DO NOT Read (直接読まないファイル)`
+        ❌ `## 7. DO NOT Read`
+           — gloss is required when OUTPUT_LANG != en
 
 Required canonical tokens by section number:
     §1 → "Role Definition"
@@ -300,71 +316,192 @@ write in rules, standard, or CLAUDE.md MUST be a literal, verbatim path
 from `pass2-merged.json` / `project-analysis.json` / `pass1-*.json`.
 Do not invent, augment, or "normalize" filenames.
 
+**PRIMARY CHECK — pass3a-facts.md's Allowed Source Paths section**
+**(v2.3.x+ allowlist):**
+
+Before writing ANY `src/...`, `packages/...`, `apps/...`, or
+language-specific source path in a rule or standard file, you MUST
+verify the path appears VERBATIM in the `## Allowed Source Paths`
+section of `pass3a-facts.md`. If the section is in "full" mode (lists
+individual files), the exact filename must be present. If the section
+is in "rollup" mode (lists directories because the project exceeds the
+enumeration budget), at minimum the path's parent directory must match
+a listed directory entry — and for the specific filename you must
+cross-check `pass2-merged.json` before writing it.
+
+A path NOT in the allowlist is a fabrication. Do not write it under
+any circumstance. Not even when:
+- The framework's documentation shows that path as "canonical" — this
+  covers Next.js app-router provider files, Vite test-setup or mock
+  handler modules, Spring resource config files, Django settings
+  modules, and similar framework-canonical locations. These paths
+  may be canonical in framework docs yet absent from THIS project's
+  allowlist because the project chose a different layout; citing
+  the canonical form is still a fabrication. (Do NOT quote the
+  specific canonical paths here — describe the category abstractly
+  if you must warn about it.)
+- A similar path appears in the allowlist and you are tempted to
+  "extrapolate" a sibling — for example, if the allowlist has a
+  list-operation file under some API directory, do NOT cite a
+  hypothetical create-operation file in the same directory just
+  because it would be a natural sibling. Cite only what the
+  allowlist actually contains.
+- A TypeScript constant, Java annotation, or Python decorator name
+  suggests a filename (an ALL_CAPS constant naming a route path does
+  NOT mean a matching camelCase-basename .ts file exists; this was
+  the canonical v2.3.0 failure case and must remain a category
+  warning, not a filename warning).
+
+If the concept you want to describe has no corresponding file in the
+allowlist, either:
+  (a) describe the pattern abstractly ("a central router module"
+      rather than a fabricated concrete filename), OR
+  (b) omit the concrete citation entirely.
+
+This rule is enforced post-generation by `content-validator [10/10]
+path-claim verification`. Fabricated paths will be flagged as
+`STALE_PATH` advisories. The allowlist exists so that those advisories
+become rare — not so they become suppressible.
+
+**Secondary: filename-from-parent-directory hallucination:**
+
 The single most common Pass 3 hallucination pattern is inferring a
-filename from its parent directory:
+filename from its parent directory. Consider a hypothetical project
+where pass3a-facts.md lists a directory `src/feature/Xxx/` containing
+files `Yyy.ts` and `Zzz.ts`:
 
-    Directory seen in facts:  src/feature/routers/
-    File seen in facts:       src/feature/routers/routePath.ts
-                              src/feature/routers/routeComponentMap.ts
+    Directory seen in facts:  src/feature/Xxx/
+    File seen in facts:       src/feature/Xxx/Yyy.ts
+                              src/feature/Xxx/Zzz.ts
 
-    ❌ WRONG: write `src/feature/routers/featureRoutePath.ts`
-                       (prepended "feature" because the dir is `feature/`)
-    ❌ WRONG: write `src/feature/routers/FEATURE_COMPONENT_MAP.ts`
-                       (uppercased to match the TS constant name)
-    ✅ RIGHT: write `src/feature/routers/routePath.ts`
+    ❌ WRONG: invent a new filename by prepending the parent directory
+             name (writing `src/feature/Xxx/featureYyy.ts` because the
+             parent dir is named `feature/`).
+    ❌ WRONG: uppercase the filename to match a TypeScript constant
+             name (writing `src/feature/Xxx/YYY_MAP.ts` because the
+             module exports a constant named `YYY_MAP`).
+    ✅ RIGHT: write the filename exactly as pass3a-facts.md lists it
+             (`src/feature/Xxx/Yyy.ts`).
 
-Mechanism of the error: the model sees a constant named
-`FEATURE_ROUTE_PATH` (a TypeScript identifier) and "renormalizes" the
-filename to match it. TypeScript identifiers and filenames are
-independent — do NOT let the constant's name drive the filename you
-write. The filename in `pass2-merged.json` is authoritative.
+Mechanism of the error: the model sees an ALL_CAPS TypeScript
+constant name and "renormalizes" the filename to match it. TypeScript
+identifiers and filenames are independent — do NOT let the constant's
+name drive the filename you write. The filename in
+`pass2-merged.json` is authoritative.
 
 Same rule applies to domain prefixes in general:
-- `src/feature/X.ts` is the correct reference even when the file's
+- `src/feature/Xxx.ts` is the correct reference even when the file's
   exported symbols start with `Feature*` or `FEATURE_*`.
 - Do NOT prepend the parent directory name to the filename as a
   disambiguator. The directory path is already the scope.
 
 Library-convention hallucination class (equally important):
 
-When generating a standard file about testing, mocking, styling,
-state management, or similar library-centric topics, do NOT reach
-for "the canonical file location" from the library's own docs. There
-is no canonical location — every project chooses its own.
+When discussing testing, mocking, styling, state management, environment
+configuration, or similar library-centric topics in ANY generated file
+(standard, rule, skill, guide — not just files named for the topic), do
+NOT reach for "the canonical file location" from the library's own docs.
+There is no canonical location — every project chooses its own.
 
-    ❌ WRONG: writing `testing-strategy.md` and referencing
-       `src/__mocks__/handlers.ts`, `src/test/setup.ts`,
-       `src/setupTests.ts`, or `src/test-utils.tsx` because MSW,
-       Vitest, or Jest docs show these paths.
-    ❌ WRONG: writing `styling-patterns.md` and referencing a
-       `src/styles/globals.css` or `src/theme.ts` because the
-       framework's quick-start uses them.
+**Scope note (v2.3.2+):** this constraint applies to EVERY file being
+generated, not only to files whose names match the topic. A rule file
+called `52.ai-work-rules.md` discussing test-running protocol can still
+trip this trap; an infra file `01.environment-config.md` discussing env
+typing can still trip it. The trigger is **the topic being described**,
+not the filename of the document describing it.
 
-    ✅ RIGHT: if pass3a-facts.md lists no test setup file (e.g.,
-       the project has 0% coverage with vitest installed but
-       no tests), write the testing guidance in abstract terms
-       ("a shared setup module in a test directory of your
-       choice") without naming a specific path.
-    ✅ RIGHT: for any library-centric standard, if the specific
-       file is not in pass3a-facts.md, describe the pattern
-       by role (what the file does) rather than by name (what
-       it is called).
+Guidance (by topic):
 
-Critical triggers for this class:
-- `testing-strategy.md` / `testing-patterns.md` — almost always
-  tries to name a mock handler file or test setup file.
-- `styling-patterns.md` — almost always tries to name a global
-  stylesheet or theme file.
-- `state-management.md` — almost always tries to name a store
-  bootstrap file (Redux, Zustand, etc.) even when the project
-  uses only React Context.
+- **Testing / mocking.** If pass3a-facts.md lists no test setup file
+  (e.g., the project has 0% coverage with vitest installed but no
+  tests), write the testing guidance in abstract terms ("a shared setup
+  module in a test directory of your choice") without citing a
+  framework-canonical path.
+- **Environment typing.** If no `.d.ts` file appears in the allowlist,
+  describe the `ImportMetaEnv` interface inline ("augment `ImportMetaEnv`
+  in a type-declaration file of your project's choosing") without
+  naming a specific filename.
+- **Styling / theming / state management.** If the specific file is
+  not in pass3a-facts.md, describe the pattern by role (what the file
+  does) rather than by name (what it is called).
+
+**Important — how to write examples in rules (v2.3.2+):** rule files
+(especially `52.ai-work-rules.md` and similar "meta" rules) sometimes
+need to illustrate bad path habits as educational examples. When they
+do, write the illustrative paths as **abstract placeholders** so the
+validator recognizes them as teaching examples, not as concrete path
+claims:
+
+- Use generic directory references with a glob or ellipsis:
+  `src/test/…`, `src/types/*.d.ts`, `src/*/mocks/…`
+- Use the `{placeholder}` form the validator already skips:
+  `src/{feature}/api/{Entity}.ts`, `src/hooks/use{Domain}.ts`
+- Use the prose form: "a mock handler file under a `__mocks__/`
+  directory of your choice" rather than a concrete filename.
+
+Do NOT cite a specific literal path (e.g., naming an exact file and
+extension that happens to be the library's canonical location) in an
+educational example. Literal paths are interpreted as real claims by
+`content-validator [10/10]` regardless of surrounding prose. If the
+example you want to give MUST be literal, add it to pass3a-facts.md
+first (i.e., only literal paths that actually exist in the project).
+
+**Hypothetical / future-tense framing is NOT a loophole (v2.3.2+):**
+wrapping a framework-canonical path in conditional or future-tense
+language (`if we adopted X`, `were this feature introduced, it would
+live at …`, `for a future Y`, `when Z is added later`, etc., in ANY
+output language) does NOT make the literal path safe. The validator
+is content-blind and will flag
+``if middleware is added later, place it at `src/middleware.ts` `` as
+a `STALE_PATH` advisory because `src/middleware.ts` does not exist on
+disk. This is the Next.js / Vite / Spring blind spot: the LLM, when
+discussing future extensions, reaches for the framework's canonical
+path as the "natural" location and writes it verbatim.
+
+The correct hypothetical form describes the ROLE or DIRECTORY without
+committing to a filename:
+
+- ❌ WRONG: "If middleware is added, place it at `src/middleware.ts`."
+- ❌ WRONG: "For a health endpoint in the future,
+  `src/app/api/health/route.ts`."
+- ✅ RIGHT: "If middleware is added later, place it at the path
+  Next.js's routing convention expects for the version in use
+  (describe the role; do not cite a literal filename)."
+- ✅ RIGHT: "A future health endpoint belongs under the project's
+  API route directory structure (see Next.js documentation for the
+  routing convention — do not assume a specific filename until the
+  file exists)."
+- ✅ RIGHT: "If an env-typing file is introduced, augment
+  `ImportMetaEnv` in a type-declaration file placed under the
+  project's chosen convention."
+
+In every case, if you cannot name the role + directory without
+committing to a specific `src/...` path that does NOT appear in
+pass3a-facts.md, OMIT the example entirely. An omitted example is
+better than a fabricated path that downstream readers may treat as
+authoritative. This rule applies regardless of the output language:
+translated conditional phrases (Korean, Japanese, Chinese, etc.) do
+not change the validator's literal-path detection — use a placeholder
+form or omit.
+
+Critical triggers for this class (the **topic**, not the filename):
+- Testing / mocking / test-runner protocol — almost always tempts a mock
+  handler file or test setup file, even in AI-work or onboarding rules.
+- Environment configuration / env typing — almost always tempts a
+  `.d.ts` file for `ImportMetaEnv` augmentation.
+- Styling / theming — almost always tempts a global stylesheet or
+  theme file.
+- State management — almost always tempts a store bootstrap file
+  (Redux, Zustand, etc.) even when the project uses only React Context.
 
 The rule in all cases: if pass3a-facts.md has the concrete path,
 use it verbatim; if not, describe the role without naming a file.
 
 This rule is enforced post-generation by `content-validator [10/10]
 path-claim verification`. Fabricated paths will be flagged as
-`STALE_PATH` errors with the path quoted back, forcing re-generation.
+`STALE_PATH` advisories with the path quoted back; the allowlist and
+this explicit denylist exist so that those advisories become rare —
+not so they become suppressible.
 
 CRITICAL — MANIFEST ↔ CLAUDE.md §6 Skills consistency:
 

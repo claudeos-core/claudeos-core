@@ -16,6 +16,7 @@ const { detectStack } = require("./stack-detector");
 const { scanStructure } = require("./structure-scanner");
 const { splitDomainGroups, determineActiveDomains, selectTemplates } = require("./domain-grouper");
 const { generatePrompts } = require("./prompt-generator");
+const { collectSourcePaths } = require("./source-paths");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const GENERATED_DIR = path.join(ROOT, "claudeos-core/generated");
@@ -54,6 +55,23 @@ async function main() {
   if (backendDomains.length === 0 && frontendDomains.length === 0) {
     console.warn("\n  ⚠️  No domains detected.");
     console.warn("  Pass 1 will be skipped. Generated output may be minimal.\n");
+  }
+  console.log();
+
+  // Phase 2.5: Allowed source paths (v2.3.x+ — path-hallucination prevention)
+  //
+  // Collect the authoritative list of source files that actually exist on
+  // disk. Pass 3/4 prompts use this list (via pass3a-facts.md and the
+  // pass3-footer.md grounding rule) to refuse citations of convention-based
+  // fabricated paths like `src/app/providers.tsx` when the project does
+  // not in fact ship that file. See plan-installer/source-paths.js for
+  // the full rationale.
+  console.log("  [Phase 2.5] Collecting source-path allowlist...");
+  const sourcePaths = await collectSourcePaths(ROOT);
+  if (sourcePaths.mode === "full") {
+    console.log(`    ${sourcePaths.totalFiles} source file(s) enumerated (full mode)`);
+  } else {
+    console.log(`    ${sourcePaths.totalFiles} source files across ${sourcePaths.paths.length} dirs (rollup mode — project exceeds enumeration budget)`);
   }
   console.log();
 
@@ -111,6 +129,11 @@ async function main() {
     templates, isMultiStack, rootPackage,
     domains, backendDomains, frontendDomains, frontend,
     activeDomains: active,
+    // v2.3.x+: authoritative on-disk source-file list. Consumed by
+    // pass3-context-builder → pass3a-facts.md → Pass 3/4 prompts to
+    // prevent convention-based path hallucination (e.g. Next.js
+    // `src/app/providers.tsx` when the project does not ship it).
+    allowedSourcePaths: sourcePaths,
     summary: {
       totalDomains: domains.length, backendDomains: backendDomains.length,
       frontendDomains: frontendDomains.length,

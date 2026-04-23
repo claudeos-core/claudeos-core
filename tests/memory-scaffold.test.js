@@ -437,7 +437,7 @@ test("static fallback integration: scaffolds memory + rules + standard, leaves C
   const rulesDir = path.join(d, ".claude/rules");
   const claudeMd = path.join(d, "CLAUDE.md");
   // Pretend Pass 3 already wrote CLAUDE.md with Section 8 in place —
-  // that is the real-world state the fallback runs against.
+  // that is the runtime state the fallback runs against.
   const pass3Output = "# CLAUDE.md\n\n## 8. Common Rules & Memory (L4)\n\nPass 3 authored.\n";
   fs.writeFileSync(claudeMd, pass3Output);
   fs.mkdirSync(standardCoreDir, { recursive: true });

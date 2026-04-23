@@ -91,9 +91,9 @@ function cleanup(root) {
 
 describe("content-validator [10/10] — path-claim verification", () => {
   test("fabricated src/ path in a rule file is reported as STALE_PATH", () => {
-    // The frontend-react-B dogfood case: LLM references
+    // Canonical hallucination case: the LLM references
     // `src/feature/routers/featureRoutePath.ts` when the actual file is
-    // `routePath.ts` — hallucinated "feature" prefix from parent dir.
+    // `routePath.ts` — invented "feature" prefix from the parent dir.
     const root = buildTree({
       ruleBody:
         "---\npaths: ['**/*']\n---\n\n# Test rule\n\n" +
@@ -174,8 +174,8 @@ describe("content-validator [10/10] — MANIFEST drift", () => {
 
   test("MANIFEST_DRIFT when a registered skill is not referenced in CLAUDE.md", () => {
     // Skill exists on disk + in MANIFEST, but CLAUDE.md does not
-    // mention it in any skill reference. Exactly the frontend-react-B
-    // drift pattern (3 skills in MANIFEST, only 1 in CLAUDE.md §6).
+    // mention it in any skill reference. Canonical drift pattern:
+    // 3 skills in MANIFEST, only 1 in CLAUDE.md §6.
     const root = buildTree({
       manifest:
         "# Skills Manifest\n\n" +
@@ -248,8 +248,8 @@ describe("content-validator [10/10] — MANIFEST drift", () => {
   });
 });
 
-describe("content-validator [10/10] — real-world frontend-react-B simulation", () => {
-  test("reproduces all drift classes seen during real-world dogfooding", () => {
+describe("content-validator [10/10] — integrated multi-class scenario", () => {
+  test("reproduces all drift classes in a combined scenario", () => {
     // Recreate: 2 hallucinated src/ paths in a rule, MANIFEST with 4
     // skills (2 missing on disk), CLAUDE.md referencing only 1 of the
     // 4 skills. Expected: STALE_PATH × 2, STALE_SKILL_ENTRY × 2,
@@ -304,9 +304,10 @@ describe("content-validator [10/10] — orchestrator/sub-skill exception (v2.3.0
   // sub-skills, so forcing Pass 3b to predict them either fails or
   // hallucinates filenames. The exception: when the ORCHESTRATOR is
   // referenced in CLAUDE.md, sub-skills registered in MANIFEST under that
-  // orchestrator's stem are considered covered via indirection. This
-  // mirrors the real-world backend-java-spring layout
-  // (10.backend-crud/01.scaffold-crud-feature.md + 8 sub-skills).
+  // orchestrator's stem are considered covered via indirection. A
+  // canonical layout this applies to is a backend CRUD orchestrator
+  // with sub-skills (e.g. 10.backend-crud/01.scaffold-crud-feature.md
+  // + 8 sub-skills).
 
   function buildBackendCrudTree() {
     return buildTree({
@@ -427,7 +428,7 @@ describe("content-validator [10/10] — orchestrator/sub-skill exception (v2.3.0
   });
 
   test("sibling layout (one-level-deep skill, not sub-skill) is unaffected", () => {
-    // Regression guard for the original frontend-react-B shape:
+    // Regression guard for a sibling-skill shape:
     // `playground/01.add-playground-sample.md` is a standalone skill
     // named "playground", NOT a sub-skill of a "scaffold-page-feature"
     // orchestrator. The exception must not accidentally cover it when

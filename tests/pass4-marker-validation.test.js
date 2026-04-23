@@ -59,7 +59,7 @@ test("M1: malformed JSON → invalid", () => {
   } finally { cleanup(d); }
 });
 
-test("M1: Claude error body {'error':'timeout'} → invalid (the real-world failure)", () => {
+test("M1: Claude error body {'error':'timeout'} → invalid (canonical failure)", () => {
   const d = tmpDir();
   try {
     const fp = writeMarker(d, { error: "timeout" });

@@ -138,8 +138,8 @@ test("generatePrompts: pass4 contains rule file generation instructions", () => 
 });
 
 test("generatePrompts: pass4 enforces path fact grounding (v2.3.0 STALE_PATH prevention)", () => {
-  // v2.3.0 regression guard. frontend-react-B dogfooding surfaced four
-  // STALE_PATH errors in Pass 4 output (rules + standard files):
+  // v2.3.0 regression guard. Four canonical STALE_PATH cases observed
+  // in Pass 4 output (rules + standard files):
   //   - src/feature/main.tsx (Vite convention hallucination)
   //   - src/feature/routers/featureRoutePath.ts (prefix-from-parent-dir)
   //   - src/components/utils/classNameMaker.ts (plausible but unverified)
@@ -181,41 +181,65 @@ test("generatePrompts: pass4 enforces path fact grounding (v2.3.0 STALE_PATH pre
     "pass4 prompt must contain the Path fact grounding CRITICAL section"
   );
 
-  // 3. All three flagship anti-pattern examples must be documented
-  //    verbatim so future dogfood-regression cases are named in-prompt.
+  // 3. All three flagship anti-pattern MECHANISMS must be documented.
+  //    (v2.3.2 update) Earlier iterations asserted on literal example
+  //    paths (`src/feature/main.tsx`, `src/feature/routers/featureRoutePath.ts`,
+  //    `src/components/utils/classNameMaker.ts`) so that future
+  //    regressions would have named waypoints in the prompt. A
+  //    prompt-to-output leakage pattern was subsequently identified
+  //    (the same class that triggered the library-convention denylist
+  //    removal): literal example paths inside the prompt's educational
+  //    prose were copied by LLMs into generated rule files (notably
+  //    `52.ai-work-rules.md`) as teaching examples, which
+  //    `content-validator [10/10]` then flagged as STALE_PATH false
+  //    positives.
+  //
+  //    The prompt was rewritten to describe each anti-pattern by
+  //    MECHANISM only — framework-convention entry-point invention,
+  //    parent-directory / constant-name renormalization, plausibly-named
+  //    utility invention. These assertions now verify each mechanism
+  //    is named and explained, without requiring the literal example
+  //    paths that would re-introduce the leakage.
   assert.match(
     body,
-    /❌ `src\/feature\/main\.tsx`/,
-    "must document the Vite-convention hallucination anti-pattern"
+    /Framework-convention entry-point invention/,
+    "must document the framework-convention entry-point anti-pattern by mechanism"
   );
   assert.match(
     body,
-    /❌ `src\/feature\/routers\/featureRoutePath\.ts`/,
-    "must document the parent-dir-prefix hallucination anti-pattern"
+    /Parent-directory or constant-name renormalization/,
+    "must document the parent-dir / constant-name renormalization anti-pattern by mechanism"
   );
   assert.match(
     body,
-    /❌ `src\/components\/utils\/classNameMaker\.ts`/,
-    "must document the plausible-but-unverified hallucination anti-pattern"
+    /Plausibly-named utility invention/,
+    "must document the plausibly-named utility anti-pattern by mechanism"
   );
 
   // 4a. MSW / testing-library convention class — added after
-  //     real-world dogfooding surfaced `src/__mocks__/handlers.ts`
-  //     as a Pass 3b hallucination in testing-strategy.md.
+  //     `src/__mocks__/handlers.ts` was observed as a Pass 3b
+  //     hallucination in testing-strategy.md.
+  //     (v2.3.2 update) Enumerating specific convention-trap paths
+  //     in the prompt primed the LLM to cite them as educational
+  //     examples, which content-validator then flagged as STALE_PATH.
+  //     The prompt was rewritten to describe the class topic-by-topic
+  //     without listing verbatim
+  //     canonical paths. These assertions now verify the topic-level
+  //     warning is present, not that specific example paths appear.
   assert.match(
     body,
-    /❌ `src\/__mocks__\/handlers\.ts`/,
-    "must document the MSW/testing-library convention hallucination class"
+    /Library-convention canonical paths|testing.{0,40}env typing.{0,40}styling/s,
+    "must name the library-convention path hallucination class as a topic"
   );
   assert.match(
     body,
-    /testing-library conventions \(MSW, Vitest, Jest,[\s\n]+React Testing Library\)/,
-    "must name the specific library ecosystem that triggers testing-path hallucinations"
+    /testing frameworks \(MSW, Vitest, Jest, RTL\)|MSW.{0,20}Vitest.{0,20}Jest/,
+    "must name the testing-framework ecosystem that triggers the hallucination"
   );
   assert.match(
     body,
-    /these paths do not[\s\n]+exist/,
-    "must explicitly reject the premise that testing paths exist by convention"
+    /PROJECT-CHOICE files|library's canonical path may not exist/,
+    "must explicitly reject the premise that convention paths exist by default"
   );
 
   // 5. The positive guidance — "use a directory-scoped rule instead
@@ -227,12 +251,20 @@ test("generatePrompts: pass4 enforces path fact grounding (v2.3.0 STALE_PATH pre
     "must document the positive pattern (directory scope over invented filename)"
   );
 
-  // 5a. Testing-strategy-specific positive guidance — if no tests
-  //     exist, describe abstractly, don't name paths.
+  // 5a. Topic-specific positive guidance — if the concrete file is
+  //     not in pass3a-facts.md, describe abstractly by role.
   assert.match(
     body,
-    /zero test coverage.*abstract terms|describe.*abstract.*without naming/s,
-    "must document the testing-strategy-specific positive pattern"
+    /describe the pattern by role|a shared setup module under a test directory of your choice|augment `ImportMetaEnv` in a type-declaration file of your choosing/s,
+    "must document the abstract-by-role pattern for missing files"
+  );
+
+  // 5b. v2.3.2 anti-prompt-leakage guidance — rule files that want to
+  //     illustrate BAD path habits must use placeholders, not literals.
+  assert.match(
+    body,
+    /abstract placeholders|\{placeholder\}|interpreted as real claims by `content-validator/s,
+    "must warn against citing literal convention paths as educational examples"
   );
 
   // 6. The block must explicitly connect the rule to the downstream

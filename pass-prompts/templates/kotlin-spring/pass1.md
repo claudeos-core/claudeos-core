@@ -1,6 +1,51 @@
 Read claudeos-core/generated/project-analysis.json and
 perform a deep analysis of the following domains only: {{DOMAIN_GROUP}}
 
+## MANDATORY: Configuration file verification (read before analysis)
+
+Before analyzing domain source code, read the following configuration
+files if they exist in the project root. The stack metadata in
+`project-analysis.json` is produced by a regex-based static analyzer
+and may be incomplete for modern Gradle/Maven projects. Reading these
+files directly gives you the ground truth for Kotlin/Java version,
+server port, active profile, datasource configuration, and logging.
+
+Required reads (if the file exists):
+
+1. **`build.gradle.kts` or `build.gradle`** (or **`pom.xml`** for Maven).
+   Specifically check:
+   - Kotlin version: look inside `plugins { kotlin("jvm") version "..." }`
+     or `libs.versions.toml`. If it's a variable reference, resolve it.
+   - Java target: look inside `kotlin { jvmToolchain(N) }`,
+     `tasks.withType<KotlinCompile> { kotlinOptions.jvmTarget = "..." }`,
+     or `java { toolchain { languageVersion = JavaLanguageVersion.of(N) } }`.
+     Record the ACTUAL target — do NOT infer from the Spring Boot version.
+   - Spring Boot version: verify it matches `project-analysis.json`'s
+     frameworkVersion field; if they disagree, trust the build file.
+   - Dependencies that indicate specific patterns (Exposed/JPA/jOOQ/R2DBC,
+     multiple DB drivers, Koin/Kodein, coroutines extensions).
+
+2. **`application.yml` / `application.yaml` / `application.properties`
+   and their profile variants** (`application-{profile}.{yml,yaml,properties}`).
+   Specifically check:
+   - Server port: look for `server.port`. Spring Boot accepts property
+     placeholders with defaults like `port: ${PORT:8080}` — extract the
+     default value (the post-colon number) as the ACTUAL port. Do NOT
+     assume "port 8080" from the Spring Boot framework default.
+   - Active profile(s): `spring.profiles.active` and `spring.profiles.group`.
+   - Datasource: every `spring.datasource.*` block.
+   - Logging configuration file reference: `logging.config` points to
+     the real log setup. Read that file too.
+
+3. **Any referenced logging configuration files**: `logback*.xml`,
+   `logback*.groovy`, `log4j*.xml`, `log4j*.properties`.
+
+When `project-analysis.json` and the configuration files disagree,
+record the configuration-file value as the truth and note the
+discrepancy in your analysis output.
+
+## Domain analysis
+
 For each domain, select one representative file per layer, read its code, and analyze it.
 Prioritize files with the richest patterns.
 For multi-module domains, analyze files from EACH module (command, query, bff) separately.

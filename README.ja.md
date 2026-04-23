@@ -83,7 +83,7 @@ ClaudeOS-Core は、プロジェクトが `ApiResponse.ok()`（`ResponseEntity.s
 
 生成されたすべての `.md` ファイルからバッククォート付きのパス参照 (`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`) を読み取り、実際のファイルシステムと照合します。これまでどのツールも検出できなかった 2 つの LLM 失敗クラスを捕捉します:
 
-- **`STALE_PATH`** — Pass 3 または Pass 4 がもっともらしいが実在しないパスを捏造した場合。典型例: 実際のファイルが `routePath.ts` なのに TypeScript 定数 `FEATURE_ROUTE_PATH` から `featureRoutePath.ts` を推論; multi-entry プロジェクトで Vite 慣習から `src/main.tsx` を仮定; プロジェクトにテストがないのに MSW ドキュメントから `src/__mocks__/handlers.ts` を仮定。
+- **`STALE_PATH`** — Pass 3 または Pass 4 がもっともらしいが実在しないパスを捏造した場合。3つの代表的クラス: (1) **識別子 → ファイル名の再正規化** — ALL_CAPS の TypeScript 定数や Java アノテーションから、実際のファイル名とは異なる命名規則のファイル名を推論; (2) **フレームワーク慣習の起点ファイル捏造** — 別のレイアウトを採用したプロジェクトに、フレームワーク標準の起点ファイル(Vite の main モジュール、Next.js app-router providers など)があると仮定; (3) **もっともらしいユーティリティ捏造** — 可視ディレクトリ配下に「自然に存在しそうな」ヘルパーの具体ファイル名を引用。
 - **`MANIFEST_DRIFT`** — `claudeos-core/skills/00.shared/MANIFEST.md` に登録された skill が `CLAUDE.md §6` に言及されていない (または逆)。`CLAUDE.md §6` がエントリーポイントで `MANIFEST.md` が完全なレジストリとなる orchestrator + sub-skill レイアウトを認識し、sub-skill は親 orchestrator を介して間接的にカバーされると判定します。
 
 validator は `pass3-footer.md` と `pass4.md` の prompt-time prevention とペアになります: 特定の幻覚クラス (親ディレクトリ接頭辞、Vite/MSW/Vitest/Jest/RTL ライブラリ慣習) を文書化した anti-pattern ブロックと、`pass3a-facts.md` に具体的なファイル名がない場合はルールをディレクトリ単位でスコープするという明示的な positive guidance。

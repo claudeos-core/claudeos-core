@@ -380,8 +380,8 @@ test("v2.3.0 resume: absent marker → fresh run", () => {
 });
 
 test("v2.3.0 resume: split-partial marker (no completedAt) → resume run", () => {
-  // Exact shape from the backend-java-spring dogfood case: 3a/3b/3c done,
-  // 3d-aux timed out, lastUpdatedAt present but completedAt absent.
+  // Canonical partial-marker shape: 3a/3b/3c done, 3d-aux timed out,
+  // lastUpdatedAt present but completedAt absent.
   const marker = JSON.stringify({
     mode: "split",
     groupsCompleted: ["3a", "3b", "3c"],

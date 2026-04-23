@@ -31,7 +31,7 @@ describe("claude-md-validator — valid fixtures pass (all 10 languages)", () =>
   // language must also update this list.
   const ALL_SUPPORTED_LANGS = [
     { code: "en", name: "English" },
-    { code: "ko", name: "Korean" }, // uses realworld-ko-fixed.md (real dogfooding case, §9 removed)
+    { code: "ko", name: "Korean" }, // uses realworld-ko-fixed.md (realistic-size fixture, §9 removed)
     { code: "ja", name: "Japanese" },
     { code: "zh-CN", name: "Chinese (Simplified)" },
     { code: "es", name: "Spanish" },
@@ -315,10 +315,10 @@ describe("claude-md-validator — T1 title determinism", () => {
   });
 
   test("non-English primary heading (without English canonical) is rejected", () => {
-    // The exact anti-pattern caught during frontend-react-B dogfooding:
+    // The anti-pattern: English phrase in the parenthetical, not the
+    // primary heading text:
     //   ## 7. 읽지 말 것 (Files Not to Be Read Directly)
-    // Here the English phrase is in the parenthetical, not primary, so
-    // multi-repo grep for "## 7. DO NOT Read" would miss this repo.
+    // Multi-repo grep for "## 7. DO NOT Read" would miss this repo.
     const os = require("node:os");
     const pathMod = require("node:path");
     const tmpDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "t1-antipat-"));

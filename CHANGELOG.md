@@ -1,5 +1,730 @@
 # Changelog
 
+## [2.3.2] — 2026-04-23
+
+Internal refactor + UX polish + prompt/validator co-evolution for
+path-hallucination defense + stack-detector hardening. Five co-shipped
+changes: (1) `bin/commands/init.js` — `cmdInit` decomposed from a
+single 970-line function into 16 focused stage helpers plus a 107-line
+orchestrator; (2) `content-validator` output reframed from the
+vocabulary of generation failures to the vocabulary of quality
+advisories; (3) library-convention hallucination warning in
+`pass3-footer.md` / `pass4.md` rescoped from filename-binding to
+topic-binding, with validator-side placeholder-pattern expansion
+(`Xxx` / `XXX` / glob-star) and a narrow file-level exclusion for
+`00.core/52.ai-work-rules.md`, plus a follow-up hypothetical /
+future-tense framing guard that closes the "if this feature were
+added, it would live at `src/middleware.ts`" class of path
+fabrication; (4) `claude-md-scaffold.md` Section 1
+generation rules hardened with a canonical 10-language translation
+table, and Section heading parenthetical gloss reclassified from
+optional to required (for non-English output) / forbidden (for
+English output), with a 10-language × 8-section gloss table;
+(5) `plan-installer/stack-detector.js` extended to cover Gradle
+variable-reference patterns (`sourceCompatibility = "${var}"`, ext-
+block Spring Boot version), Maven property references, Spring
+property-placeholder ports (`${APP_PORT:8090}`), iBatis detection as
+distinct from MyBatis, multi-dialect database arrays, MariaDB
+detection (previously missing from `DB_KEYWORD_RULES`), and logging-
+framework identification (Logback / Log4j2 / log4jdbc / Log4j 1.x
+with oauth-style false-positive guards). Also `pass-prompts/templates/
+java-spring/pass3.md` and `kotlin-spring/pass3.md` logging-rule glob
+extended to cover `.properties`, `.groovy`, and `log4jdbc*` file
+patterns; Pass 1 Java / Kotlin prompts now include an explicit
+"configuration file verification" block instructing the LLM to read
+`build.gradle` / `pom.xml` / `application*.yml` directly as
+ground-truth sources when stack metadata is incomplete. Zero
+functional regression: identical pipeline behavior, identical exit
+codes for CI consumers. Test suite 694 / 694 pass (up from 662).
+
+### Refactor — `cmdInit` decomposition
+
+- **Problem addressed.** The main entry-point function had accumulated
+  970 lines, 77 `if` statements, and 17 `try` blocks as each new
+  pipeline stage (Pass 1 batching, Pass 2 structural validation,
+  Pass 3 split + resume, Pass 3 stale-marker detection, Pass 4
+  gap-fill, lint, content-validator) was spliced into the same linear
+  body. The function was readable one stage at a time but not as a
+  whole, and every new contribution required paging through the
+  entire body to locate the correct insertion point. This release
+  extracts each stage into a named helper, leaving `cmdInit` as a
+  top-to-bottom pipeline of 16 function calls with progress
+  accounting between them (107 lines, 2 `if`, 0 `try`; estimated
+  McCabe complexity ≥94 → ≤5).
+
+- **Extracted stage helpers.** Each owns exactly one phase of the
+  pipeline and nothing else:
+  `checkPrerequisites`, `resolveLanguage`, `applyResumeMode`,
+  `ensureDirectories`, `loadDomainGroups`, `loadPass1Prompts`,
+  `makeProgressBar`, `runPass1Loop`, `runPass2`,
+  `buildPass3ContextJson`, `handlePass3StaleMarker`, `dispatchPass3`,
+  `runPass4`, `runVerificationTools`, `runLint`,
+  `runContentValidator`, `printCompletionBanner`. Stage functions
+  that advance the outer progress bar return a step-delta that
+  `cmdInit` accumulates into its local `completedSteps` counter,
+  preserving the `completedSteps++` token required by the
+  `pass3-marker.test.js` stale-region regex.
+
+- **`runPass3Split` intentionally NOT extracted.** Eight test files
+  (`pass3-marker`, `master-plan-removal`, `pass3-batch-subdivision`,
+  `pass4-marker-validation`, `pass3-guards`, `translation-skip-env`,
+  `pass2-validation`, `pass4-claude-md-untouched`) read
+  `bin/commands/init.js` as source text and grep for internal
+  patterns (`runStage("3d-aux"`, `function computeBatches`,
+  `DOMAINS_PER_BATCH = 15`, `if (isBatched) { ... runStage("3b-core"`
+  proximity, etc.). Moving `runPass3Split` to a separate module
+  would require re-designing those eight source-parity checks
+  against importable exports. That is a deliberate follow-up; this
+  patch keeps the test boundary untouched so the refactor is pure
+  mechanical decomposition.
+
+- **Semantic preservation.** All user-visible behavior is identical:
+  every log line, every `InitError` message, every banner frame,
+  every progress-bar tick, every resume/fresh branch, every
+  stale-marker code path, the static-fallback marker body, and the
+  `applyStaticFallback` gap-fill sequence are byte-identical to
+  v2.3.1. The only change is *where* the code lives within the same
+  file.
+
+### UX — `content-validator` advisory vocabulary
+
+- **Problem addressed.** When `init` finished cleanly and the user
+  saw the celebratory `✅ ClaudeOS-Core — Complete` banner, the
+  previous step's output already said `❌ ERRORS (6): [STALE_PATH] ...`.
+  The ordering produced a "success or failure?" flinch even though
+  the two messages were describing different questions: `init` had
+  succeeded (files are on disk, structure valid, tests pass);
+  `content-validator` had merely observed that some LLM-guessed
+  filenames inside the generated rules don't resolve on disk. Those
+  are quality advisories — the generated docs are usable — but the
+  word "ERRORS" made users reach for `init --force`, which does not
+  reliably fix the advisories (re-running Pass 3 with the same fact
+  JSON often produces the same mis-inference).
+
+- **Fix.** Purely linguistic. No logic changes.
+
+  - **`content-validator/index.js` — output relabeling.** The banner
+    `❌ ERRORS (N)` becomes `ℹ️  ADVISORIES (N)`; `⚠️  WARNINGS (M)`
+    becomes `⚠️  NOTES (M)`; the final summary `Total: N errors,
+    M warnings` becomes `Total: N advisories, M notes`. The internal
+    arrays stay named `errors` and `warnings` because they encode
+    severity for programmatic consumers.
+
+  - **Exit code preserved at source.** `content-validator` still
+    returns `process.exit(1)` when advisories exist. This is a
+    deliberate asymmetry: the tool reports advisories softly in
+    output but still signals a non-zero exit code, because
+    `npx claudeos-core health` and any CI pipeline wired to it need
+    a real gate. Stripping the exit code would silently pass
+    `STALE_PATH` / `MANIFEST_DRIFT` findings through `health-checker`
+    (which branches on tool exit code + `warnOnly` flag), destroying
+    the detection signal v2.3.0 was built for.
+
+  - **`bin/commands/init.js` `runContentValidator` — advisory
+    framing.** The post-subprocess message is rewritten as
+    "Content advisories detected — these are quality notes, NOT
+    generation failures. Your generated docs are ready to use as-is."
+    The guidance pointer reads "npx claudeos-core health (standalone
+    gate with exit code)" so users who want a hard gate know where
+    to find one.
+
+  - **`stale-report.json` schema unchanged.** Fields `contentErrors`
+    and `contentWarnings` keep their names — they are part of the
+    public schema read by `health-checker` and any external CI
+    consumer.
+
+- **Why this is not severity down-grading.** A naive fix would move
+  `STALE_PATH` and `MANIFEST_DRIFT` from the `errors[]` array into
+  the `warnings[]` array and exit 0. That would flatten the signal
+  in `health-checker` (which distinguishes pass/fail/warn by exit
+  code + `warnOnly` flag), so an advisory-heavy project would report
+  "✅ All systems operational" even with 20 stale paths — the exact
+  silent-failure class v2.3.0 eliminated. This release instead keeps
+  the severity distinction intact inside the tool and stale-report,
+  and only changes the words the user reads.
+
+### Prompt + Validator — Library-convention hallucination
+
+- **Problem addressed.** The library-convention warning in
+  `pass3-footer.md` / `pass4.md` was previously scoped to specific
+  filenames (`testing-strategy.md`, `styling-patterns.md`,
+  `state-management.md`). When a file's topic matched (testing,
+  env typing, styling, state management) but its filename did not,
+  the LLM ignored the warning and cited canonical library paths
+  from training data (`src/test/setup.ts`, `src/types/env.d.ts`,
+  `src/__mocks__/handlers.ts`, etc.) that do not exist in the
+  project. `content-validator [10/10]` then flagged these as
+  `STALE_PATH` advisories.
+
+  A second, distinct failure class exists when a prompt enumerates
+  convention-trap paths as a denylist: the LLM, when generating a
+  file whose purpose is to teach future sessions about hallucination
+  traps (notably `52.ai-work-rules.md`), treats the denylist as
+  source material and copies the literal paths into the output as
+  cautionary illustrations ("AI sessions should not invent paths
+  like these"). `content-validator`'s path-claim check is content-
+  blind and treats the illustrations as literal claims. This is
+  **prompt-to-output educational leakage** — not a hallucination,
+  but a teaching example that the validator cannot distinguish from
+  a real claim.
+
+- **Fix.** Four coordinated changes across prompt and validator:
+
+  - **Scope expansion to topic-binding.** The warning block in
+    `pass3-footer.md` and `pass4.md` was rescoped from filename-
+    binding to topic-binding — the trigger is "the topic the file
+    is about", not "the filename of the document". A "Scope note
+    (v2.3.2+)" paragraph makes this explicit.
+
+  - **No literal convention paths in prompt templates.** The
+    enumerated denylist approach was abandoned. The warning
+    describes the class behaviorally ("PROJECT-CHOICE files",
+    "library's canonical path may not exist here") and points to
+    abstract replacement forms ("a shared setup module under a
+    test directory of your choice", "augment `ImportMetaEnv` in a
+    type-declaration file of your choosing"). Literal example
+    paths have been removed from anti-pattern blocks in both
+    templates and rewritten as mechanism labels (e.g.
+    `Framework-convention entry-point invention`, `Parent-directory
+    or constant-name renormalization`, `Plausibly-named utility
+    invention`) with prose explanations but no `src/...` strings.
+
+  - **Educational-example placeholder guidance.** A new block in
+    both `pass3-footer.md` and `pass4.md` explains that rule files
+    which need to illustrate bad path habits (notably
+    `52.ai-work-rules.md`) should use abstract placeholders —
+    `{placeholder}`, `Xxx` / `XXX`, glob stars, or prose — rather
+    than literal paths. Literal example paths are interpreted as
+    real claims by `content-validator [10/10]` regardless of
+    surrounding prose.
+
+  - **Validator: placeholder detection expanded.** The
+    `hasPlaceholder(path)` predicate in `content-validator/index.js`
+    now skips three placeholder forms:
+      1. `{...}` — the original v2.3.0 curly-brace form.
+      2. `X{3,}` / `Xxx` — uppercase-XXX / `Xxx` placeholder
+         tokens. No word boundaries, so `useXXX_CONFIG` and
+         `XXXParser.ts` are both correctly skipped.
+      3. `*` — glob wildcards describing a class of files.
+
+  - **Validator: file-level exclusion for by-design educational
+    files.** A new `PATH_CLAIM_EXCLUDE_FILES` set in
+    `content-validator/index.js` skips path-claim verification on
+    files whose purpose is to cite convention-trap paths as
+    warnings. Currently one file: `00.core/52.ai-work-rules.md`
+    (the AI Work Rules file). The exclusion is narrow, explicit,
+    and documented in a code comment explaining why the exclusion
+    is a design choice rather than a band-aid. The output line
+    shows "(N file(s) excluded by design)" so users understand the
+    count is reduced intentionally.
+
+- **Why a split (prompt + validator) rather than prompt-only.** The
+  prompt change alone cannot guarantee the LLM will never produce a
+  literal example path when writing an educational rule — the LLM
+  may genuinely believe a concrete example is pedagogically clearer.
+  The validator change alone (exclusion only) would let a genuine
+  hallucination in `52.ai-work-rules.md` go undetected. The
+  combination is defense-in-depth: the prompt nudges toward
+  placeholder form (reducing false positives at source); the
+  validator tolerates educational examples in the one file where
+  they are expected (eliminating the remaining false positives);
+  and genuine hallucinations in every other file continue to be
+  flagged as before.
+
+- **Test impact.** `tests/pass4-prompt.test.js`'s `pass4 enforces
+  path fact grounding` test was updated: literal-path matchers
+  (e.g., ``/❌ `src\/__mocks__\/handlers\.ts`/``) were replaced
+  with topic-level and mechanism-label matchers (`/Library-
+  convention canonical paths | testing.*env typing.*styling/`,
+  `/Framework-convention entry-point invention/`, etc.). The test's
+  intent is unchanged: it still verifies that the Pass 4 prompt
+  warns about library-convention hallucinations; only the form of
+  the warning has evolved.
+
+#### Follow-up: hypothetical / future-tense framing guard
+
+- **Problem addressed.** The library-convention fix closed the
+  "canonical path exists here" failure mode, but a sibling failure
+  mode was observed: when describing *future* or *hypothetical*
+  feature additions, the LLM would wrap a framework-canonical path
+  in conditional framing ("if middleware is added later, place it
+  at `src/middleware.ts`", "for a future health endpoint,
+  `src/app/api/health/route.ts`") and write the literal path
+  verbatim. `content-validator [10/10]` is content-blind: it treats
+  every backticked `src/...` path as a path claim regardless of the
+  conditional prose around it, so these hypothetical examples are
+  flagged as `STALE_PATH` advisories even though the author
+  understood they were speculative.
+
+  The topic-binding library-convention warning did not cover this
+  case because the framing shifts the register from "this project
+  HAS X" to "this project WOULD HAVE X if …" — a different surface
+  form the original warning did not name.
+
+- **Fix (prompt-only, two files).** Added a dedicated "Hypothetical
+  / future-tense framing is NOT a loophole" block to both
+  `pass-prompts/templates/common/pass3-footer.md` and
+  `pass-prompts/templates/common/pass4.md`. Key rules:
+
+  - **Conditional framing does not change the validator's
+    decision.** `if we adopted X`, `were this feature introduced,
+    it would live at …`, `for a future Y`, `when Z is added later`
+    (and translated equivalents in any output language) do NOT
+    make a literal `src/...` path safe. The block states this
+    invariance explicitly so the LLM does not interpret conditional
+    prose as a validator-bypass.
+
+  - **Role / directory form, not filename.** The correct
+    hypothetical is expressed as a ROLE + DIRECTORY description
+    without committing to a filename (e.g., "If middleware is
+    added later, place it at the path the routing convention
+    expects — do not cite a specific filename until the file
+    actually exists"). Three worked `✅ RIGHT` examples cover the
+    middleware, health-endpoint, and env-typing cases.
+
+  - **OMIT as last resort.** If the LLM cannot name the role +
+    directory without committing to a `src/...` path that does NOT
+    appear in `pass3a-facts.md`, the guidance is to omit the
+    example entirely. An omitted example is better than a
+    fabricated path downstream readers may treat as authoritative.
+    The OMIT condition is double-gated: (a) role + directory
+    description is not possible, AND (b) the path is not in
+    `pass3a-facts.md` — paths that DO appear in the allowlist
+    continue to be written verbatim per the existing
+    "directory-scoped rule is correct" guidance.
+
+  - **Language-invariant.** The rule explicitly states that
+    translated conditional phrases in any output language (Korean,
+    Japanese, Chinese, etc.) are subject to the same constraint,
+    because the validator matches on the literal path string, not
+    on the surrounding prose.
+
+- **Placement in `pass4.md`.** The new block is added as a fifth
+  ❌ mechanism (after `Framework-convention entry-point invention`,
+  `Parent-directory or constant-name renormalization`,
+  `Plausibly-named utility invention`, and the topic-binding
+  `Library-convention canonical paths` block), immediately before
+  the ✅ guidance that says "If pass3a-facts.md shows a specific
+  filename and path for a role, write that exact path verbatim".
+  The adjacency makes the interaction between the prohibition
+  (hypothetical fabrication) and the permission (existing
+  allowlist) visible to the LLM at a glance.
+
+- **Why prompt-only, not validator-side.** Distinguishing
+  "assertive claim about an existing file" from "conditional
+  description of a future file" would require NLP-level prose
+  understanding, which is out of scope for the structural
+  `content-validator`. The existing placeholder forms
+  (`{placeholder}`, `Xxx`/`XXX`, glob `*`) remain as the
+  validator-side defense-in-depth: an LLM that cannot phrase the
+  hypothetical in role/directory form can still fall back to a
+  placeholder.
+
+- **Test impact.** Five independent verification surfaces now
+  cover this block: (1) template-content checks (header,
+  ✅/❌ examples, OMIT fallback, language-invariant clause, CJK
+  absence); (2) related unit tests unchanged — `pass4-prompt.test.js`
+  (12/12) and `prompt-generator.test.js` (33/33) continue to pass
+  because existing mechanism-label matchers are unaffected by the
+  new fifth block; (3) end-to-end prompt-generation smoke confirms
+  the block survives assembly into `pass3-prompt.md` and
+  `pass4-prompt.md`; (4) full suite 694/694 unchanged; (5) the
+  4-mechanism ordering invariant
+  (`Framework-convention → Parent-directory → Plausibly-named →
+  Hypothetical`) is asserted via regex proximity match in the
+  smoke test.
+
+### Prompt — CLAUDE.md Section 1 language localization
+
+- **Problem addressed.** For non-English `--lang` targets,
+  `claude-md-scaffold.md` Section 1 generation rules previously
+  instructed "emit in the target output language" but immediately
+  followed with a fixed English template containing `{OUTPUT_LANG}`
+  as the only substitution slot:
+
+  ```
+  As the senior developer for this repository, you are responsible
+  for writing, modifying, and reviewing code. Responses must be
+  written in {OUTPUT_LANG}.
+  ```
+
+  The specific English sentence acted as a stronger signal than the
+  abstract instruction to translate — LLMs copy concrete templates
+  verbatim when the template's only visible variable is a
+  substitution slot. The generated output therefore carried a
+  Section 1 Line 1 in English for non-English targets, producing
+  the ironic effect of "Responses must be written in {LANG}" where
+  {LANG} is correctly substituted yet the containing sentence
+  itself is in English. Other sections escaped this trap because
+  their templates were table-shaped or keyword-shaped (`Language |
+  {value}`, etc.); Section 1 was unique in carrying a complete
+  English sentence as "template".
+
+- **Fix.** Added canonical translations for all 10 supported
+  languages (`en`, `ko`, `zh-CN`, `ja`, `es`, `vi`, `hi`, `ru`,
+  `fr`, `de`) directly inside `claude-md-scaffold.md` Section 1
+  generation rules. Each translation is paired with its language
+  code; the LLM picks the one matching `{OUTPUT_LANG}` and emits it
+  verbatim. Languages outside the canonical 10 fall back to the
+  semantic structure described by the English reference.
+
+  Supporting changes:
+
+  - **Scaffold body warning comment.** The body template's Line 1
+    (still English, since it serves as the generic slot) now
+    carries an inline `{!-- ... --}` comment instructing the LLM
+    to replace with the canonical translation when
+    `{OUTPUT_LANG} != en`. This defends against LLMs that scan the
+    body template first and overlook the generation rules lower in
+    the same file.
+
+  - **Checklist augmentation.** The scaffold's verification
+    checklist gained a new item: "Section 1 Line 1 is in
+    `{OUTPUT_LANG}` — matches the canonical translation (if
+    `{OUTPUT_LANG}` is one of the 10 canonical codes). If Line 1
+    contains 'As the senior developer' while `{OUTPUT_LANG}` is
+    NOT `en`, the translation was skipped — fix it." This gives
+    the LLM an explicit self-check predicate before finalizing
+    output.
+
+  - **Example block framing.** The "Example: Section 1 for
+    different stacks" block's framing comment was upgraded from
+    "Emit the final output in the target output language; the
+    semantic content should match" (weak) to an explicit
+    `⚠️ Language note:` block stating that the English examples
+    show SEMANTIC structure only and pointing back to the
+    canonical translations for Line 1.
+
+- **Why scaffold-level and not code-level.** This is not a
+  post-processing concern. The translation must happen at
+  generation time inside the LLM context, not as a sed/replace
+  step afterward — sed would catch only the English reference
+  sentence but would miss subsequent rephrased variants the LLM
+  might produce. Making the scaffold explicit about the canonical
+  text eliminates ambiguity at source.
+
+- **Test impact — none.** Scaffold files are runtime resources;
+  no test asserts on the text of `claude-md-scaffold.md`.
+
+#### Follow-up: Section heading gloss now required (not optional)
+
+- **Problem addressed.** A second localization inconsistency existed
+  in `##` section headings: run-to-run variation in whether headings
+  carried their native-language gloss. Some runs emitted
+  `## 1. Role Definition ({gloss})` (English canonical + target-
+  language gloss); others emitted only `## 1. Role Definition`,
+  omitting the gloss entirely. Both outputs were technically
+  compliant with the v2.3.1 scaffold rules, which stated the gloss
+  was "optional" and "a courtesy, not a requirement". The
+  inconsistency broke the operator's expectation that two runs of
+  the same project would produce the same heading format, and
+  removed a useful intelligibility cue for non-English readers.
+
+- **Fix.** Reclassified the parenthetical gloss from "optional" to
+  "REQUIRED when `{OUTPUT_LANG}` != `en`" / "OMITTED when
+  `{OUTPUT_LANG}` == `en`". This is now a deterministic rule with
+  no LLM-side discretion.
+
+  - **`claude-md-scaffold.md` "Section heading format" rewrite.**
+    The format rule now reads: primary English canonical REQUIRED;
+    parenthetical native-language gloss REQUIRED when non-English,
+    OMITTED when English. A canonical gloss table covering all 10
+    supported languages × all 8 sections (80 entries) was added
+    below the rule so the LLM picks the exact gloss verbatim. The
+    example blocks (ko, ja, en) were expanded to show both the
+    correct form and two failure modes each: missing gloss on
+    non-English output, and gloss present on English output.
+
+  - **Scaffold body template annotation.** A `{!-- SECTION HEADING
+    RULE --}` comment was added at the top of the scaffold body
+    template pointing to the gloss table above. This defends
+    against LLMs that scan the body template first and copy its
+    English-only headings verbatim without consulting the format
+    rule.
+
+  - **Pass 3-footer STEP 4b rewrite.** The title determinism check
+    (executed as a post-generation self-audit by the LLM) was
+    upgraded from "a native-language translation may follow in
+    parentheses" to explicit `(a)` + `(b)` clauses: (a) English
+    canonical as primary (language-invariant); (b) parenthetical
+    native-language gloss required when non-English, omitted when
+    English. Worked examples for `en`, `ko`, `ja` output
+    illustrate each case.
+
+  - **Checklist augmentation (two new items).** The scaffold's
+    verification checklist gained a "Section heading gloss rule"
+    item requiring all 8 headings to carry the parenthetical gloss
+    when `{OUTPUT_LANG}` != `en`, and a paired "English gloss-
+    absence rule" item requiring gloss to be OMITTED when
+    `{OUTPUT_LANG}` == `en`. Both items name-check the canonical
+    table so the LLM knows where to resolve the exact gloss text.
+
+- **Why strictly a follow-up, not a separate change.** The
+  underlying problem is the same class as the Section 1 Line 1
+  bug: the scaffold left room for LLM discretion on language-
+  localization decisions, and two runs of the same project
+  produced divergent results. The Line 1 fix addressed one
+  specific slot with a canonical translation; this follow-up
+  applies the same "canonical translations, no discretion"
+  pattern to the heading gloss slot.
+
+- **Test impact — none.** No test asserts on scaffold text;
+  `claude-md-validator`'s heading check (which predates this
+  release) already tolerates the gloss via a regex that matches
+  "English canonical, optionally followed by parenthetical text",
+  so the stricter scaffold rule does not require validator
+  changes to enforce.
+
+### Stack detector — variable-reference patterns, iBatis, multi-dialect DBs, logging frameworks
+
+- **Problem addressed.** `plan-installer/stack-detector.js` is the
+  static analyzer that produces `project-analysis.json`, the input
+  to every Pass 1 run. A class of hallucinations in generated
+  CLAUDE.md (incorrect Java version, server port, or logging-
+  framework labels) traces to the same root cause: the stack-
+  detector regex returns `null` for a field, and the Pass 1 LLM
+  fills the gap by assuming framework defaults (e.g. "Java 17+"
+  for any Spring Boot 3.x project, "port 8080" for any Spring
+  Boot project). Tracing the regexes surfaced a broader gap:
+  multiple modern Gradle/Maven patterns, legacy iBatis projects,
+  multi-dialect backends, and logging-framework identification
+  were all outside the detector's coverage.
+
+- **Fix — Gradle Java version (4 patterns, not 1).** The v2.3.1
+  regex `sourceCompatibility\s*=\s*['"]?(\d+)['"]?` only matched
+  the direct-literal form. Extended to four patterns, tried in
+  order:
+  1. Direct literal: `sourceCompatibility = 21` / `'21'` / `"21"`
+     (also matches `targetCompatibility`).
+  2. `JavaVersion` enum: `sourceCompatibility = JavaVersion.VERSION_21`
+     (with `VERSION_1_8` → Java 8 legacy form).
+  3. Toolchain block: `JavaLanguageVersion.of(21)` inside
+     `java { toolchain { ... } }`.
+  4. Variable-reference fallback: when `sourceCompatibility =
+     "${javaVersion}"`, resolve the variable name inside the same
+     file's `ext` block. The RegExp for the resolution
+     dynamically escapes the variable name with the standard
+     regex-meta-character escape pattern.
+
+- **Fix — Gradle Spring Boot version variable reference.** Parallel
+  fallback for `ext { springBootVersion = '3.5.5' }` combined with
+  `id 'org.springframework.boot' version "${springBootVersion}"`.
+  The three existing patterns are tried first; only when none
+  captures a numeric value (captures starting with `${` are
+  rejected as variable references) does the fallback resolve the
+  variable inside the same file.
+
+- **Fix — Maven Java version (3 patterns).** Extended from
+  `<java.version>\d+` literal-only to:
+  1. Direct `<java.version>` value.
+  2. `<maven.compiler.source>` / `<maven.compiler.target>`
+     values.
+  3. Property reference like
+     `<java.version>${project.javaVersion}</java.version>` where
+     the referenced property is defined earlier in `<properties>`.
+     Cross-file resolution (parent POM, BOM) is intentionally out
+     of scope — those cases fall through to LLM-side analysis.
+
+- **Fix — Yml server port Spring placeholder (4 patterns).** The
+  v2.3.1 regexes `server:\n  port: (\d+)` and
+  `server\.port[=:](\d+)` only matched literal port numbers.
+  Spring Boot accepts property-placeholder defaults like
+  `port: ${APP_PORT:8090}` — extended to capture the post-colon
+  default value in both yml-nested and flat-key forms. The default
+  is the correct value because it represents what the application
+  falls back to when the environment variable is unset.
+
+- **Feature — iBatis detection as a first-class ORM.** Apache
+  iBatis (EOL 2010) and Spring iBatis are distinct from MyBatis;
+  MyBatis evolved out of iBatis but uses a different XML namespace
+  and runtime architecture. Conflating them in Pass 3 output would
+  produce incorrect guidance. `IBATIS_REGEX` matches specific
+  coord patterns (`org.apache.ibatis`, `spring-ibatis`,
+  `ibatis-sqlmap`, `ibatis-core`, `ibatis-common`) and runs BEFORE
+  the generic ORM_RULES table in both Gradle and Maven branches.
+  MyBatis projects (`org.mybatis:mybatis`,
+  `mybatis-spring-boot-starter`) continue to resolve to
+  `orm: "mybatis"` — the detection boundary between the two is
+  precise.
+
+- **Feature — multi-dialect database arrays (`stack.databases`).**
+  v2.x consumers expected a single primary DB (`stack.database`);
+  backends declaring multiple dialect drivers simultaneously lost
+  all but the first indicator. Added a second field
+  `stack.databases` (plural) that collects every DB keyword
+  across all config sources (Gradle `build.gradle`, Maven
+  `pom.xml`, Gradle version catalogs, yml, `.env`, Node
+  `package.json`, Python `requirements.txt`). Order-preserving and
+  deduped. `stack.database` keeps its v2.x semantics as "the
+  first-match primary" for backward compatibility; Pass 1 prompts
+  and Pass 3 standard generation should prefer `stack.databases`
+  when present and non-empty. Empty array (not null) when no DB
+  is detected, to simplify array comprehensions in prompts.
+
+- **Fix — MariaDB detection.** The `DB_KEYWORD_RULES` table
+  previously had entries for PostgreSQL, MySQL, Oracle, MongoDB,
+  SQLite, and H2 — but NOT for MariaDB. Projects using
+  `org.mariadb.jdbc:mariadb-java-client` were classified as `null`
+  (or as MySQL, when the MySQL driver was also present). MariaDB
+  is now a distinct entry in the keyword table and in the Maven
+  / yml inline DB scans.
+
+- **Feature — logging framework detection (`stack.loggingFrameworks`).**
+  New array field enumerating JVM logging frameworks detected
+  from Gradle/Maven dependencies and yml `logging.config:`
+  references. Recognizes four frameworks:
+    (a) Log4j2 via `org.apache.logging.log4j:log4j-core` coord or
+        `log4j2-*.xml` config file;
+    (b) Logback via `ch.qos.logback:logback-classic` coord or
+        `logback-*.xml` / `logback*.groovy` config file;
+    (c) log4jdbc (JDBC logging adapter, reported alongside the
+        primary framework);
+    (d) Log4j 1.x (EOL 2015) via precise coord regex `log4j:log4j`
+        with quote/whitespace boundaries to avoid matching
+        `log4j-to-slf4j` or `log4j-api` (Log4j2 ecosystem
+        libraries that contain `log4j:log4j` as a substring). The
+        Log4j 1.x boundary required a specific regex form
+        (quote/colon/whitespace character class before the coord)
+        because word boundaries alone were insufficient.
+
+- **Fix — Pass 3 logging rule glob extended.** The Pass 3 prompt
+  for Java and Kotlin Spring stacks specified auto-load paths as
+  `["**/*.java", "**/logback*.xml", "**/log4j*.xml"]`. This
+  missed three file types commonly present in real Spring
+  projects: Logback's Groovy DSL configuration (`logback*.groovy`),
+  Log4j / Log4j2 properties files (`log4j*.properties`), and
+  log4jdbc adapter configuration (`log4jdbc*.properties`).
+  Extended the glob to cover all five file patterns.
+
+- **Fix — Pass 1 prompts include configuration-file verification
+  block.** Both `java-spring/pass1.md` and `kotlin-spring/pass1.md`
+  now begin with a "MANDATORY: Configuration file verification"
+  section instructing the LLM to read `build.gradle` (or
+  `build.gradle.kts` / `pom.xml`), `application*.yml` (and profile
+  variants), and referenced logging configuration files BEFORE
+  analyzing domain source code. The LLM is told that
+  `project-analysis.json`'s stack metadata may be incomplete and
+  that the configuration files are ground-truth sources. Explicit
+  examples show variable-reference resolution (`sourceCompatibility
+  = "${javaVersion}"` → resolve via `ext { ... }`) and Spring
+  placeholder port extraction (`port: ${APP_PORT:8090}` → extract
+  `8090`). When the analyzer output and the configuration files
+  disagree, the LLM is instructed to trust the configuration file
+  and record the discrepancy. This adds a second defensive layer:
+  even if future Gradle/Maven syntax evolves past the detector's
+  regex coverage, the LLM's direct file read catches the
+  discrepancy.
+
+- **Fix — Config file glob expanded to cover Spring's full naming
+  space.** The yml scan in v2.3.1 globbed only
+  `**/application*.yml`, missing three file classes that Spring
+  Boot loads identically: `application.yaml` (spec-official
+  extension), `application.properties` (Spring Initializr default
+  when no format is specified), and
+  `bootstrap.{yml,yaml,properties}` (Spring Cloud Config /
+  Consul / Eureka — loaded BEFORE `application.*` and commonly
+  declaring service ports and config-server URIs). The new glob
+  `**/{application,bootstrap}*.{yml,yaml,properties}` covers all
+  combinations including profile variants (`application-local.yml`,
+  `application-dev.properties`). The inner regex set was already
+  format-agnostic — yml `server:\n  port: N` syntax and
+  `.properties`-style `server.port=N` flat-key syntax were both
+  covered by the same pattern list, so no additional regex work
+  was needed.
+
+- **Fix — Comment stripping (`stripComments()` shared helper).**
+  Commented-out dependency lines must not match `LOGGING_RULES`
+  or the Maven DB / ORM / framework scans. A shared helper strips
+  three comment styles in a single pass:
+    1. Line-level `//` (Gradle Kotlin/Groovy DSL).
+    2. Line-level `#` (yml, properties, shell).
+    3. Block-level `<!-- ... -->` (Maven `pom.xml`, XML config;
+       non-greedy multi-line, so a commented-out `<dependency>`
+       block spanning many lines is handled in a single regex
+       pass).
+
+  `detectLogging` runs on `stripComments(content)`. The Maven
+  branch of `detectStack` derives `pomClean = stripComments(pom)`
+  after `<properties>` parsing is complete, and uses `pomClean`
+  for ALL dependency-layer scans (framework check, ORM, iBatis,
+  DB keyword array, H2, logging). The raw `pom` is retained for
+  `<properties>` reads because commented-out property definitions
+  are rare in practice and the property-reference resolution
+  already scopes itself to the declared property name.
+
+- **Feature — Maven XML form for Log4j2 / Logback detection.** The
+  Gradle coord regex `org\.apache\.logging\.log4j[.:]log4j-core`
+  expects a `:` or `.` separator between groupId and artifactId.
+  In Maven XML, the two are in separate tags, so the separator
+  is `</groupId>...<artifactId>`, not a single character. Paired
+  regexes now match the XML form within a 300-character window
+  (large enough to span typical whitespace and `<version>` /
+  `<scope>` siblings, small enough that unrelated `<dependency>`
+  blocks further down the file do not falsely pair):
+    - Log4j2: `<groupId>\s*org\.apache\.logging\.log4j\s*<\/groupId>[\s\S]{0,300}?<artifactId>\s*log4j-core\s*<\/artifactId>`.
+      The `log4j-core` artifactId is required — `log4j-to-slf4j`
+      and `log4j-api` (bridges) must NOT trigger "Log4j2 is the
+      primary framework".
+    - Logback: `<groupId>\s*ch\.qos\.logback\s*<\/groupId>[\s\S]{0,300}?<artifactId>\s*logback-(?:classic|core)\s*<\/artifactId>`.
+      Both `logback-classic` (runtime shipped with Spring Boot)
+      and `logback-core` are recognized.
+
+- **Fix — Placeholder regex boundary relaxation (`X{3,}` without
+  word boundary).** The v2.3.0 `hasPlaceholder` predicate in
+  `content-validator/index.js` used `/\bX{3,}\b|Xxx/` to
+  recognize uppercase-XXX placeholder tokens. The `\b` boundaries
+  caused two false negatives:
+    - `XXXParser.ts`: the right `\b` expects a non-word character
+      after the X run, but `Parser` is alphanumeric.
+    - `useXXX_CONFIG`: the left `\b` requires a non-word
+      character before the X run, but `useXXX` has `e` directly
+      before.
+  Removed both word boundaries. The predicate is now `/X{3,}/`
+  (with the separate `/Xxx/` branch preserved for the
+  capital-lower-lower convention). Audited against a curated set
+  of typical identifier patterns (`matrix`, `XMLParser`,
+  `indexXY`, `taxi`, `examineX`, `textX`, `XX1`): none contain
+  three or more consecutive uppercase X's, so the relaxation
+  introduces no new false positives.
+
+- **Tests added.** 32 new unit tests in `stack-detector.test.js`:
+    - 8 for Java-version patterns and port patterns (literal,
+      JavaVersion enum, toolchain, ext-variable reference; yml
+      literal, flat-key, yml placeholder, flat-key placeholder).
+    - 18 for iBatis vs MyBatis distinction (4), Maven Java
+      version patterns (3), Gradle ext Spring Boot version
+      reference (1), multi-dialect databases incl. MariaDB (4),
+      logging framework detection incl. false-positive prevention
+      from `log4j-to-slf4j` and comment-stripping (6).
+    - 6 for config-file glob expansion (`.properties`, `.yaml`,
+      `bootstrap.yml`, profile variants) and comment-stripping.
+
+### Combined guarantees
+
+- **Test suite.** 694 / 694 pass (up from 662 in v2.3.1 — 32 new
+  tests for the stack-detector extensions), with one existing
+  test updated (`pass4-prompt.test.js` assertions migrated from
+  literal-path matchers to topic-level and mechanism-label
+  matchers as part of the library-convention warning rewrite).
+  `tests/content-validator.test.js` line 103
+  (`notStrictEqual(result.code, 0, "should exit non-zero")`)
+  still passes because the exit code is preserved. No stdout
+  assertions reference the strings `ERRORS` or `WARNINGS` — they
+  match on advisory types (`STALE_PATH`, `MANIFEST_DRIFT`,
+  `STALE_SKILL_ENTRY`) which are untouched.
+
+- **No new dependencies. No CLI surface changes.** Template
+  changes are limited to prompt-layer guidance: the library-
+  convention warning block in `pass3-footer.md` and `pass4.md`
+  gained topic-binding scope; `claude-md-scaffold.md` Section 1
+  gained a 10-language canonical translation table plus
+  verification checklist items — all targeted expansions of
+  existing anti-hallucination / language-localization guidance,
+  not structural changes to Pass 3, Pass 4, or CLAUDE.md format.
+  Same two runtime deps (`glob`, `gray-matter`). Same commands,
+  same flags, same outputs (just different labels for
+  `content-validator`).
+
 ## [2.3.1] — 2026-04-23
 
 Patch release. Fixes Windows CI breakage in `npm test`.

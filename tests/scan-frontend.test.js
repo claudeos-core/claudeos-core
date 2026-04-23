@@ -553,8 +553,8 @@ describe("scanFrontendDomains — platform-root pattern", () => {
   // appears in the project, subapp splitting is skipped by default
   // (the "platform" is assumed to be a single SPA's root, and its
   // children are internal layers, not feature domains). This avoids
-  // the frontend-react-B failure mode where `src/admin/{api,dto,context,
-  // routers}` were emitted as pseudo-domains.
+  // the canonical failure mode where `src/admin/{api,dto,context,
+  // routers}` are emitted as pseudo-domains.
   //
   // Every existing test in this describe was written under the older
   // assumption that a single `src/<platform>/<subapp>/` always yields
@@ -947,11 +947,10 @@ describe("scanFrontendDomains — single-SPA skip rule (v2.3.0)", () => {
   // layers (api, dto, context, routers, ...) rather than feature
   // domains.
   //
-  // The tests below use the dogfooding discovery case (frontend-react-B,
-  // `src/admin/{api,context,dto,routers,pages/*}/`) as the canonical
-  // shape. Downstream page/FSD/components scanners still run and
-  // pick up real feature domains (orders, profile, …) inside
-  // `src/admin/pages/*`.
+  // The tests below use the canonical admin-SPA layer shape
+  // (`src/admin/{api,context,dto,routers,pages/*}/`). Downstream
+  // page/FSD/components scanners still run and pick up real feature
+  // domains (orders, profile, …) inside `src/admin/pages/*`.
   let tmp;
   beforeEach(() => {
     tmp = makeTmpDir();
@@ -959,7 +958,7 @@ describe("scanFrontendDomains — single-SPA skip rule (v2.3.0)", () => {
   afterEach(() => cleanup(tmp));
 
   it("single-platform tree does NOT emit `<platform>-<child>` subapp domains by default", async () => {
-    // Reproduce the frontend-react-B layer set.
+    // Reproduce the canonical admin-SPA layer set.
     touch(path.join(tmp, "src/admin/api/client.ts"));
     touch(path.join(tmp, "src/admin/api/types.ts"));
     touch(path.join(tmp, "src/admin/context/AuthContext.ts"));
@@ -1050,11 +1049,11 @@ describe("scanFrontendDomains — single-SPA skip rule (v2.3.0)", () => {
     assert.ok(names.includes("mobile-home"));
   });
 
-  it("admin + guide dual SPA (frontend-react-B pattern, both are platform keywords)", async () => {
-    // frontend-react-B has `src/admin/` and `src/guide/`. Of these,
-    // `admin` is a platform keyword but `guide` is not. So only ONE
-    // distinct platform is detected — single-SPA rule fires.
-    // Real feature domains come from pages scanner.
+  it("admin + guide dual SPA (only one is a platform keyword)", async () => {
+    // Tree has `src/admin/` and `src/guide/`. Of these, `admin` is a
+    // platform keyword but `guide` is not. So only ONE distinct
+    // platform is detected — single-SPA rule fires. Real feature
+    // domains come from the pages scanner.
     touch(path.join(tmp, "src/admin/api/client.ts"));
     touch(path.join(tmp, "src/admin/dto/user.ts"));
     touch(path.join(tmp, "src/admin/pages/orders/index.tsx"));

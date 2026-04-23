@@ -124,6 +124,42 @@ IMPORT, not redefine.
 
 - ...
 - ...
+
+## Allowed Source Paths (v2.3.x+ — MANDATORY)
+
+Copy the **entire** `allowedSourcePaths` section from `pass3-context.json`
+verbatim into this pass3a-facts.md. Do NOT summarize it, do NOT truncate
+it, do NOT reword it. The shape to copy:
+
+- Header: whether the list is in `full` mode (individual file paths) or
+  `rollup` mode (parent directories, used when the project exceeds the
+  enumeration budget).
+- Body: the exact list of paths (or directories in rollup mode), each
+  wrapped in backticks as a markdown bullet.
+
+This section is the authoritative allowlist that Pass 3b/3c/3d consult
+when deciding whether a `src/...`, `packages/...`, `apps/...`, or
+language-specific source path may appear in a generated rule or standard
+file. A path not appearing in this allowlist MUST NOT be written by
+later passes — no exceptions, not even for paths that are "obvious" from
+framework convention.
+
+Rendering spec:
+
+```markdown
+## Allowed Source Paths
+
+Source files on disk (total: <N>). [full-mode description paragraph from
+pass3-context.json's allowedSourcePaths.paths field, copied verbatim.]
+
+- `path/to/file1.ts`
+- `path/to/file2.ts`
+- ... (every entry from pass3-context.json)
+```
+
+If `pass3-context.json`'s `allowedSourcePaths.paths` array is empty
+(collection failed), emit a single line `(allowlist unavailable —
+fall back to pass2-merged.json verification per file)` instead.
 ```
 
 ## Rules for Pass 3a
@@ -131,13 +167,22 @@ IMPORT, not redefine.
 1. **Read each input file AT MOST ONCE.** After reading, all fact extraction
    must be from your in-context memory of the file.
 2. **Be terse.** This document will be loaded into every subsequent Pass 3
-   step's context. Keep it under 10 KB. Use bullet lists, not prose.
+   step's context. Keep the non-allowlist portions under 10 KB. The
+   `## Allowed Source Paths` section is exempt from the 10 KB budget
+   because it is the authoritative path reference that prevents Pass 3
+   hallucination — its size is bounded by the MAX_PATHS (500) / MAX_DIRS
+   (300) caps in plan-installer/source-paths.js.
 3. **Exact values only.** Every class name, method name, package path, and
    file path must be verbatim from the analysis data. If a value is not
    captured in the analysis, write `(not in analysis)` — do NOT guess.
-4. **Do NOT write any other files.** CLAUDE.md, standard/, rules/, etc.
+4. **Allowed Source Paths section is COPIED, not extracted.** Do not apply
+   judgment, ranking, or "relevance filtering" to the allowlist. The
+   whole point is that Pass 3b/3c/3d get the complete enumeration; any
+   path you drop here becomes a path they can fabricate later without
+   the downstream validator catching it until after Pass 3 completes.
+5. **Do NOT write any other files.** CLAUDE.md, standard/, rules/, etc.
    come in later Pass 3 steps. Writing them here is a bug.
-5. **Do NOT read source code.** All information comes from the three JSON
+6. **Do NOT read source code.** All information comes from the three JSON
    inputs. The source has already been analyzed in Pass 1 and Pass 2.
 
 Once `pass3a-facts.md` is written, Pass 3a is complete.

@@ -383,7 +383,8 @@ async function scanFrontendDomains(stack, ROOT) {
     // Emitting those as domains fragments one logical app into 5+
     // pseudo-domains, which in turn primes Pass 3 to fabricate
     // prefixed filenames (featureRoutePath.ts, admin-api.service.ts) —
-    // the hallucination class observed in frontend-react-B dogfooding.
+    // a canonical hallucination class the single-SPA rule is designed
+    // to prevent.
     //
     // Detection of "single-SPA" mode: inspect the top-level platform
     // segment for every glob match and count distinct values. If only

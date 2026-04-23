@@ -192,6 +192,20 @@ function buildPass3Context(generatedDir) {
     // ─── Frontend stats (if scan-frontend ran) ──────────────────────────
     frontend: analysis.frontend || { exists: false },
 
+    // ─── Source path allowlist (v2.3.x+ — path-hallucination prevention) ─
+    // Authoritative on-disk source-file list, copied from project-analysis.
+    // Pass 3a includes a rendered form of this in pass3a-facts.md as
+    // "## Allowed Source Paths". Pass 3b/3c/3d then cite ONLY from this
+    // list when writing `src/...` / `packages/...` / language-specific
+    // paths in rule/standard files.
+    //
+    // Shape: { mode: "full" | "rollup", paths: string[], totalFiles: number,
+    //          excludedDirs: string[] }
+    // See plan-installer/source-paths.js for the full contract.
+    allowedSourcePaths: (analysis.allowedSourcePaths && typeof analysis.allowedSourcePaths === "object")
+      ? analysis.allowedSourcePaths
+      : { mode: "full", paths: [], totalFiles: 0, excludedDirs: [] },
+
     // ─── pass2-merged.json descriptor (signals, not contents) ───────────
     // Pass 3 reads this to decide whether it's safe to open the full file
     // for a specific missing detail, and how aggressively to summarize first.

@@ -1,11 +1,11 @@
-# CLAUDE.md — frontend-react-A
+# CLAUDE.md — sample-react-spa
 
-> Megazone Front Office React SPA — 데스크톱/모바일 디바이스 분리 멀티 엔트리 구조를 가진 Vite + React 기반 클라이언트.
+> Acme Sample React SPA — 데스크톱/모바일 디바이스 분리 멀티 엔트리 구조를 가진 Vite + React 기반 클라이언트.
 
 ## 1. Role Definition (역할 정의)
 
 당신은 이 저장소의 시니어 개발자로서 코드 작성, 수정, 리뷰를 책임집니다. 응답은 반드시 한국어로 작성해야 합니다.
-Vite + React로 구축된 Front Office SPA이며, 데스크톱/모바일 멀티 엔트리 빌드 구조 위에서 Axios 기반 응답 정규화, Orval 코드젠, 컴포넌트 레벨 RBAC의 3요소를 조합한 SPA 아키텍처를 따릅니다.
+Vite + React로 구축된 SPA이며, 데스크톱/모바일 멀티 엔트리 빌드 구조 위에서 Axios 기반 응답 정규화, Orval 코드젠, 컴포넌트 레벨 RBAC의 3요소를 조합한 SPA 아키텍처를 따릅니다.
 
 ## 2. Project Overview (프로젝트 개요)
 
@@ -78,7 +78,7 @@ npm run format
               │                         │
               └───────── 공유 ──────────┘
                         │
-           src/components/*  (Mz* UI/Form)
+           src/components/*  (Acme* UI/Form)
            src/api/apiClient.ts (axios + interceptor)
            src/generated-api-client/* (orval 자동 생성)
 ```
@@ -95,7 +95,7 @@ npm run format
 
 - **디바이스 분리 멀티 엔트리**: `src/desktop/*` 와 `src/mobile/*` 가 독립된 `app.tsx`, `main.tsx`, `router/index.tsx`, `layouts/*` 를 보유. 공유는 `src/components/*`, `src/api/*`, `src/hooks/*`, `src/utils/*` 에 한함.
 - **이중 API 클라이언트**: 수동 작성 axios 싱글톤(`src/api/apiClient.ts`) + orval 생성 컨트롤러(`src/generated-api-client/api/*`). 양쪽 모두 동일한 axiosInstance + 응답 정규화 인터셉터를 공유.
-- **컴포넌트 레벨 RBAC**: `MzButton` 의 `buttonAuthorities` prop 과 `SYS_CODE_CONSTANTS.USE_BTN_AUTH` 조합으로 버튼 단위 권한 제어. 라우트 가드 방식이 아닌 "감춤" 방식.
+- **컴포넌트 레벨 RBAC**: `AcmeButton` 의 `buttonAuthorities` prop 과 `SYS_CODE_CONSTANTS.USE_BTN_AUTH` 조합으로 버튼 단위 권한 제어. 라우트 가드 방식이 아닌 "감춤" 방식.
 - **메모리 전용 토큰**: `accessToken` 은 `src/api/apiClient.ts` 내부 module-scope 변수로만 보관 (XSS 대비 localStorage 미사용 / 새로고침 시 소실).
 - **응답 정규화 계층**: 응답 래핑은 axios interceptor에서 단 한 번 수행. 컴포넌트는 `{ success, data, message }` 만 믿고 사용.
 
@@ -110,7 +110,7 @@ npm run format
 ## 5. Directory Structure (디렉터리 구조)
 
 ```
-frontend-react-A/
+sample-react-spa/
 ├─ index.html                         # 데스크톱 엔트리
 ├─ m.index.html                       # 모바일 엔트리
 ├─ vite.config.shared.ts              # 공통 설정 팩토리
@@ -129,8 +129,8 @@ frontend-react-A/
    │  └─ api/
    │     └─ {tag}-controller.ts       # OpenAPI tag 단위 생성 파일
    ├─ components/                     # 공유 UI (디바이스 비의존)
-   │  ├─ form/                        # mzInputText, mzCheckBox, mzFileUpload …
-   │  └─ ui/                          # mzButton, mzModal, mzTabs …
+   │  ├─ form/                        # AcmeInputText, AcmeCheckBox, AcmeFileUpload …
+   │  └─ ui/                          # AcmeButton, AcmeModal, AcmeTabs …
    ├─ hooks/                          # 공유 훅 (useModalHistory 등)
    ├─ utils/
    │  └─ constants.ts                 # SYS_CODE_CONSTANTS 등
@@ -139,7 +139,7 @@ frontend-react-A/
    │  ├─ app.tsx
    │  ├─ router/index.tsx             # createBrowserRouter 정의
    │  ├─ layouts/                     # DesktopLayout / Header / Footer / useBreadcrumb
-   │  ├─ components/common/           # mzPagination, mzSearch (데스크톱 전용)
+   │  ├─ components/common/           # AcmePagination, AcmeSearch (데스크톱 전용)
    │  └─ pages/                       # home/, product/, support/notice/ …
    ├─ mobile/
    │  ├─ main.tsx

@@ -52,38 +52,73 @@ DO NOT:
 The 8 canonical section headings below (`## 1. Role Definition` through
 `## 8. Common Rules & Memory (L4)`) use English as their canonical form.
 When generating CLAUDE.md in a non-English output language, the English
-canonical heading MUST remain the primary heading text. A native-language
-translation MAY be appended in parentheses, but is optional.
+canonical heading MUST remain the primary heading text AND a
+native-language translation MUST be appended in parentheses.
 
-This rule exists because multiple projects in the same organization will
-have their CLAUDE.md files consumed together (multi-repo grep, cross-repo
-navigation, side-by-side review). When every project uses a different
-native-language translation for the same section, even when the structure
-is otherwise identical, discoverability breaks: `grep "## 7. DO NOT Read"`
-no longer matches all siblings.
+This dual requirement exists for two reasons. First, multiple projects
+in the same organization will have their CLAUDE.md files consumed
+together (multi-repo grep, cross-repo navigation, side-by-side review).
+When every project uses a different native-language translation for the
+same section, even when the structure is otherwise identical,
+discoverability breaks: `grep "## 7. DO NOT Read"` no longer matches
+all siblings. Second, when the CONTENT below the heading is written in
+the target language (e.g., Korean body), a Korean reader scanning the
+document benefits from seeing a Korean gloss next to the English
+canonical token — the heading reads both as a stable grep target AND as
+an intelligible label. Run-to-run consistency matters too: gloss
+inclusion must not vary between generations of the same project.
 
 Format rule:
-- Primary (required): English canonical heading exactly as listed.
-- Parenthetical (optional): native-language translation, added at the end.
+- Primary (REQUIRED): English canonical heading exactly as listed.
+- Parenthetical (REQUIRED when `{OUTPUT_LANG}` != `en`, OMITTED when
+  `{OUTPUT_LANG}` == `en`): native-language translation, added at the
+  end in parentheses.
+
+Canonical translations — use these verbatim when `{OUTPUT_LANG}` matches:
+
+| Code  | §1 | §2 | §3 | §4 | §5 | §6 | §7 | §8 |
+|-------|----|----|----|----|----|----|----|----|
+| `en`  | (no gloss — English is canonical) |
+| `ko`  | (역할 정의) | (프로젝트 개요) | (빌드 및 실행 명령어) | (핵심 아키텍처) | (디렉터리 구조) | (Standard / Rules / Skills 참조) | (직접 읽지 말아야 할 파일) | (공통 규칙 및 메모리 (L4)) |
+| `zh-CN` | (角色定义) | (项目概述) | (构建和运行命令) | (核心架构) | (目录结构) | (Standard / Rules / Skills 参考) | (请勿直接读取的文件) | (通用规则与内存 (L4)) |
+| `ja`  | (役割定義) | (プロジェクト概要) | (ビルド＆実行コマンド) | (コアアーキテクチャ) | (ディレクトリ構造) | (Standard / Rules / Skills 参照) | (直接読まないファイル) | (共通ルール＆メモリ (L4)) |
+| `es`  | (Definición del rol) | (Resumen del proyecto) | (Comandos de compilación y ejecución) | (Arquitectura central) | (Estructura de directorios) | (Referencia Standard / Rules / Skills) | (Archivos que NO se deben leer) | (Reglas comunes y memoria (L4)) |
+| `vi`  | (Định nghĩa vai trò) | (Tổng quan dự án) | (Lệnh build và chạy) | (Kiến trúc cốt lõi) | (Cấu trúc thư mục) | (Tham chiếu Standard / Rules / Skills) | (Tệp KHÔNG được đọc) | (Quy tắc chung & bộ nhớ (L4)) |
+| `hi`  | (भूमिका परिभाषा) | (परियोजना अवलोकन) | (बिल्ड और रन कमांड) | (मुख्य आर्किटेक्चर) | (निर्देशिका संरचना) | (Standard / Rules / Skills संदर्भ) | (न पढ़ने योग्य फ़ाइलें) | (सामान्य नियम और मेमोरी (L4)) |
+| `ru`  | (Определение роли) | (Обзор проекта) | (Команды сборки и запуска) | (Основная архитектура) | (Структура каталогов) | (Справочник Standard / Rules / Skills) | (Файлы, которые НЕ следует читать) | (Общие правила и память (L4)) |
+| `fr`  | (Définition du rôle) | (Aperçu du projet) | (Commandes de build et d'exécution) | (Architecture principale) | (Structure des répertoires) | (Référence Standard / Rules / Skills) | (Fichiers à NE PAS lire) | (Règles communes & mémoire (L4)) |
+| `de`  | (Rollendefinition) | (Projektübersicht) | (Build- und Ausführungsbefehle) | (Kernarchitektur) | (Verzeichnisstruktur) | (Standard / Rules / Skills-Referenz) | (Nicht zu lesende Dateien) | (Gemeinsame Regeln & Speicher (L4)) |
 
 Examples (ko output):
 
-    ✅ `## 7. DO NOT Read`
+    ✅ `## 1. Role Definition (역할 정의)`
     ✅ `## 7. DO NOT Read (직접 읽지 말아야 할 파일)`
+    ❌ `## 1. Role Definition`
+        — gloss is required when OUTPUT_LANG != en
     ❌ `## 7. 읽지 말 것 (Files Not to Be Read Directly)`
         — English must be primary, not parenthetical
     ❌ `## 7. 읽지 말 것`
-        — English canonical must appear
+        — English canonical must appear as primary
 
 Examples (ja output):
 
     ✅ `## 7. DO NOT Read (直接読まないファイル)`
+    ❌ `## 7. DO NOT Read`
+        — gloss is required when OUTPUT_LANG != en
     ❌ `## 7. 直接読まないファイル (DO NOT Read)`
+        — English must be primary, not parenthetical
 
-The same rule applies to all 8 sections. When in doubt, emit only the
-English canonical heading; the parenthetical translation is a courtesy,
-not a requirement. The CONTENT below the heading is still written
-entirely in the target language.
+Examples (en output):
+
+    ✅ `## 7. DO NOT Read`
+    ❌ `## 7. DO NOT Read (Files Not to Be Read Directly)`
+        — gloss must be OMITTED when OUTPUT_LANG == en
+        (the English canonical already serves as the label)
+
+For `{OUTPUT_LANG}` codes not in the table above, translate each
+canonical heading semantically into the target language and append in
+parentheses following the same pattern. The CONTENT below the heading
+is written entirely in the target language regardless of the gloss.
 
 DO:
 - Adapt content within each section to project facts from pass2-merged.json
@@ -101,8 +136,20 @@ Use the following structure EXACTLY:
 
 > {1-2 line project intro}
 
+{!-- SECTION HEADING RULE (applies to all 8 ## headings below):
+     The heading format "## N. English Canonical" shown in this scaffold
+     is the en (English) form. For non-English OUTPUT_LANG, APPEND the
+     canonical gloss in parentheses per the "Section heading format"
+     table earlier in this scaffold.
+     Example (ko): `## 1. Role Definition (역할 정의)`
+     Example (en): `## 1. Role Definition`  (no gloss)
+     --}
+
 ## 1. Role Definition
 
+{!-- Line 1 below is in English for reference only. When OUTPUT_LANG != en,
+     REPLACE with the canonical translation from "Section 1: Role Definition"
+     rules further down in this scaffold. See the 10-language canonical list. --}
 As the senior developer for this repository, you are responsible for writing, modifying, and reviewing code. Responses must be written in {OUTPUT_LANG}.
 {PROJECT_CONTEXT}.
 
@@ -242,10 +289,44 @@ Unlike rules that auto-load via `paths` glob, this layer is referenced **on-dema
 
 **Structure**: EXACTLY 2 lines.
 
-**Line 1** (fixed text with `{OUTPUT_LANG}` substitution; emit in the target output language):
+**Line 1** (fixed meaning, EMIT IN THE TARGET OUTPUT LANGUAGE — do NOT copy the English reference verbatim unless `{OUTPUT_LANG}` is English):
+
+The sentence below is the **semantic reference in English**. Translate it
+fully into `{OUTPUT_LANG}`. The English text is NOT a literal template —
+copying it verbatim for a non-English target produces the ironic bug of
+writing "Responses must be written in Korean" in English.
+
+English reference (semantic, for `en` output only):
 ```
 As the senior developer for this repository, you are responsible for writing, modifying, and reviewing code. Responses must be written in {OUTPUT_LANG}.
 ```
+
+**Canonical translations** — emit these VERBATIM when `{OUTPUT_LANG}` matches
+the target language. If `{OUTPUT_LANG}` is some other language not listed
+here, translate the English reference following the same semantic
+structure (senior developer + write/modify/review code + respond in target
+language):
+
+- `en` →
+  `As the senior developer for this repository, you are responsible for writing, modifying, and reviewing code. Responses must be written in English.`
+- `ko` (한국어) →
+  `이 리포지토리의 시니어 개발자로서 코드 작성, 수정, 리뷰를 책임진다. 응답은 한국어로 작성해야 한다.`
+- `zh-CN` (简体中文) →
+  `作为此仓库的高级开发者，负责代码的编写、修改和审查。回答必须使用简体中文。`
+- `ja` (日本語) →
+  `このリポジトリのシニア開発者として、コードの記述、修正、レビューを担当する。回答は日本語で記述すること。`
+- `es` (Español) →
+  `Como desarrollador senior de este repositorio, eres responsable de escribir, modificar y revisar código. Las respuestas deben estar escritas en español.`
+- `vi` (Tiếng Việt) →
+  `Với tư cách là lập trình viên cấp cao của kho lưu trữ này, bạn chịu trách nhiệm viết, sửa đổi và đánh giá mã. Các câu trả lời phải được viết bằng tiếng Việt.`
+- `hi` (हिन्दी) →
+  `इस रिपॉजिटरी के वरिष्ठ डेवलपर के रूप में, आप कोड लिखने, संशोधित करने और समीक्षा करने के लिए ज़िम्मेदार हैं। उत्तर हिन्दी में लिखे जाने चाहिए।`
+- `ru` (Русский) →
+  `Как старший разработчик этого репозитория, вы отвечаете за написание, изменение и проверку кода. Ответы должны быть написаны на русском языке.`
+- `fr` (Français) →
+  `En tant que développeur senior de ce dépôt, vous êtes responsable de l'écriture, de la modification et de la révision du code. Les réponses doivent être rédigées en français.`
+- `de` (Deutsch) →
+  `Als Senior-Entwickler dieses Repositorys sind Sie für das Schreiben, Ändern und Überprüfen von Code verantwortlich. Antworten müssen auf Deutsch verfasst werden.`
 
 **Line 2** (`{PROJECT_CONTEXT}` — dynamically generated, Level 2 abstraction):
 
@@ -624,10 +705,27 @@ Before finalizing, verify:
       Structure, Standard / Rules / Skills Reference, DO NOT Read,
       Common Rules & Memory (L4)) — rendered in the target output
       language with equivalent meaning and order
+- [ ] **Section heading gloss rule:**
+      If `{OUTPUT_LANG}` != `en`, EVERY one of the 8 `##` headings MUST
+      carry the parenthetical native-language gloss from the canonical
+      table in "Section heading format". Example (ko):
+      `## 1. Role Definition (역할 정의)`, `## 7. DO NOT Read (직접 읽지 말아야 할 파일)`.
+      If any heading is missing its gloss while `{OUTPUT_LANG}` != `en`,
+      the output is NON-COMPLIANT — add the gloss before finalizing.
+- [ ] **English gloss-absence rule:**
+      If `{OUTPUT_LANG}` == `en`, headings MUST NOT carry a parenthetical
+      gloss (the English canonical already serves as the label).
+      `## 7. DO NOT Read` is correct; `## 7. DO NOT Read (Files Not to Be
+      Read Directly)` is incorrect for `en` output.
 - [ ] Section order is correct
 - [ ] No sections renamed, merged, or split
 - [ ] No sections added beyond the 8
 - [ ] Section 1 is 2 lines
+- [ ] Section 1 Line 1 is in `{OUTPUT_LANG}` — matches the canonical
+      translation in "Section 1: Role Definition" rules (if
+      `{OUTPUT_LANG}` is one of the 10 canonical codes). If Line 1
+      contains the English phrase "As the senior developer" while
+      `{OUTPUT_LANG}` is NOT `en`, the translation was skipped — fix it.
 - [ ] Section 2 is 8-12 rows table
 - [ ] Section 5 has at most 3 emphasis bullets below tree
 - [ ] Section 6 has EXACTLY 3 sub-sections (Standard / Rules / Skills)
@@ -648,8 +746,12 @@ Before finalizing, verify:
 
 ### Example: Section 1 for different stacks
 
-Examples below are shown in English. Emit the final output in the
-target output language; the semantic content should match.
+⚠️ **Language note:** The English examples below show the SEMANTIC
+structure only. Line 1 of Section 1 MUST be emitted in `{OUTPUT_LANG}` —
+use the canonical translations from "Section 1: Role Definition" rules
+above. Line 2 (PROJECT_CONTEXT) should also be written in
+`{OUTPUT_LANG}`, keeping technical identifiers (framework names, pattern
+names, stack labels) in their standard English form where idiomatic.
 
 **Java Spring Boot backend**:
 ```

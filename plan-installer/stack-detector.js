@@ -13,6 +13,20 @@ const { readStackEnvInfo } = require("../lib/env-parser");
 
 // ─── Lookup tables ──────────────────────────────────────────────
 
+// iBatis detection — ONLY matches Apache iBatis (EOL 2010) or
+// Spring iBatis (`spring-ibatis`, `ibatis-sqlmap`, `ibatis-core`).
+// This pattern intentionally avoids matching MyBatis coords
+// (`org.mybatis:mybatis`, `mybatis-spring-boot-starter`) — MyBatis
+// evolved out of iBatis but is a separate library with different
+// XML namespace and SqlSessionFactory architecture.
+//
+// Why separate from the ORM_RULES tables: the other entries match on
+// substring include() calls, which would produce false positives for
+// iBatis (MyBatis coords contain "mybatis" which does NOT include
+// "ibatis" — but legacy Spring projects may have both). We use a
+// precise regex on specific library coords instead.
+const IBATIS_REGEX = /\borg\.apache\.ibatis\b|\bspring-ibatis\b|\bibatis-sqlmap\b|\bibatis-core\b|\bibatis-common\b/i;
+
 // ORM detection rules: [keyword, ormName]  (order = priority, first match wins)
 const GRADLE_ORM_RULES = [
   ["mybatis", "mybatis"],
@@ -41,6 +55,7 @@ const NODE_ORM_RULES = [
 // DB detection rules: [keyword, dbName]
 const DB_KEYWORD_RULES = [
   ["postgresql", "postgresql"], ["postgres", "postgresql"],
+  ["mariadb", "mariadb"],        // v2.3.2+: MariaDB is a distinct DB, not a MySQL alias
   ["mysql", "mysql"],
   ["oracle", "oracle"],
   ["mongodb", "mongodb"],
@@ -63,19 +78,151 @@ function detectFirst(stack, field, content, rules) {
   }
 }
 
-function detectDb(stack, content, rules) {
-  if (stack.database) return;
-  for (const [keyword, value] of rules) {
-    if (content.includes(keyword)) {
-      stack.database = value;
-      stack.detected.push(value);
-      return;
+// Logging framework rules: [regex, frameworkName]
+// Order matters only for identification — all matches are collected.
+// We use regexes (not plain includes()) because "log4j" is a substring
+// of "log4jdbc" and "log4j-to-slf4j", which are JDBC adapters /
+// bridges, not Log4j2 as the primary logging framework.
+const LOGGING_RULES = [
+  // Log4j2 — the current Apache Logging project.
+  // Matches artifact coords in two forms:
+  //   - Gradle coord string: `org.apache.logging.log4j:log4j-core`
+  //     (or `org.apache.logging.log4j.log4j-core` in some catalogs).
+  //   - Maven XML: `<groupId>org.apache.logging.log4j</groupId>` paired
+  //     with `<artifactId>log4j-core</artifactId>`. The two tags are
+  //     matched on the same content (after comment stripping, so the
+  //     order and proximity within pom.xml is what matters — both must
+  //     be present somewhere in the non-commented dependency region).
+  // Does NOT match `log4j-to-slf4j` / `log4j-api` alone (which bridge
+  // Log4j API to SLF4J and are usually paired with Logback).
+  [/org\.apache\.logging\.log4j[.:]log4j-core/i, "log4j2"],
+  [/<groupId>\s*org\.apache\.logging\.log4j\s*<\/groupId>[\s\S]{0,300}?<artifactId>\s*log4j-core\s*<\/artifactId>/i, "log4j2"],
+  // Log4j2 via config file patterns
+  [/\blog4j2[\w.-]*\.(?:xml|properties|yaml|yml|json)\b/i, "log4j2"],
+
+  // Logback — Spring Boot's default. Matches the dependency in two forms:
+  //   - Gradle coord string: `ch.qos.logback:logback-classic`
+  //   - Maven XML: `<groupId>ch.qos.logback</groupId>` paired with
+  //     `<artifactId>logback-classic</artifactId>` (or logback-core).
+  // Also matches config file references `logback-*.xml` / `logback*.groovy`.
+  [/ch\.qos\.logback[.:]logback-classic|logback[\w.-]*\.xml|logback[\w.-]*\.groovy/i, "logback"],
+  [/<groupId>\s*ch\.qos\.logback\s*<\/groupId>[\s\S]{0,300}?<artifactId>\s*logback-(?:classic|core)\s*<\/artifactId>/i, "logback"],
+
+  // log4jdbc — JDBC logging adapter. Not a primary logging framework
+  // but useful metadata because CLAUDE.md / logging standards commonly
+  // describe both the primary framework AND JDBC adapters.
+  [/log4jdbc/i, "log4jdbc"],
+
+  // Log4j 1.x (EOL 2015) — still appears in legacy projects.
+  // The challenge is distinguishing it from Log4j2 adapters such as
+  // `log4j-to-slf4j`, `log4j-api`, `log4j-core` (all Log4j2 ecosystem).
+  //
+  // The groupId for Log4j 1.x is literally `log4j` (not
+  // `org.apache.logging.log4j`), so we anchor on the coord form
+  // `log4j:log4j` with surrounding quotes/whitespace boundaries so
+  // that `org.apache.logging.log4j:log4j-to-slf4j` does NOT match
+  // (word boundary alone isn't enough — `log4j:log4j` appears as a
+  // substring in `...log4j:log4j-to-slf4j`).
+  //
+  // Also matches:
+  //   <groupId>log4j</groupId>  (Maven XML form)
+  //   log4j.properties / log4j.xml (config files, not log4j2.*)
+  [
+    /(?:['":\s]log4j:log4j(?:[:'"]|\s|$))|<groupId>\s*log4j\s*<\/groupId>|\blog4j(?!2)\.(?:properties|xml)\b/im,
+    "log4j",
+  ],
+];
+
+// Comment stripping for dependency/config content before regex scanning.
+// Used by detectLogging and the Maven DB scan to ensure commented-out
+// dependencies are never interpreted as "in use".
+//
+// Three comment styles are handled:
+//   1. Line-level `//` (Gradle Kotlin/Groovy DSL).
+//   2. Line-level `#` (yml, properties, shell).
+//   3. Block-level `<!-- ... -->` (Maven pom.xml, XML config). Commonly
+//      used to disable a whole `<dependency>` block during migration
+//      (e.g., commenting out an old log4j 1.x dep after switching to
+//      Spring Boot's managed Logback). Block stripping is non-greedy
+//      and multi-line so nested blocks and `<dependency>` blocks
+//      spanning many lines are handled correctly.
+//
+// Returns a new string with the commented regions removed (replaced
+// with a newline to preserve approximate line counts for any
+// downstream logic that cares about position). Content outside
+// comments is preserved byte-for-byte.
+function stripComments(content) {
+  // Step 1: remove XML block comments first (can span multiple lines).
+  // Non-greedy `[\s\S]*?` matches newlines; the `/g` flag removes every
+  // occurrence. We intentionally do NOT handle nested `<!-- ... -->`
+  // because XML spec forbids nesting — any well-formed `<!-- ... -->`
+  // is flat.
+  const withoutBlock = content.replace(/<!--[\s\S]*?-->/g, "\n");
+  // Step 2: drop lines that are entirely a line-comment.
+  return withoutBlock
+    .split(/\r?\n/)
+    .filter(line => {
+      const trimmed = line.trimStart();
+      return !trimmed.startsWith("//") && !trimmed.startsWith("#");
+    })
+    .join("\n");
+}
+
+function detectLogging(stack, content) {
+  // Collect every matching logging framework. Uses stack.loggingFrameworks
+  // array (multi-valued) because it is common for a project to declare
+  // two: Logback as primary + log4jdbc as JDBC adapter.
+  //
+  // Comment stripping: commented-out lines in Gradle (`//`),
+  // yml/properties/shell-style (`#`), and XML block comments
+  // (`<!-- ... -->`) must not match. Without this, a line like
+  // `// implementation 'ch.qos.logback:logback-classic'` (commented
+  // out because the project switched away from explicit version
+  // pinning to Spring Boot's managed version) or a pom.xml
+  // `<!-- <dependency>log4j:log4j:1.2.17</dependency> -->` block
+  // (commented out during migration to Logback) is mistakenly
+  // reported as in use. We preserve the classic Logback detection
+  // path via the `logging.config:` yml reference or the logback
+  // config file glob elsewhere.
+  const stripped = stripComments(content);
+  for (const [regex, name] of LOGGING_RULES) {
+    if (regex.test(stripped) && !stack.loggingFrameworks.includes(name)) {
+      stack.loggingFrameworks.push(name);
     }
   }
-  // h2 with word boundary
-  if (!stack.database && H2_REGEX.test(content)) {
-    stack.database = "h2";
-    stack.detected.push("h2");
+}
+
+function detectDb(stack, content, rules) {
+  // Iterate every rule and record every DB keyword present in `content`.
+  // Two outputs:
+  //   (a) stack.database — primary DB (first match, legacy semantics).
+  //       Skipped once set, so earlier-called detectDb invocations
+  //       (Gradle build.gradle → application.yml → pom.xml) establish
+  //       the primary DB in source-file order.
+  //   (b) stack.databases — every DB keyword detected across all sources.
+  //       Deduped and order-preserved. Fills in multi-dialect projects.
+  for (const [keyword, value] of rules) {
+    if (content.includes(keyword)) {
+      if (!stack.database) {
+        stack.database = value;
+        stack.detected.push(value);
+      }
+      if (!stack.databases.includes(value)) {
+        stack.databases.push(value);
+      }
+    }
+  }
+  // h2 with word boundary — same pattern, separate from the keyword
+  // rules table because it needs regex (to avoid false positives from
+  // oauth2, cache2k, etc.).
+  if (H2_REGEX.test(content)) {
+    if (!stack.database) {
+      stack.database = "h2";
+      stack.detected.push("h2");
+    }
+    if (!stack.databases.includes("h2")) {
+      stack.databases.push("h2");
+    }
   }
 }
 
@@ -90,6 +237,26 @@ async function detectStack(ROOT) {
     language: null, languageVersion: null,
     framework: null, frameworkVersion: null,
     buildTool: null, database: null, orm: null,
+    // databases: multi-dialect projects declare more than one DB
+    // driver (e.g., PostgreSQL + MariaDB + Oracle for dialect-switchable
+    // backends). `database` keeps its legacy semantics of "the primary
+    // DB that wins the first-match race" for backward compatibility
+    // with v2.x consumers; `databases` is the full ordered list of
+    // every DB keyword detected across all config sources. Consumers
+    // that care about multi-dialect support (Pass 1 prompts, Pass 3
+    // standard files for database-schema docs) should prefer this
+    // field. Empty array, not null, when no DB is detected — makes
+    // the array-comprehension in prompts simpler.
+    databases: [],
+    orm: null,
+    // loggingFrameworks: detected JVM logging frameworks (Logback,
+    // Log4j2, SLF4J-only, etc.). Like `databases`, this is an
+    // informational list for Pass 1 prompts — the LLM can use it to
+    // ground logging-related standard/rule content. Empty array when
+    // no JVM logging evidence is found (e.g., Node.js projects).
+    // Mainly populated from Gradle/Maven dependency keywords and from
+    // `logging.config` references in application.yml.
+    loggingFrameworks: [],
     frontend: null, frontendVersion: null,
     packageManager: null, monorepo: null, workspaces: null,
     detected: [],
@@ -111,15 +278,104 @@ async function detectStack(ROOT) {
       ];
       for (const pattern of svPatterns) {
         const sv = g.match(pattern);
-        if (sv) { stack.frameworkVersion = sv[1]; break; }
+        if (sv) {
+          // Reject captures that are variable references like `${var}`
+          // — those need resolution via the fallback block below.
+          if (/^\$\{/.test(sv[1])) continue;
+          stack.frameworkVersion = sv[1];
+          break;
+        }
       }
-      const jv = g.match(/sourceCompatibility\s*=\s*['"]?(\d+)['"]?/);
-      if (jv) stack.languageVersion = jv[1];
+      // Fallback: some projects centralize the Spring Boot version in
+      // an `ext { springBootVersion = '3.5.5' }` block and reference
+      // it from the plugin declaration (`version "${springBootVersion}"`).
+      // If none of the above patterns matched but we can find a
+      // variable-reference form, resolve the variable inside the same
+      // build.gradle.
+      if (!stack.frameworkVersion) {
+        const svVarRef = g.match(/springframework\.boot[^\n]*version\s*['"]\$\{?(\w+)\}?['"]/);
+        if (svVarRef) {
+          const varName = svVarRef[1];
+          const escapedVar = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const varDef = new RegExp(`${escapedVar}\\s*=\\s*['"]([\\d.]+)['"]`);
+          const varVal = g.match(varDef);
+          if (varVal) stack.frameworkVersion = varVal[1];
+        }
+      }
+      // Java version — Gradle writes this in several forms. Try each
+      // pattern until one matches. Earlier patterns take precedence.
+      //
+      // Pattern 1: direct numeric literal (most common, v1.x era)
+      //   sourceCompatibility = 21
+      //   sourceCompatibility = '21'
+      //   sourceCompatibility = "21"
+      //
+      // Pattern 2: JavaVersion enum (common with Spring Initializr)
+      //   sourceCompatibility = JavaVersion.VERSION_21
+      //   sourceCompatibility = JavaVersion.VERSION_1_8   (Java 8)
+      //
+      // Pattern 3: Gradle toolchain block (modern, Gradle 6.7+)
+      //   java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+      //
+      // Pattern 4: ext variable reference (common in team/enterprise
+      // projects that centralize versions)
+      //   ext { javaVersion = '21' }
+      //   java { sourceCompatibility = "${javaVersion}" }
+      //
+      // Without pattern 4, an ext-variable-reference-only build.gradle
+      // produces languageVersion=null, leaving the LLM to guess (e.g.
+      // "Java 17+" for a Spring Boot 3.x project that actually targets
+      // Java 21).
+      const javaVersionPatterns = [
+        // (1) numeric literal on sourceCompatibility or targetCompatibility
+        /sourceCompatibility\s*=\s*['"]?(\d+)['"]?/,
+        /targetCompatibility\s*=\s*['"]?(\d+)['"]?/,
+        // (2) JavaVersion enum — supports both VERSION_21 and VERSION_1_8
+        /JavaVersion\.VERSION_(?:1_)?(\d+)/,
+        // (3) toolchain block
+        /JavaLanguageVersion\.of\s*\(\s*(\d+)\s*\)/,
+      ];
+      for (const pattern of javaVersionPatterns) {
+        const m = g.match(pattern);
+        if (m) { stack.languageVersion = m[1]; break; }
+      }
+      // (4) ext variable reference fallback — if the Compatibility
+      // assignment used "${varName}" we now resolve varName inside the
+      // same file's ext block. We only run this if the numeric patterns
+      // above did not already find a value.
+      if (!stack.languageVersion) {
+        const varRefMatch = g.match(/(?:source|target)Compatibility\s*=\s*["']?\$\{?(\w+)\}?["']?/);
+        if (varRefMatch) {
+          const varName = varRefMatch[1];
+          // Escape the variable name for use in a RegExp. In practice
+          // Gradle variable names are [A-Za-z0-9_], so escaping is a
+          // defensive guard against unexpected characters, not a
+          // practical necessity for today's inputs.
+          const escapedVarName = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const extAssign = new RegExp(`${escapedVarName}\\s*=\\s*['"]?(\\d+)['"]?`);
+          const extVal = g.match(extAssign);
+          if (extVal) stack.languageVersion = extVal[1];
+        }
+      }
 
-      detectFirst(stack, "orm", g, GRADLE_ORM_RULES);
+      // iBatis detection: runs BEFORE generic ORM_RULES because the
+      // generic table's "mybatis" keyword (substring match) would
+      // happily match Apache iBatis coords like `ibatis-core` if the
+      // order were reversed — "mybatis" is not a substring of
+      // "ibatis", but a future maintainer adding "ibatis" to the
+      // generic table would create ambiguity. Explicit precedence here.
+      if (IBATIS_REGEX.test(g)) {
+        stack.orm = "ibatis";
+        stack.detected.push("ibatis");
+      } else {
+        detectFirst(stack, "orm", g, GRADLE_ORM_RULES);
+      }
       // Exclude "postgres" (substring of postgresql — false positive on r2dbc-postgres) and "sqlite" (rare in Gradle deps)
       // "postgresql" is still matched via DB_KEYWORD_RULES; h2 uses word-boundary check separately
       detectDb(stack, g, DB_KEYWORD_RULES.filter(([kw]) => !["postgres", "sqlite"].includes(kw)));
+
+      // Logging framework detection from Gradle dependencies.
+      detectLogging(stack, g);
 
       // Kotlin detection: override language if Kotlin plugin found
       if (g.includes("kotlin") || g.includes("org.jetbrains.kotlin")) {
@@ -155,9 +411,18 @@ async function detectStack(ROOT) {
       if (!stack.orm && vc.includes("exposed")) { stack.orm = "exposed"; stack.detected.push("exposed (catalog)"); }
       else if (!stack.orm && vc.includes("jooq")) { stack.orm = "jooq"; stack.detected.push("jooq (catalog)"); }
       else if (!stack.orm && (vc.includes("jpa") || vc.includes("hibernate"))) { stack.orm = "jpa"; stack.detected.push("jpa (catalog)"); }
-      if (!stack.database && vc.includes("postgresql")) { stack.database = "postgresql"; }
-      if (!stack.database && vc.includes("mysql")) { stack.database = "mysql"; }
-      if (!stack.database && vc.includes("mongodb")) { stack.database = "mongodb"; }
+      // DBs from version catalog — dual output (primary + array)
+      const catalogDbs = [
+        ["postgresql", "postgresql"],
+        ["mysql", "mysql"],
+        ["mongodb", "mongodb"],
+      ];
+      for (const [keyword, value] of catalogDbs) {
+        if (vc.includes(keyword)) {
+          if (!stack.database) stack.database = value;
+          if (!stack.databases.includes(value)) stack.databases.push(value);
+        }
+      }
       if (!stack.language && vc.includes("kotlin")) {
         stack.language = "kotlin"; stack.detected.push("kotlin (catalog)");
       }
@@ -220,17 +485,91 @@ async function detectStack(ROOT) {
       if (!stack.buildTool) { stack.buildTool = "maven"; stack.language = "java"; stack.detected.push("pom.xml"); }
       const sv = pom.match(/<spring-boot[^>]*version>([^<]+)/);
       if (sv) stack.frameworkVersion = sv[1];
-      const jv = pom.match(/<java\.version>(\d+)/);
-      if (jv) stack.languageVersion = jv[1];
-      if (pom.includes("spring-boot") && !stack.framework) { stack.framework = "spring-boot"; stack.detected.push("spring-boot"); }
-      detectFirst(stack, "orm", pom, MAVEN_ORM_RULES);
+      // Java version — Maven commonly uses three patterns:
+      //
+      // Pattern 1: direct <java.version>21</java.version>
+      //
+      // Pattern 2: <maven.compiler.source>21</maven.compiler.source>
+      //   (and matching <maven.compiler.target>), used when the project
+      //   avoids the Spring Boot parent's `java.version` property.
+      //
+      // Pattern 3: property reference — `<java.version>${project.javaVersion}</java.version>`
+      //   where `<project.javaVersion>21</project.javaVersion>` is
+      //   declared earlier in <properties>. Enterprise projects
+      //   centralize versions this way so all child modules pick up the
+      //   same value.
+      //
+      // We try patterns in order (1) → (2) → (3). Pattern 3 is a
+      // fallback that resolves the referenced property within the same
+      // pom.xml (cross-file resolution — parent pom, BOM — is out of
+      // scope; the resulting null falls through to LLM-side analysis).
+      const mvnJavaPatterns = [
+        /<java\.version>\s*(\d+)\s*<\/java\.version>/,
+        /<maven\.compiler\.source>\s*(\d+)\s*<\/maven\.compiler\.source>/,
+        /<maven\.compiler\.target>\s*(\d+)\s*<\/maven\.compiler\.target>/,
+      ];
+      for (const pattern of mvnJavaPatterns) {
+        const m = pom.match(pattern);
+        if (m) { stack.languageVersion = m[1]; break; }
+      }
+      // Pattern 3 fallback: if <java.version> references a property,
+      // resolve it inside the same pom.
+      if (!stack.languageVersion) {
+        const propRef = pom.match(/<java\.version>\s*\$\{([^}]+)\}\s*<\/java\.version>/);
+        if (propRef) {
+          const propName = propRef[1].trim();
+          const escapedProp = propName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const propDef = new RegExp(`<${escapedProp}>\\s*(\\d+)\\s*</${escapedProp}>`);
+          const propVal = pom.match(propDef);
+          if (propVal) stack.languageVersion = propVal[1];
+        }
+      }
+      // For dependency detection (framework, ORM, DB, logging), strip
+      // XML block comments first. A `<!-- <dependency>...</dependency> -->`
+      // block is a standard Maven pattern for disabling a dep during
+      // migration (e.g., commenting out a legacy log4j 1.x dep after
+      // switching to Spring Boot's managed Logback); without stripping,
+      // those deps are counted as "in use". The `<properties>` scan
+      // above stays on the raw `pom` because (a) commented-out property
+      // definitions are rare in practice and (b) the property-reference
+      // resolution already scopes itself to the declared property name.
+      const pomClean = stripComments(pom);
+      if (pomClean.includes("spring-boot") && !stack.framework) { stack.framework = "spring-boot"; stack.detected.push("spring-boot"); }
+      if (IBATIS_REGEX.test(pomClean)) {
+        stack.orm = "ibatis";
+        stack.detected.push("ibatis");
+      } else {
+        detectFirst(stack, "orm", pomClean, MAVEN_ORM_RULES);
+      }
       // Maven DB: original does not push to detected (unlike Gradle)
-      if (!stack.database && pom.includes("postgresql")) stack.database = "postgresql";
-      if (!stack.database && pom.includes("mysql")) stack.database = "mysql";
-      if (!stack.database && pom.includes("oracle")) stack.database = "oracle";
-      if (!stack.database && pom.includes("mongodb")) stack.database = "mongodb";
-      if (!stack.database && H2_REGEX.test(pom)) stack.database = "h2";
-      if (!stack.database && pom.includes("sqlite")) stack.database = "sqlite";
+      // DB keyword scan: reuses detectDb's dual-output semantics
+      // (primary first-match → stack.database; every match →
+      // stack.databases). Maven original did not push to `detected`
+      // (unlike Gradle), so we preserve that omission here.
+      const mvnDbRules = [
+        ["postgresql", "postgresql"],
+        ["mariadb", "mariadb"],
+        ["mysql", "mysql"],
+        ["oracle", "oracle"],
+        ["mongodb", "mongodb"],
+        ["sqlite", "sqlite"],
+      ];
+      for (const [keyword, value] of mvnDbRules) {
+        if (pomClean.includes(keyword)) {
+          if (!stack.database) stack.database = value;
+          if (!stack.databases.includes(value)) stack.databases.push(value);
+        }
+      }
+      if (H2_REGEX.test(pomClean)) {
+        if (!stack.database) stack.database = "h2";
+        if (!stack.databases.includes("h2")) stack.databases.push("h2");
+      }
+
+      // Logging framework detection from Maven dependencies. detectLogging
+      // does its own comment stripping internally, so passing raw `pom`
+      // works correctly — but we pass `pomClean` for consistency with
+      // the other Maven dependency scans in this block.
+      detectLogging(stack, pomClean);
     }
   }
 
@@ -329,7 +668,12 @@ async function detectStack(ROOT) {
           stack.orm = ormName; stack.detected.push(ormName);
         }
       }
-      if (deps.mongoose) { if (!stack.database) stack.database = "mongodb"; if (!stack.orm) stack.orm = "mongoose"; stack.detected.push("mongoose"); }
+      if (deps.mongoose) {
+        if (!stack.database) stack.database = "mongodb";
+        if (!stack.databases.includes("mongodb")) stack.databases.push("mongodb");
+        if (!stack.orm) stack.orm = "mongoose";
+        stack.detected.push("mongoose");
+      }
 
       // DB
       const nodeDbRules = [["pg", "postgresql"], ["mysql2", "mysql"], ["mongodb", "mongodb"]];
@@ -383,8 +727,16 @@ async function detectStack(ROOT) {
         for (const [kw, name] of pyOrmRules) {
           if (r.includes(kw) && !stack.orm) { stack.orm = name; break; }
         }
-        if (r.includes("psycopg") && !stack.database) stack.database = "postgresql";
-        if (r.includes("mysqlclient") && !stack.database) stack.database = "mysql";
+        const pyDbs = [
+          ["psycopg", "postgresql"],
+          ["mysqlclient", "mysql"],
+        ];
+        for (const [kw, value] of pyDbs) {
+          if (r.includes(kw)) {
+            if (!stack.database) stack.database = value;
+            if (!stack.databases.includes(value)) stack.databases.push(value);
+          }
+        }
       }
     }
 
@@ -395,20 +747,94 @@ async function detectStack(ROOT) {
   }
 
   // ── DB from config files ──
-  const ymls = await glob("**/application*.yml", { cwd: ROOT, absolute: true, ignore: ["**/node_modules/**", "**/build/**", "**/target/**", "**/.gradle/**"] });
+  //
+  // Glob covers Spring Boot's full configuration-file naming space:
+  //   - `application.{yml,yaml,properties}` (Spring Initializr default;
+  //     .yml is most common, .yaml is spec-official, .properties is the
+  //     framework default when nothing specifies)
+  //   - `application-*.{yml,yaml,properties}` profile variants
+  //     (e.g. application-local.yml, application-dev.properties)
+  //   - `bootstrap.{yml,yaml,properties}` + profile variants
+  //     (Spring Cloud Config / Consul / Eureka; loaded before `application.*`
+  //     so must be part of the same scan)
+  //
+  // The regexes inside the loop are format-agnostic: the `port` regex
+  // set covers both yml `server:\n  port: N` syntax and .properties
+  // `server.port=N` flat-key syntax. DB keyword detection is
+  // substring-based and works identically across all three formats.
+  const configGlob = "**/{application,bootstrap}*.{yml,yaml,properties}";
+  const ymls = await glob(configGlob, {
+    cwd: ROOT, absolute: true,
+    ignore: ["**/node_modules/**", "**/build/**", "**/target/**", "**/.gradle/**"],
+  });
   for (const y of ymls) {
     const c = readFileSafe(y);
     if (!c) continue;
-    if (!stack.database && c.includes("postgresql")) stack.database = "postgresql";
-    if (!stack.database && c.includes("mysql")) stack.database = "mysql";
-    if (!stack.database && c.includes("oracle")) stack.database = "oracle";
-    if (!stack.database && c.includes("mongodb")) stack.database = "mongodb";
-    if (!stack.database && H2_REGEX.test(c)) stack.database = "h2";
-    if (!stack.database && c.includes("sqlite")) stack.database = "sqlite";
-    if (!stack.port) {
-      const pm = c.match(/server:\s*\n\s*port:\s*(\d+)/) || c.match(/server\.port\s*[=:]\s*(\d+)/);
-      if (pm) stack.port = parseInt(pm[1]);
+    // DB detection — dual output per source file.
+    //
+    // NOTE on mariadb: earlier versions of this detector deliberately
+    // OMITTED mariadb from yml-side keyword matching because some
+    // projects mention mariadb in commented-out profile sections or
+    // as fallback drivers. With multi-dialect support (`stack.databases`
+    // array in v2.3.2+), the cost of over-reporting is lower than the
+    // cost of under-reporting — `databases` is an informational list
+    // for the LLM, and a false positive is easier to filter out in the
+    // prompt than a miss is to detect. So mariadb is now included.
+    const ymlDbs = [
+      ["postgresql", "postgresql"],
+      ["mariadb", "mariadb"],
+      ["mysql", "mysql"],
+      ["oracle", "oracle"],
+      ["mongodb", "mongodb"],
+    ];
+    for (const [keyword, value] of ymlDbs) {
+      if (c.includes(keyword)) {
+        if (!stack.database) stack.database = value;
+        if (!stack.databases.includes(value)) stack.databases.push(value);
+      }
     }
+    if (H2_REGEX.test(c)) {
+      if (!stack.database) stack.database = "h2";
+      if (!stack.databases.includes("h2")) stack.databases.push("h2");
+    }
+    if (c.includes("sqlite")) {
+      if (!stack.database) stack.database = "sqlite";
+      if (!stack.databases.includes("sqlite")) stack.databases.push("sqlite");
+    }
+    if (!stack.port) {
+      // Port — Spring Boot accepts both plain numeric values and
+      // property placeholders with a default:
+      //   port: 8090
+      //   port: ${APP_PORT:8090}         ← Spring placeholder, default 8090
+      //   server.port=8090               ← .properties-style, yml-inline
+      //   server.port=${SERVER_PORT:8090}
+      //
+      // Without the placeholder patterns (3)/(4), a Spring Boot yml
+      // using `port: ${APP_PORT:8090}` produces stack.port=null, leaving
+      // the LLM to guess (e.g. assuming the "port 8080" Spring Boot
+      // framework default).
+      const portPatterns = [
+        // (1) direct numeric literal in yml `server:\n  port: N`
+        /server:\s*\n\s*port:\s*(\d+)/,
+        // (2) flat-key style `server.port=N` or `server.port: N`
+        /server\.port\s*[=:]\s*(\d+)/,
+        // (3) placeholder-with-default in yml `server:\n  port: ${VAR:N}`
+        //     — capture the default value, which is what the app falls back
+        //     to when VAR is unset (the most common dev/local scenario)
+        /server:\s*\n\s*port:\s*\$\{[^}:]+:(\d+)\}/,
+        // (4) placeholder-with-default in flat-key form
+        /server\.port\s*[=:]\s*\$\{[^}:]+:(\d+)\}/,
+      ];
+      for (const re of portPatterns) {
+        const pm = c.match(re);
+        if (pm) { stack.port = parseInt(pm[1]); break; }
+      }
+    }
+
+    // Logging framework detection from yml. `logging.config:
+    // classpath:logback-app.xml` tells us Logback is primary; bare
+    // mentions of log4jdbc in the doc mean the adapter is in use.
+    detectLogging(stack, c);
   }
 
   // .env
@@ -417,11 +843,21 @@ async function detectStack(ROOT) {
     if (existsSafe(ep)) {
       const ec = readFileSafe(ep);
       if (ec && ec.includes("DATABASE_URL")) {
-        // .env: original checks postgres (not postgresql), no oracle/h2
-        if (ec.includes("postgres") && !stack.database) stack.database = "postgresql";
-        if (ec.includes("mysql") && !stack.database) stack.database = "mysql";
-        if (ec.includes("mongodb") && !stack.database) stack.database = "mongodb";
-        if (ec.includes("sqlite") && !stack.database) stack.database = "sqlite";
+        // .env: original checks postgres (not postgresql), no oracle/h2.
+        // Preserve that semantics, but update both primary and array
+        // outputs together.
+        const envDbs = [
+          ["postgres", "postgresql"],
+          ["mysql", "mysql"],
+          ["mongodb", "mongodb"],
+          ["sqlite", "sqlite"],
+        ];
+        for (const [keyword, value] of envDbs) {
+          if (ec.includes(keyword)) {
+            if (!stack.database) stack.database = value;
+            if (!stack.databases.includes(value)) stack.databases.push(value);
+          }
+        }
       }
     }
   }

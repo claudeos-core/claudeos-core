@@ -409,7 +409,7 @@ async function main() {
   }
 
   // ─── 10. Path-claim verification ──────────────────────────
-  // Catches two dogfood-surfaced failure classes:
+  // Catches two failure classes:
   //   (a) Pass 3 hallucinations: rules/standard files reference
   //       src/... paths the LLM fabricated from directory context
   //       (e.g., `src/feature/routers/featureRoutePath.ts` when the actual
@@ -427,9 +427,62 @@ async function main() {
   // inline code already fenced. We still strip fenced blocks first so
   // example blocks inside ```...``` don't produce false positives.
   const SRC_PATH_RE = /\bsrc\/[\w\-./]+\.(?:ts|tsx|js|jsx)\b/g;
-  // Placeholder paths like `src/{domain}/...` are scaffold templates,
-  // not real path claims. Skip them.
-  const hasPlaceholder = (p) => /\{[^}]+\}/.test(p);
+
+  // Placeholder paths are scaffold templates / teaching examples, not
+  // real path claims. We skip them. Three patterns qualify:
+  //   1. Curly-brace placeholder  — `src/{domain}/api/{Entity}.ts`
+  //      (the original v2.3.0 form).
+  //   2. Xxx-style placeholder    — `src/hooks/useXxx.ts` or
+  //      `src/pages/PageXxx.tsx`  (LLMs commonly use `Xxx`/`XXX` as
+  //      "insert-your-name-here"; this form has been observed in
+  //      `naming-conventions-rules.md`). We match any segment
+  //      containing `Xxx` or `XXX` as a distinctive token.
+  //   3. Glob-star placeholder    — `src/test/*.setup.ts` or
+  //      `src/*/mocks/handlers.ts` (conventional glob syntax that an
+  //      LLM may use to describe a *class* of files rather than one
+  //      specific file).
+  // Literal paths that happen to contain `x`/`X` as part of a real
+  // identifier (e.g., `src/utils/xyzParser.ts`) do NOT match these
+  // patterns — the placeholder regex requires the `Xxx` pattern
+  // (capital-lower-lower, a distinctive convention) OR three or more
+  // consecutive uppercase X's. The uppercase-XXX rule has NO word-
+  // boundary anchor because placeholder tokens commonly appear in
+  // the middle of a compound identifier (`useXXX`, `useXXX_CONFIG`,
+  // `nameXXXvalue`, `XXXParser`) — requiring a boundary would skip
+  // those cases. Three consecutive uppercase X's in a row is a
+  // distinctive signal that essentially never appears in ordinary
+  // identifiers (lowercase `xxx` CAN appear in words like `taxXxxRate`,
+  // but three uppercase X's do not occur outside placeholder convention).
+  const hasPlaceholder = (p) =>
+    /\{[^}]+\}/.test(p) ||       // {domain} style
+    /X{3,}/.test(p) || /Xxx/.test(p) ||  // XXX+ anywhere, or Xxx token
+    /\*/.test(p);                // glob star
+
+  // File-level exclusion: some generated rule files are DESIGNED to cite
+  // convention-trap paths as teaching examples — they tell the reader
+  // "don't invent paths like these". `content-validator`'s path-claim
+  // check is content-blind, so literal example paths inside such a file
+  // would be flagged as STALE_PATH even though the author intentionally
+  // listed them as cautionary illustrations.
+  //
+  // The exclusion is strictly opt-in, named by relative path, and
+  // limited to files whose purpose is educational-about-paths. Adding a
+  // file here is a deliberate design choice — the alternative is for
+  // the LLM to rewrite those examples as placeholders (Xxx / glob /
+  // prose), which the prompt now nudges toward but cannot strictly
+  // enforce.
+  //
+  // Current exclusions:
+  //   - 00.core/52.ai-work-rules.md — the canonical "AI work rules"
+  //     file, which by design lists convention-trap paths as warnings
+  //     to future AI sessions. This file has been observed to
+  //     accumulate STALE_PATH false positives when a prompt-level
+  //     denylist primed the LLM to cite those exact paths as
+  //     educational examples (the denylist has since been removed;
+  //     this exclusion is the validator-side defense-in-depth).
+  const PATH_CLAIM_EXCLUDE_FILES = new Set([
+    "00.core/52.ai-work-rules.md",
+  ]);
 
   // Strip fenced code blocks (``` and ~~~) so examples inside code
   // blocks don't trigger the check — they're illustrations, not claims.
@@ -459,10 +512,19 @@ async function main() {
   ];
   let pathClaimsChecked = 0;
   let pathClaimErrors = 0;
+  let pathClaimFilesExcluded = 0;
   for (const target of pathClaimTargets) {
     if (!fs.existsSync(target.dir)) continue;
     const files = await glob(target.glob, { cwd: target.dir, absolute: true });
     for (const file of files) {
+      // File-level exclusion: the path is relative to the target dir
+      // (e.g., "00.core/52.ai-work-rules.md" inside .claude/rules/).
+      // Normalize to forward slashes for cross-platform match.
+      const relToTargetDir = path.relative(target.dir, file).split(path.sep).join("/");
+      if (PATH_CLAIM_EXCLUDE_FILES.has(relToTargetDir)) {
+        pathClaimFilesExcluded++;
+        continue;
+      }
       const raw = fs.readFileSync(file, "utf-8");
       const stripped = stripFences(raw);
       const seen = new Set(); // dedupe within a single file
@@ -488,7 +550,8 @@ async function main() {
       }
     }
   }
-  console.log(`    ${pathClaimsChecked} path claim(s) checked, ${pathClaimErrors} stale`);
+  console.log(`    ${pathClaimsChecked} path claim(s) checked, ${pathClaimErrors} stale` +
+              (pathClaimFilesExcluded > 0 ? ` (${pathClaimFilesExcluded} file(s) excluded by design)` : ""));
 
   // MANIFEST ↔ CLAUDE.md §6 Skills drift check.
   // MANIFEST registers skills in a 4-column table; each row's second
@@ -634,14 +697,26 @@ async function main() {
   }
 
   // ─── Output results ─────────────────────────────────────────
+  //
+  // Terminology note (v2.3.3): the internal arrays stay named `errors` and
+  // `warnings` because they encode *severity* for programmatic consumers
+  // (health-checker's pass/fail gate, stale-report.json's schema, CI
+  // pipelines). The user-visible labels, however, are "advisories" and
+  // "notes" — because these are quality observations about LLM-generated
+  // documents, not test failures. A STALE_PATH doesn't mean `init` crashed;
+  // it means "AI guessed a filename that doesn't exist on disk — worth
+  // reviewing". Calling that an "error" made users think generation had
+  // actually failed. The exit code behavior is unchanged — this tool still
+  // returns 1 when advisories exist so `npx claudeos-core health` remains
+  // a real gate for CI.
   console.log(`\n  Checked ${checked} files\n`);
   if (errors.length) {
-    console.log(`  ❌ ERRORS (${errors.length}):`);
+    console.log(`  ℹ️  ADVISORIES (${errors.length}):`);
     errors.forEach(e => console.log(`     [${e.type}] ${e.file}: ${e.msg}`));
     console.log();
   }
   if (warnings.length) {
-    console.log(`  ⚠️  WARNINGS (${warnings.length}):`);
+    console.log(`  ⚠️  NOTES (${warnings.length}):`);
     warnings.forEach(w => console.log(`     [${w.type}] ${w.file}: ${w.msg}`));
     console.log();
   }
@@ -649,13 +724,18 @@ async function main() {
     console.log("  ✅ All content validation passed\n");
   }
 
-  // Record in stale-report
+  // Record in stale-report. Field names (`contentErrors`, `contentWarnings`)
+  // stay stable because they are part of stale-report.json's public schema
+  // that health-checker and external CI consumers read.
   updateStaleReport(GEN_DIR, "contentValidation",
     { checkedAt: new Date().toISOString(), checked, errors: errors.length, warnings: warnings.length, details: { errors, warnings } },
     { contentErrors: errors.length, contentWarnings: warnings.length }
   );
 
-  console.log(`  Total: ${errors.length} errors, ${warnings.length} warnings\n`);
+  console.log(`  Total: ${errors.length} advisories, ${warnings.length} notes\n`);
+  // Exit code preserved (advisories → 1) so health-checker can still gate
+  // on this tool. The `init` orchestrator displays the result as a soft
+  // advisory regardless (see runContentValidator in bin/commands/init.js).
   process.exit(errors.length > 0 ? 1 : 0);
 }
 

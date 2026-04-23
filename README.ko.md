@@ -83,7 +83,7 @@ ClaudeOS-Core는 프로젝트가 `ApiResponse.ok()`를 쓴다는 것, MyBatis XM
 
 생성된 모든 `.md` 파일에서 백틱으로 감싼 경로 참조(`src/...`, `.claude/rules/...`, `claudeos-core/skills/...`)를 읽어 실제 파일 시스템과 대조합니다. 이전에는 어떤 도구도 감지하지 못했던 두 가지 LLM 실패 클래스를 잡아냅니다:
 
-- **`STALE_PATH`** — Pass 3 또는 Pass 4가 그럴듯하지만 존재하지 않는 경로를 만들어낼 때. 전형적 사례: 실제 파일이 `routePath.ts`인데 TypeScript 상수 `FEATURE_ROUTE_PATH`에서 `featureRoutePath.ts`를 추론; multi-entry 프로젝트에서 Vite convention으로 `src/main.tsx` 가정; 프로젝트에 테스트가 없는데도 MSW 문서에서 `src/__mocks__/handlers.ts` 가정.
+- **`STALE_PATH`** — Pass 3 또는 Pass 4가 그럴듯하지만 존재하지 않는 경로를 만들어낼 때. 세 가지 대표 유형: (1) **식별자 → 파일명 재정규화** — ALL_CAPS TypeScript 상수나 Java 어노테이션에서 실제 파일명과 다른 규칙의 파일명을 추론; (2) **프레임워크 관습 진입점 날조** — 실제로는 다른 레이아웃을 택한 프로젝트에 프레임워크의 표준 진입점 파일(Vite의 main 모듈, Next.js app-router providers 등)이 존재한다고 가정; (3) **그럴듯한 유틸리티 날조** — 보이는 디렉토리 아래에 "자연스럽게 존재할 법한" 헬퍼의 구체적 파일명을 인용.
 - **`MANIFEST_DRIFT`** — `claudeos-core/skills/00.shared/MANIFEST.md`에 등록된 skill이 `CLAUDE.md §6`에 언급 안 되어 있거나 그 반대 상황. `CLAUDE.md §6`은 진입점이고 `MANIFEST.md`가 전체 레지스트리인 orchestrator + sub-skill 레이아웃을 인식해서, sub-skill은 부모 orchestrator를 통해 간접적으로 커버되는 것으로 판정합니다.
 
 validator는 `pass3-footer.md`와 `pass4.md`의 prompt-time prevention과 짝을 이룹니다: 특정 환각 클래스(상위 디렉터리 접두사, Vite/MSW/Vitest/Jest/RTL 라이브러리 관례)를 문서화한 anti-pattern 블록과, `pass3a-facts.md`에 구체적인 파일명이 없을 때 규칙을 디렉터리 단위로 범위 지정하라는 명시적 positive guidance.

@@ -55,20 +55,20 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack, modules, API server info
    - 00.core/02.architecture.md — Layer structure, request flow, directory structure
    - 00.core/03.naming-conventions.md — File/variable/type naming conventions
-   - 10.backend-api/01.router-controller-patterns.md — Routing patterns + middleware
-   - 10.backend-api/02.service-patterns.md — DI, transactions, business logic
-   - 10.backend-api/03.data-access-patterns.md — ORM patterns, query optimization
-   - 10.backend-api/04.response-exception.md — Response/error handling patterns
-   - 10.backend-api/05.validation-dto.md — Validation, DTO patterns
-   - 10.backend-api/06.middleware-interceptor.md — Middleware, Guard, Interceptor
+   - 10.backend/01.router-controller-patterns.md — Routing patterns + middleware
+   - 10.backend/02.service-patterns.md — DI, transactions, business logic
+   - 10.backend/03.data-access-patterns.md — ORM patterns, query optimization
+   - 10.backend/04.response-exception.md — Response/error handling patterns
+   - 10.backend/05.validation-dto.md — Validation, DTO patterns
+   - 10.backend/06.middleware-interceptor.md — Middleware, Guard, Interceptor
    - 30.security-db/01.security-auth.md — JWT, Guard, CORS, Rate Limit
    - 30.security-db/02.database-schema.md — Migrations, seeds, schema conventions
    - 30.security-db/03.common-utilities.md — Common utils, helpers, constants
    - 40.infra/01.environment-config.md — Environment variables, config management
    - 40.infra/02.logging-monitoring.md — Logging standards, monitoring, alerts
    - 40.infra/03.cicd-deployment.md — CI/CD pipeline, deployment strategy
-   - 50.verification/01.development-verification.md — Build, startup, API testing
-   - 50.verification/02.testing-strategy.md — Testing strategy, mocking, coverage
+   - 80.verification/01.development-verification.md — Build, startup, API testing
+   - 80.verification/02.testing-strategy.md — Testing strategy, mocking, coverage
 
    Each file MUST include:
    - Correct examples (✅ code blocks)
@@ -82,7 +82,7 @@ Generation targets:
    - Each rule file MUST end with a `## Reference` section linking to the corresponding standard file(s):
      ```
      ## Reference
-     > For detailed patterns and examples, Read: claudeos-core/standard/10.backend-api/01.router-controller-patterns.md
+     > For detailed patterns and examples, Read: claudeos-core/standard/10.backend/01.router-controller-patterns.md
      ```
    - `paths:` frontmatter per rule category:
      - `00.core/*` rules: `paths: ["**/*"]` — always loaded (architecture, naming are universally needed)
@@ -93,6 +93,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts", "**/*.js"]` — CI config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]` — loaded only when editing claudeos-core files
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — a directory of all standard files. This is NOT a "read all" instruction. Claude should Read ONLY the standards relevant to the current task. Structure it as:
      ```
      ---
@@ -109,12 +110,12 @@ Generation targets:
      - claudeos-core/standard/00.core/03.naming-conventions.md
      - claudeos-core/standard/00.core/04.doc-writing-guide.md
      ## Backend API
-     - claudeos-core/standard/10.backend-api/01.router-controller-patterns.md
-     - claudeos-core/standard/10.backend-api/02.service-patterns.md
-     - claudeos-core/standard/10.backend-api/03.data-access-patterns.md
-     - claudeos-core/standard/10.backend-api/04.response-exception.md
-     - claudeos-core/standard/10.backend-api/05.validation-dto.md
-     - claudeos-core/standard/10.backend-api/06.middleware-interceptor.md
+     - claudeos-core/standard/10.backend/01.router-controller-patterns.md
+     - claudeos-core/standard/10.backend/02.service-patterns.md
+     - claudeos-core/standard/10.backend/03.data-access-patterns.md
+     - claudeos-core/standard/10.backend/04.response-exception.md
+     - claudeos-core/standard/10.backend/05.validation-dto.md
+     - claudeos-core/standard/10.backend/06.middleware-interceptor.md
      ## Security & DB
      - claudeos-core/standard/30.security-db/01.security-auth.md
      - claudeos-core/standard/30.security-db/02.database-schema.md
@@ -123,8 +124,8 @@ Generation targets:
      - claudeos-core/standard/40.infra/01.environment-config.md
      - claudeos-core/standard/40.infra/02.logging-monitoring.md
      - claudeos-core/standard/40.infra/03.cicd-deployment.md
-     - claudeos-core/standard/50.verification/01.development-verification.md
-     - claudeos-core/standard/50.verification/02.testing-strategy.md
+     - claudeos-core/standard/80.verification/01.development-verification.md
+     - claudeos-core/standard/80.verification/02.testing-strategy.md
      ```
      List only the standard files that were actually generated above. NOTE: `00.core/04.doc-writing-guide.md` is a FORWARD REFERENCE — Pass 4 will generate it; include it anyway. Do NOT add a "DO NOT Read" section here — that information lives in CLAUDE.md Section 7 (the single source of truth).
 

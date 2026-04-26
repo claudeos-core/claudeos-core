@@ -40,7 +40,17 @@ async function main() {
     console.warn("  Ensure you have build.gradle, package.json, pyproject.toml, or requirements.txt in the project root.\n");
   }
   console.log(`    Frontend:    ${stack.frontend || "none"} ${stack.frontendVersion || ""}`);
-  console.log(`    Database:    ${stack.database || "none"}`);
+  // v2.4.0 — when a project ships more than one DB driver (e.g. Oracle +
+  // MySQL master/slave), surface the full list so downstream LLMs (Pass 1)
+  // see the dual-dialect setup without having to re-derive it from source
+  // code. Singular `Database:` line preserved for byte-for-byte parity in
+  // single-DB projects (the dominant case).
+  if (Array.isArray(stack.databases) && stack.databases.length > 1) {
+    console.log(`    Database:    ${stack.database} (primary)`);
+    console.log(`    Databases:   ${stack.databases.join(", ")} (multi-dialect)`);
+  } else {
+    console.log(`    Database:    ${stack.database || "none"}`);
+  }
   console.log(`    ORM:         ${stack.orm || "none"}`);
   console.log(`    PackageMgr:  ${stack.packageManager || "none"}\n`);
 

@@ -53,24 +53,24 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack, modules, server info
    - 00.core/02.architecture.md — Plugin architecture, request lifecycle, hooks flow
    - 00.core/03.naming-conventions.md — File/route/schema/plugin naming conventions
-   - 10.backend-api/01.route-plugin-patterns.md — Route registration, plugin encapsulation, prefix
-   - 10.backend-api/02.service-patterns.md — DI (decorators/awilix), business logic
-   - 10.backend-api/03.data-access-patterns.md — ORM patterns, DB plugin lifecycle
-   - 10.backend-api/04.response-exception.md — Response format, error handling, setErrorHandler
-   - 10.backend-api/05.schema-validation.md — JSON Schema, TypeBox, shared schemas, serialization
-   - 10.backend-api/06.hooks-lifecycle.md — Hook order, scope, authentication hooks
+   - 10.backend/01.route-plugin-patterns.md — Route registration, plugin encapsulation, prefix
+   - 10.backend/02.service-patterns.md — DI (decorators/awilix), business logic
+   - 10.backend/03.data-access-patterns.md — ORM patterns, DB plugin lifecycle
+   - 10.backend/04.response-exception.md — Response format, error handling, setErrorHandler
+   - 10.backend/05.schema-validation.md — JSON Schema, TypeBox, shared schemas, serialization
+   - 10.backend/06.hooks-lifecycle.md — Hook order, scope, authentication hooks
    - 30.security-db/01.security-auth.md — JWT, @fastify/auth, CORS, Rate Limit
    - 30.security-db/02.database-schema.md — Migrations, seeds, schema conventions
    - 30.security-db/03.common-utilities.md — Common utils, decorators, constants
    - 40.infra/01.environment-config.md — @fastify/env, configuration management
    - 40.infra/02.logging-monitoring.md — Pino config, serializers, monitoring
    - 40.infra/03.cicd-deployment.md — CI/CD pipeline, deployment strategy
-   - 50.verification/01.development-verification.md — Build, startup, API testing
-   - 50.verification/02.testing-strategy.md — fastify.inject(), plugin testing, mocking
+   - 80.verification/01.development-verification.md — Build, startup, API testing
+   - 80.verification/02.testing-strategy.md — fastify.inject(), plugin testing, mocking
 
    Each file MUST include:
-   - Correct examples (code blocks)
-   - Incorrect examples (code blocks)
+   - Correct examples (✅ code blocks)
+   - Incorrect examples (❌ code blocks)
    - Key rules summary table
 
 3. .claude/rules/ (active domains only)
@@ -87,6 +87,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts", "**/*.js"]` — CI config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` as a directory of all standard files
 
 4. .claude/rules/50.sync/ (2 sync rules)

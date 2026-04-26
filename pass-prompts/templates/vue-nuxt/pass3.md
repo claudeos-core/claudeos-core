@@ -47,18 +47,18 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack, routing approach, deployment environment
    - 00.core/02.architecture.md — Nuxt/Vue structure, component hierarchy, data flow, Nitro server
    - 00.core/03.naming-conventions.md — File/component/composable/store naming conventions
-   - 20.frontend-ui/01.component-patterns.md — SFC, <script setup>, Props/Emits, slots, provide/inject
-   - 20.frontend-ui/02.page-routing-patterns.md — Pages/layouts/dynamic routes/middleware/definePageMeta
-   - 20.frontend-ui/03.data-fetching.md — useFetch, useAsyncData, $fetch, server routes, caching
-   - 20.frontend-ui/04.state-management.md — Pinia stores, composables, useState, form state
-   - 20.frontend-ui/05.styling-patterns.md — Scoped styles, CSS Modules, Tailwind/UnoCSS, theming
-   - 10.backend-api/01.server-routes.md — Nitro server routes (server/api/), H3 event handlers
+   - 20.frontend/01.component-patterns.md — SFC, <script setup>, Props/Emits, slots, provide/inject
+   - 20.frontend/02.page-routing-patterns.md — Pages/layouts/dynamic routes/middleware/definePageMeta
+   - 20.frontend/03.data-fetching.md — useFetch, useAsyncData, $fetch, server routes, caching
+   - 20.frontend/04.state-management.md — Pinia stores, composables, useState, form state
+   - 20.frontend/05.styling-patterns.md — Scoped styles, CSS Modules, Tailwind/UnoCSS, theming
+   - 10.backend/01.server-routes.md — Nitro server routes (server/api/), H3 event handlers
    - 30.security-db/01.security-auth.md — Auth, middleware protection, environment variables
    - 40.infra/01.environment-config.md — Runtime config, nuxt.config.ts, Nitro presets
    - 40.infra/02.logging-monitoring.md — Error tracking, analytics, Web Vitals
    - 40.infra/03.cicd-deployment.md — CI/CD, deployment (Vercel/Netlify/Docker), preview
-   - 50.verification/01.development-verification.md — Build, startup, Lighthouse
-   - 50.verification/02.testing-strategy.md — Vitest, @vue/test-utils, E2E, @nuxt/test-utils
+   - 80.verification/01.development-verification.md — Build, startup, Lighthouse
+   - 80.verification/02.testing-strategy.md — Vitest, @vue/test-utils, E2E, @nuxt/test-utils
 
    Each file MUST include:
    - Correct examples (✅ code blocks)
@@ -80,6 +80,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts", "**/*.vue"]` — CI config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — directory of all standard files
 
 4. .claude/rules/50.sync/ (2 sync rules)

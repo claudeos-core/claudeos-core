@@ -453,10 +453,21 @@ async function main() {
   // distinctive signal that essentially never appears in ordinary
   // identifiers (lowercase `xxx` CAN appear in words like `taxXxxRate`,
   // but three uppercase X's do not occur outside placeholder convention).
+  // v2.4.0 — Ellipsis (`...`) added as a placeholder marker.
+  //
+  // LLMs commonly use `...` to denote "any subdirectory" in illustrative
+  // path examples, e.g. `src/app/api/.../route.ts` to mean "any API
+  // route under app/api/". Treating these as STALE_PATH false-positives
+  // because `...` doesn't match the literal directory regex `[^/]+\.`,
+  // and because `...` can never be a real directory name (filesystems
+  // refuse it on most platforms — `.` and `..` are the only legal
+  // dot-only directory names). Three consecutive dots in a path segment
+  // are unambiguous placeholder signal.
   const hasPlaceholder = (p) =>
     /\{[^}]+\}/.test(p) ||       // {domain} style
     /X{3,}/.test(p) || /Xxx/.test(p) ||  // XXX+ anywhere, or Xxx token
-    /\*/.test(p);                // glob star
+    /\*/.test(p) ||              // glob star
+    /\/\.\.\.\//.test(p);        // /.../ ellipsis path segment (v2.4.0)
 
   // File-level exclusion: some generated rule files are DESIGNED to cite
   // convention-trap paths as teaching examples — they tell the reader
@@ -480,9 +491,54 @@ async function main() {
   //     denylist primed the LLM to cite those exact paths as
   //     educational examples (the denylist has since been removed;
   //     this exclusion is the validator-side defense-in-depth).
+  //   - 00.core/51.doc-writing-rules.md — the documentation writing
+  //     rules file (v2.4.0). Same meta-doc class as 52.ai-work-rules.md:
+  //     it teaches "verify file paths before writing them in documents"
+  //     and naturally cites example paths (`src/middleware.ts`,
+  //     `src/app/api/<route>/route.ts`) as illustrations of the rule.
+  //     Those examples are NOT path claims — they are the lesson. The
+  //     content-blind validator would otherwise flag every cited example
+  //     as STALE_PATH on every project that doesn't happen to contain
+  //     all the cited illustrative files. Excluded for the same reason
+  //     and via the same mechanism as 52.ai-work-rules.md.
   const PATH_CLAIM_EXCLUDE_FILES = new Set([
     "00.core/52.ai-work-rules.md",
+    "00.core/51.doc-writing-rules.md",
   ]);
+
+  // v2.4.0 — Resolve a `src/...` path claim against monorepo workspaces.
+  //
+  // Pre-v2.4.0 the validator only checked `<ROOT>/<claimed>` directly,
+  // which produced false-positive STALE_PATH advisories on Turborepo /
+  // pnpm-workspace projects where source files live under
+  // `apps/<app-name>/src/...` or `packages/<pkg-name>/src/...`. A rule
+  // citing `src/app/layout.tsx` is the natural single-app shorthand
+  // even when the actual file is at `apps/<app-name>/src/app/layout.tsx`.
+  //
+  // Resolution order (first match wins):
+  //   1. Direct: `<ROOT>/<claimed>` (single-app project)
+  //   2. Monorepo apps: `<ROOT>/apps/*/<claimed>`
+  //   3. Monorepo packages: `<ROOT>/packages/*/<claimed>`
+  //
+  // Returns true on first match, false if no match found anywhere.
+  // The monorepo fallback only fires for paths starting with `src/`,
+  // which is the conventional workspace-relative form. Non-`src/` paths
+  // (e.g., `claudeos-core/skills/...`) are checked direct-only.
+  function resolvePathClaim(ROOT, claimed) {
+    if (fs.existsSync(path.join(ROOT, claimed))) return true;
+    if (!claimed.startsWith("src/")) return false;
+    for (const workspace of ["apps", "packages"]) {
+      const wsDir = path.join(ROOT, workspace);
+      let entries;
+      try { entries = fs.readdirSync(wsDir, { withFileTypes: true }); }
+      catch (_e) { continue; }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (fs.existsSync(path.join(wsDir, entry.name, claimed))) return true;
+      }
+    }
+    return false;
+  }
 
   // Strip fenced code blocks (``` and ~~~) so examples inside code
   // blocks don't trigger the check — they're illustrations, not claims.
@@ -536,8 +592,7 @@ async function main() {
         seen.add(claimed);
         if (hasPlaceholder(claimed)) continue;
         pathClaimsChecked++;
-        const absolutePath = path.join(ROOT, claimed);
-        if (!fs.existsSync(absolutePath)) {
+        if (!resolvePathClaim(ROOT, claimed)) {
           pathClaimErrors++;
           errors.push({
             file: rel(file),
@@ -646,8 +701,13 @@ async function main() {
       // file of the form `skills/{category}/*{parent}*.md` (excluding
       // the sub-skill itself) counts as a plausible orchestrator.
       function orchestratorFor(subSkillPath) {
+        // Sub-skill path forms accepted (v2.4.0 generalization):
+        //   skills/{category}/{parent-stem}/NN.{name}.md   (legacy NN. prefix)
+        //   skills/{category}/{parent-stem}/SKILL.md       (v2.4.0 SKILL.md convention)
+        //   skills/{category}/{parent-stem}/{name}.md      (no NN. prefix)
+        // Captures `parent-stem` and the category directory.
         const m = subSkillPath.match(
-          /^(claudeos-core\/skills\/[^/]+\/)([^/]+)\/\d+\.[^/]+\.md$/
+          /^(claudeos-core\/skills\/[^/]+\/)([^/]+)\/(?:\d+\.)?[^/]+\.md$/
         );
         if (!m) return null;
         return { categoryDir: m[1], stem: m[2] };
@@ -657,14 +717,46 @@ async function main() {
         // basename (minus leading number + dot) matches the sub-skill
         // parent stem. This accepts `01.scaffold-crud-feature.md`,
         // `scaffold-crud-feature.md`, etc.
+        // v2.4.0: a category-level `SKILL.md` (the orchestrator file
+        // colocated with `{category}/SKILL.md`) is treated as the
+        // orchestrator for ALL sub-skills under that category — this
+        // matches the new generator convention where each category has
+        // a single top-level orchestrator at `{category}/SKILL.md`.
         if (!ref.startsWith(categoryDir)) return false;
         const tail = ref.slice(categoryDir.length);
         // Must be a sibling file, not a nested path.
         if (tail.includes("/")) return false;
+        // v2.4.0 SKILL.md convention: a category-level SKILL.md covers
+        // every sub-skill in that category.
+        if (tail === "SKILL.md") return true;
         // Strip leading "NN." if present, then compare stem.
         const base = tail.replace(/^\d+\./, "").replace(/\.md$/, "");
         return base === stem;
       }
+
+      // Pre-compute: is any MANIFEST.md (the global skill registry)
+      // referenced anywhere in CLAUDE.md? Used as an additional
+      // sub-skill coverage rule below.
+      //
+      // Observed scenario: Pass 3c sometimes invents new sub-skill
+      // folder structures (e.g. `{category}/domains/{domain}.md` for
+      // per-domain notes) that weren't anticipated by the orchestrator
+      // pattern (which expects `{category}/{parent-stem}/{name}.md` paired
+      // with `{category}/{parent-stem}.md`). When this happens, every new
+      // sub-skill registration drifts because no sibling orchestrator exists.
+      //
+      // The architectural intent is that MANIFEST.md IS the registry — if
+      // CLAUDE.md §6 tells the reader "see MANIFEST.md for the full list",
+      // the reader can navigate to find every sub-skill. So mentioning
+      // MANIFEST.md anywhere in CLAUDE.md covers ALL sub-skill paths
+      // transitively. Top-level skills (direct `{category}/{file}.md`
+      // entries — those that don't match `orchestratorFor`) still require
+      // direct mention; this exception only applies to deep paths.
+      //
+      // Note: `referenced` Set above filters out MANIFEST.md entries (line
+      // 666), so we must scan the raw mdStripped text directly to detect
+      // MANIFEST.md mention.
+      const manifestReferencedGlobally = /`claudeos-core\/skills\/[\w\-./]*MANIFEST\.md`/.test(mdStripped);
 
       for (const p of registered) {
         if (referenced.has(p)) continue;              // direct mention → OK
@@ -676,6 +768,7 @@ async function main() {
             isOrchestratorReferenced(ref, oc)
           );
           if (orchestratorMentioned) continue;        // covered via orchestrator
+          if (manifestReferencedGlobally) continue;   // covered via global MANIFEST
         }
 
         manifestErrors++;

@@ -205,9 +205,46 @@ async function runPass3Split(ctx) {
     return batches;
   }
 
+  // v2.4.0 — Stack-type classification helper.
+  //
+  // Returns `{ backend: Set<string>, frontend: Set<string>, isMultiStack: boolean }`
+  // built from `project-analysis.json`. The maps are used by
+  // `buildBatchScopeNote` to emit ALWAYS-typed per-domain paths
+  // (`70.domains/{type}/{domain}.md`) regardless of single/multi-stack.
+  // Uniform layout means single-stack projects pay a 1-folder depth
+  // cost in exchange for zero-migration when the other stack is later
+  // added, and validators recognize a single pattern. The `isMultiStack`
+  // flag is retained for tools that may want to surface the distinction
+  // (e.g. user-facing console output) but is no longer used to branch
+  // path generation.
+  function loadDomainTypeMap() {
+    const result = { backend: new Set(), frontend: new Set(), isMultiStack: false };
+    try {
+      const paPath = path.join(GENERATED_DIR, "project-analysis.json");
+      if (fileExists(paPath)) {
+        const pa = JSON.parse(readFile(paPath));
+        if (Array.isArray(pa.backendDomains)) {
+          for (const d of pa.backendDomains) {
+            const n = d && (d.name || d);
+            if (n) result.backend.add(n);
+          }
+        }
+        if (Array.isArray(pa.frontendDomains)) {
+          for (const d of pa.frontendDomains) {
+            const n = d && (d.name || d);
+            if (n) result.frontend.add(n);
+          }
+        }
+      }
+    } catch (_e) { /* tolerate missing/corrupt analysis — fallback to flat paths */ }
+    result.isMultiStack = result.backend.size > 0 && result.frontend.size > 0;
+    return result;
+  }
+
   const domainOrder = loadDomainOrder();
   const batches = computeBatches(domainOrder);
   const isBatched = batches.length > 1;
+  const domainTypeMap = loadDomainTypeMap();
 
   if (isBatched) {
     log(`    📦 Batch sub-division enabled: ${domainOrder.length} domains → ${batches.length} batches per stage (3b, 3c)`);
@@ -285,28 +322,100 @@ async function runPass3Split(ctx) {
   // and which common files to include vs skip.
   function buildBatchScopeNote(stageKind, batchIndex, totalBatches, batchDomains) {
     const isLastBatch = batchIndex === totalBatches - 1;
+    const isSingleBatch = totalBatches === 1;
     const domainList = batchDomains.map(d => `\`${d}\``).join(", ");
 
-    let note = `## Batch scope (${stageKind}-batch ${batchIndex + 1}/${totalBatches})\n\n`;
-    note += `This Pass 3 stage has been sub-divided into ${totalBatches} batches to avoid context overflow.\n`;
-    note += `**You are processing batch ${batchIndex + 1} of ${totalBatches}.**\n\n`;
+    // v2.4.0 — Always-typed per-domain layout.
+    //
+    // Every per-domain file lives under a `{type}/` sub-folder
+    // (`70.domains/backend/` or `70.domains/frontend/`) regardless of
+    // whether the project is single-stack or multi-stack. This is a
+    // deliberate uniform-convention choice:
+    //
+    //   - Single-stack projects pay a 1-folder depth cost; in exchange
+    //     they migrate to multi-stack with ZERO file moves when frontend
+    //     (or backend) is later added.
+    //   - LLM never has to decide which form to use → no probabilistic
+    //     drift between Pass 3 runs.
+    //   - Validators (content-validator, claude-md-validator) need
+    //     to recognize only ONE pattern.
+    //   - Future stack types (mobile, cli, agent, ...) extend naturally
+    //     by adding new `{type}/` sub-folders.
+    //
+    // Per-domain type lookup uses `domainTypeMap` from
+    // `project-analysis.json`. Domains not in either set fall back to
+    // `backend` (the dominant case in real-world projects) — this
+    // happens only when the analysis JSON is malformed or absent.
+    const typeOf = (name) => {
+      if (domainTypeMap.frontend.has(name)) return "frontend";
+      // backend is the default when the domain is unknown to both sets.
+      // This happens only on malformed analysis JSON; backend is the
+      // safer default since it's the dominant project type.
+      return "backend";
+    };
+    const stdPathFor = (name) => `claudeos-core/standard/70.domains/${typeOf(name)}/${name}.md`;
+    const rulePathFor = (name) => `.claude/rules/70.domains/${typeOf(name)}/${name}-rules.md`;
+    const stagedRulePathFor = (name) => `claudeos-core/generated/.staged-rules/70.domains/${typeOf(name)}/${name}-rules.md`;
+
+    let note = isSingleBatch
+      ? `## Per-domain scope (${stageKind}, single-batch run)\n\n`
+      : `## Batch scope (${stageKind}-batch ${batchIndex + 1}/${totalBatches})\n\n`;
+    if (isSingleBatch) {
+      note += `${batchDomains.length} domain(s) will be processed in this single Pass 3b stage.\n`;
+      note += `Per-domain files are REQUIRED regardless of domain count — they enable domain-scoped \`paths\` glob targeting for rules.\n\n`;
+    } else {
+      note += `This Pass 3 stage has been sub-divided into ${totalBatches} batches to avoid context overflow.\n`;
+      note += `**You are processing batch ${batchIndex + 1} of ${totalBatches}.**\n\n`;
+    }
 
     if (stageKind === "3b") {
-      note += `**Domains in THIS batch**: ${domainList}\n\n`;
-      note += `**Rules for this batch**:\n`;
-      note += `1. CLAUDE.md and all common standard/ files (00.core/, 30.security-db/, 40.infra/, etc.) are ALREADY GENERATED by the 3b-core stage. DO NOT regenerate them.\n`;
-      note += `2. Generate standard/ entries ONLY for the domains listed above — one section per domain.\n`;
-      note += `3. Generate .claude/rules/ (via staging-override path) — ONLY domain-specific rule files for the domains listed above. Common rules are already generated by 3b-core.\n`;
-      note += `4. DO NOT generate standard/ or rules/ files for domains NOT in the above list — those are/will be processed in other batches.\n`;
-      note += `5. If a file you are about to write already exists with substantive content (Rule B), skip it silently — print \`[SKIP] <path>\` and move on.\n`;
+      note += isSingleBatch
+        ? `**Domains in scope (all ${batchDomains.length})**: ${domainList}\n\n`
+        : `**Domains in THIS batch**: ${domainList}\n\n`;
+      // Always show per-domain target paths so the LLM follows the
+      // typed sub-folder convention without inferring from domain name.
+      note += `**Per-domain target paths (always under \`{type}/\` sub-folder — \`backend\` or \`frontend\`):**\n`;
+      for (const d of batchDomains) {
+        note += `- \`${d}\` → \`${stdPathFor(d)}\` and \`${rulePathFor(d)}\`\n`;
+      }
+      note += `\n`;
+      note += `**Rules**:\n`;
+      if (isSingleBatch) {
+        // Single-batch (≤15 domains): common files AND per-domain files in same stage.
+        note += `1. Generate ALL common files (CLAUDE.md + standard/00.core/* + standard/10.backend/* + standard/30.security-db/* + standard/40.infra/* + standard/80.verification/* + .claude/rules/00.core/* + .claude/rules/10.backend/* + .claude/rules/30.security-db/* + .claude/rules/40.infra/* + .claude/rules/50.sync/*) per the stack pass3 template.\n`;
+        note += `2. **ALSO** create ONE NEW per-domain standard file PER domain listed above at \`claudeos-core/standard/70.domains/{type}/{domain}.md\` (use the exact \`{type}\` shown in the per-domain target paths above). **Expected output: ${batchDomains.length} new file(s) under \`70.domains/{type}/\`** — one per domain. Do NOT inline these into the common standards (00.core/, 10.backend/, etc.); per-domain files are DOMAIN-scoped while common files are TOPIC-based, and they must live at separate paths so per-domain rules can scope to them via \`paths\` glob.\n`;
+        note += `3. **ALSO** create ONE NEW per-domain rule file PER domain listed above at \`.claude/rules/70.domains/{type}/{domain}-rules.md\` (via staging-override path \`claudeos-core/generated/.staged-rules/70.domains/{type}/{domain}-rules.md\`). Each rule file MUST have a \`paths\` frontmatter glob scoped to that domain's source directories so the rule auto-loads only when editing the relevant files.\n`;
+        note += `4. Per-domain file generation is MANDATORY even for ${batchDomains.length}-domain projects (any size below the 15-domain batch threshold). The convention is uniform across all project sizes for consistency: same dirtree shape regardless of scale.\n`;
+        note += `5. Rule B idempotent skip applies — if a per-domain file already exists with substantive content, print \`[SKIP] <path>\` and continue.\n`;
+      } else {
+        // Multi-batch (>15 domains): common files in 3b-core, per-domain in batch stages.
+        note += `1. CLAUDE.md and all common standard/ files (00.core/, 30.security-db/, 40.infra/, etc.) are ALREADY GENERATED by the 3b-core stage. DO NOT regenerate them.\n`;
+        note += `2. Create ONE NEW per-domain standard file PER domain listed above at \`claudeos-core/standard/70.domains/{type}/{domain}.md\` (use the exact \`{type}\` shown in the per-domain target paths above — \`backend\` or \`frontend\`). **Expected output: ${batchDomains.length} new files** — one per domain in this batch. Do NOT inline these into the common files generated by 3b-core; common files are TOPIC-based, per-domain files are DOMAIN-scoped and must live at separate paths so per-domain rules can scope to them via \`paths\` glob.\n`;
+        note += `3. Create ONE NEW per-domain rule file PER domain listed above at \`.claude/rules/70.domains/{type}/{domain}-rules.md\` (via staging-override path \`claudeos-core/generated/.staged-rules/70.domains/{type}/{domain}-rules.md\`). Each rule file MUST have a \`paths\` frontmatter glob scoped to that domain's source directories so the rule auto-loads only when editing the relevant files. Common rules are already generated by 3b-core — do NOT regenerate.\n`;
+        note += `4. DO NOT generate standard/ or rules/ files for domains NOT in the above list — those are/will be processed in other batches.\n`;
+        note += `5. Rule B idempotent skip applies ONLY to files at the per-domain paths shown above for THIS batch's domains — i.e. resume after a crash. **Do NOT use Rule B as justification for skipping the entire batch** because common files at OTHER paths exist (those are out of scope for this batch). If a per-domain target file does NOT exist for a batch domain, you MUST generate it; emitting "0 new files" for the whole batch when domains were assigned to you is a critical Pass 3 failure mode.\n`;
+      }
     } else if (stageKind === "3c") {
-      note += `**Domains in THIS batch**: ${domainList}\n\n`;
-      note += `**Rules for this batch**:\n`;
-      note += `1. ALL guide/ files (01.onboarding, 02.usage, 03.troubleshooting, 04.architecture) are ALREADY GENERATED by the 3c-core stage. DO NOT regenerate.\n`;
-      note += `2. Common skills (00.shared/, orchestrator SKILL.md) are ALREADY GENERATED by 3c-core. DO NOT regenerate.\n`;
-      note += `3. Generate skills/ entries ONLY for the domains listed above — typically under 10.backend-crud/ or 20.frontend-page/ with a per-domain subdirectory.\n`;
-      note += `4. DO NOT generate skills for domains NOT in the above list.\n`;
-      note += `5. Rule B idempotent skip applies: if a skill file already exists, print \`[SKIP] <path>\` and move on.\n`;
+      note += isSingleBatch
+        ? `**Domains in scope (all ${batchDomains.length})**: ${domainList}\n\n`
+        : `**Domains in THIS batch**: ${domainList}\n\n`;
+      note += `**Rules**:\n`;
+      if (isSingleBatch) {
+        // Single-batch (≤15 domains): ALL of 3c — guides + common skills + per-domain skill notes — in one stage.
+        note += `1. Generate ALL guide/ files (01.onboarding, 02.usage, 03.troubleshooting, 04.architecture) per the stack pass3 template.\n`;
+        note += `2. Generate common skills: \`claudeos-core/skills/00.shared/MANIFEST.md\` + the category orchestrator(s) at \`claudeos-core/skills/{category}/01.scaffold-*-feature.md\` + their sub-skill files under \`{category}/scaffold-*-feature/\`.\n`;
+        note += `3. **ALSO** generate \`claudeos-core/skills/{category}/02.domains.md\` orchestrator (sibling to the \`domains/\` sub-folder) — REQUIRED for ALL projects regardless of domain count, mirrors the canonical \`01.scaffold-*-feature.md\` ↔ \`scaffold-*-feature/\` pattern.\n`;
+        note += `4. **ALSO** generate per-domain skill notes at \`claudeos-core/skills/{category}/domains/{domain}.md\` for EACH of the ${batchDomains.length} domain(s). **Expected output: ${batchDomains.length} new file(s) under \`{category}/domains/\`** — content describes domain-specific anti-patterns, dependencies, naming quirks. Per-domain skill generation is MANDATORY even for ${batchDomains.length}-domain projects (the convention is uniform across all project sizes).\n`;
+        note += `5. MUST register every newly created skill file in \`00.shared/MANIFEST.md\` (orchestrator + sub-skills + 02.domains.md + per-domain notes).\n`;
+        note += `6. Rule B idempotent skip applies — if a skill file already exists, print \`[SKIP] <path>\` and move on.\n`;
+      } else {
+        // Multi-batch (>15 domains): guides+common skills in 3c-core, per-domain in batch stages.
+        note += `1. ALL guide/ files (01.onboarding, 02.usage, 03.troubleshooting, 04.architecture) are ALREADY GENERATED by the 3c-core stage. DO NOT regenerate.\n`;
+        note += `2. Common skills (00.shared/, orchestrator SKILL.md) and \`02.domains.md\` orchestrator are ALREADY GENERATED by 3c-core. DO NOT regenerate.\n`;
+        note += `3. Generate per-domain skill notes ONLY for the domains listed above at \`claudeos-core/skills/{category}/domains/{domain}.md\` — typically under 10.backend-crud/ or 20.frontend-page/.\n`;
+        note += `4. DO NOT generate skills for domains NOT in the above list.\n`;
+        note += `5. Rule B idempotent skip applies: if a skill file already exists, print \`[SKIP] <path>\` and move on.\n`;
+      }
     }
 
     if (!isLastBatch) {
@@ -337,7 +446,7 @@ async function runPass3Split(ctx) {
       coreNote += `   - claudeos-core/standard/00.core/*.md (project overview, architecture, conventions)\n`;
       coreNote += `   - claudeos-core/standard/30.security-db/*.md\n`;
       coreNote += `   - claudeos-core/standard/40.infra/*.md\n`;
-      coreNote += `   - claudeos-core/standard/50.verification/*.md\n`;
+      coreNote += `   - claudeos-core/standard/80.verification/*.md\n`;
       coreNote += `   - claudeos-core/standard/90.optional/*.md\n`;
       coreNote += `   - (stack-specific common sections as defined in the pass3 template)\n`;
       coreNote += `3. ALL rules files (via staging-override path .claude/rules → generated/.staged-rules):\n`;
@@ -356,11 +465,13 @@ async function runPass3Split(ctx) {
       coreNote += `   - claudeos-core/guide/04.architecture/*.md\n`;
       coreNote += `2. COMMON skills only:\n`;
       coreNote += `   - claudeos-core/skills/00.shared/*\n`;
-      coreNote += `   - top-level orchestrator SKILL.md files (e.g. \`10.backend-crud/SKILL.md\` without any subfolder)\n\n`;
+      coreNote += `   - top-level orchestrator SKILL.md files (e.g. \`10.backend-crud/SKILL.md\` without any subfolder)\n`;
+      coreNote += `3. **Per-domain orchestrator** (REQUIRED whenever batches are non-empty — i.e. ${totalDomains} domains will be processed): for EACH active skill category that will receive per-domain notes, generate the sibling orchestrator file at \`claudeos-core/skills/{category}/02.domains.md\`. The basename stem (\`domains\`) MUST match the \`domains/\` sub-folder name so \`content-validator\`'s standard orchestrator-stem matching covers all sub-skills directly. The orchestrator's content describes the per-domain notes pattern, lists the ${totalDomains} domains that will be processed, and links to \`00.shared/MANIFEST.md\`. Generate it BEFORE 3c-N batches run so it's already in place when sub-skills land. Numbered \`02.\` because \`01.scaffold-*-feature.md\` already occupies the \`01.\` slot at the category root.\n\n`;
       coreNote += `**What NOT to generate in ${stageKind}-core**:\n`;
       coreNote += `- Per-domain skill sub-directories (e.g. \`10.backend-crud/scaffold-order-feature/\`) — those belong to 3c-1, 3c-2, ... batch stages.\n`;
+      coreNote += `- Per-domain note files (\`10.backend-crud/domains/{domain}.md\`) — those belong to 3c-N batch stages. ${stageKind}-core only generates the parent ORCHESTRATOR (\`02.domains.md\`).\n`;
       coreNote += `- Anything under plan/, database/, mcp-guide/ — those belong to 3d.\n\n`;
-      coreNote += `**Per-domain skills will be generated in subsequent 3c-1, 3c-2, ... batch stages.**\n`;
+      coreNote += `**Per-domain skill notes will be generated in subsequent 3c-1, 3c-2, ... batch stages, under each category's \`domains/\` sub-folder.**\n`;
     }
 
     coreNote += `\nIf you find yourself about to generate a domain-specific file in this stage: STOP. Emit \`[DEFER] <path> — will be generated in 3b-N / 3c-N batch\` and move on.\n\n`;
@@ -550,15 +661,23 @@ async function runPass3Split(ctx) {
       ? `domain batch ${bi + 1}/${batches.length} (${batchDomains.length} domains)`
       : "core files (CLAUDE.md + standard + rules)";
 
-    // Per-batch prompt: inject into the original 3b header the list of domains scoped to this batch.
-    // In multi-batch mode every batch generates "domain-specific files only" (common files handled in 3b-core).
-    const batchScopeNote = isBatched
-      ? buildBatchScopeNote("3b", bi, batches.length, batchDomains)
-      : "";
+    // v2.4.0 — Per-domain scope note ALWAYS injected (single OR multi-batch).
+    //
+    // Previously single-batch projects (≤15 domains) skipped the scope note,
+    // and the stack pass3 template alone didn't mandate per-domain file
+    // generation under `70.domains/{type}/`. As a result, small projects
+    // got common standards but no per-domain files — inconsistent with
+    // multi-batch projects and breaking the uniform-convention contract.
+    //
+    // The note text itself branches on isSingleBatch internally:
+    //   - Single batch: "Generate common files AND per-domain files"
+    //   - Multi batch:  "Per-domain only (common files done in 3b-core)"
+    const batchScopeNote = buildBatchScopeNote("3b", bi, batches.length, batchDomains);
     const baseprompt = buildStagePrompt("pass3b-core-header.md", true);
-    const promptWithScope = batchScopeNote
-      ? baseprompt.replace(/\n## Scope of this step/, `\n${batchScopeNote}\n## Scope of this step`)
-      : baseprompt;
+    const promptWithScope = baseprompt.replace(
+      /\n## Scope of this step/,
+      `\n${batchScopeNote}\n## Scope of this step`
+    );
 
     await runStage(stageId, label, promptWithScope, {
       expectsStagedRules: true,
@@ -632,13 +751,16 @@ async function runPass3Split(ctx) {
       ? `domain skills batch ${bi + 1}/${batches.length} (${batchDomains.length} domains)`
       : "skills and guides";
 
-    const batchScopeNote = isBatched
-      ? buildBatchScopeNote("3c", bi, batches.length, batchDomains)
-      : "";
+    // v2.4.0 — Per-domain skill scope note ALWAYS injected (single OR multi-batch).
+    // Same rationale as Pass 3b: small projects need per-domain skill notes
+    // (`{category}/domains/{domain}.md`) and the `02.domains.md` orchestrator
+    // for uniform layout across all project sizes.
+    const batchScopeNote = buildBatchScopeNote("3c", bi, batches.length, batchDomains);
     const baseprompt = buildStagePrompt("pass3c-skills-guide-header.md", true);
-    const promptWithScope = batchScopeNote
-      ? baseprompt.replace(/\n## Scope of this step/, `\n${batchScopeNote}\n## Scope of this step`)
-      : baseprompt;
+    const promptWithScope = baseprompt.replace(
+      /\n## Scope of this step/,
+      `\n${batchScopeNote}\n## Scope of this step`
+    );
 
     await runStage(stageId, label, promptWithScope, {
       expectsStagedRules: true, // skills occasionally include rule files
@@ -897,15 +1019,26 @@ function ensureDirectories() {
     ".claude/rules/50.sync",
     "claudeos-core/generated",
     "claudeos-core/standard/00.core",
-    "claudeos-core/standard/10.backend-api",
-    "claudeos-core/standard/20.frontend-ui",
+    "claudeos-core/standard/10.backend",
+    "claudeos-core/standard/20.frontend",
     "claudeos-core/standard/30.security-db",
     "claudeos-core/standard/40.infra",
-    "claudeos-core/standard/50.verification",
+    "claudeos-core/standard/80.verification",
     "claudeos-core/standard/90.optional",
     "claudeos-core/skills/00.shared",
     "claudeos-core/skills/10.backend-crud/scaffold-crud-feature",
+    // v2.4.0 — `domains/` sub-folder under each per-domain skill category.
+    // Pre-created so Pass 3c-N has a stable destination for per-domain
+    // skill notes (`{category}/domains/{domain}.md`) and so the convention
+    // is visible in the post-init dirtree alongside `scaffold-*-feature/`.
+    // The `02.domains.md` orchestrator (sibling at category root) is
+    // generated by Pass 3c-core, not pre-created — the file content is
+    // project-specific. Empty pre-created `domains/` folders are
+    // harmless on filesystems that allow them and self-document the
+    // convention.
+    "claudeos-core/skills/10.backend-crud/domains",
     "claudeos-core/skills/20.frontend-page/scaffold-page-feature",
+    "claudeos-core/skills/20.frontend-page/domains",
     "claudeos-core/skills/50.testing",
     "claudeos-core/skills/90.experimental",
     "claudeos-core/guide/01.onboarding",
@@ -916,6 +1049,28 @@ function ensureDirectories() {
     "claudeos-core/mcp-guide",
     "claudeos-core/memory",
     ".claude/rules/60.memory",
+    // v2.4.0 — 80.verification rules (mirror of standard/80.verification).
+    // Pre-created to give Pass 3 LLM a stable destination for verification
+    // rules (testing strategy, build verification reminders that auto-load
+    // when editing test files / build configs). Without this, prior runs
+    // would create them at the LEGACY 50.verification path (cross-namespace
+    // contamination from standard/50.verification), now corrected to the
+    // unified 80.* numbering.
+    ".claude/rules/80.verification",
+    // v2.4.0 — 70.domains/ canonical per-domain folder, ALWAYS typed.
+    //   - PLURAL folder (collection of N per-domain files)
+    //   - 70 number to avoid 60.* collision with 60.memory
+    //   - ALWAYS uses `{type}/` sub-folder (`backend/` or `frontend/`)
+    //     regardless of single/multi-stack. Uniform convention prevents
+    //     migration when a single-stack project later adds the other
+    //     stack, and gives validators a single pattern to recognize.
+    //   - Pre-created so Pass 3 LLM has a stable destination for
+    //     `claudeos-core/standard/70.domains/{type}/{domain}.md` and
+    //     `.claude/rules/70.domains/{type}/{domain}-rules.md` writes.
+    "claudeos-core/standard/70.domains/backend",
+    "claudeos-core/standard/70.domains/frontend",
+    ".claude/rules/70.domains/backend",
+    ".claude/rules/70.domains/frontend",
   ];
   for (const d of dirs) {
     ensureDir(path.join(PROJECT_ROOT, d));

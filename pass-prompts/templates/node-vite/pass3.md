@@ -46,21 +46,21 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack, routing approach, deployment environment
    - 00.core/02.architecture.md — SPA structure, component hierarchy, data flow
    - 00.core/03.naming-conventions.md — File/component/hook/type naming conventions
-   - 20.frontend-ui/01.component-patterns.md — Component writing rules, Props patterns, reuse
-   - 20.frontend-ui/02.page-routing-patterns.md — Client-side routing, layouts, route guards, lazy loading
-   - 20.frontend-ui/03.data-fetching.md — API client, TanStack Query/SWR, caching, error handling
-   - 20.frontend-ui/04.state-management.md — Global/server/URL/form state management
-   - 20.frontend-ui/05.styling-patterns.md — Styling rules, theming, responsive, accessibility
+   - 20.frontend/01.component-patterns.md — Component writing rules, Props patterns, reuse
+   - 20.frontend/02.page-routing-patterns.md — Client-side routing, layouts, route guards, lazy loading
+   - 20.frontend/03.data-fetching.md — API client, TanStack Query/SWR, caching, error handling
+   - 20.frontend/04.state-management.md — Global/server/URL/form state management
+   - 20.frontend/05.styling-patterns.md — Styling rules, theming, responsive, accessibility
    - 30.security-db/01.security-auth.md — Auth patterns, token management, route protection, environment variables
    - 40.infra/01.environment-config.md — Environment variables (VITE_ prefix), vite.config, build optimization
    - 40.infra/02.logging-monitoring.md — Error tracking, analytics tools, performance monitoring
    - 40.infra/03.cicd-deployment.md — CI/CD, static hosting deployment (Nginx, S3, Vercel, Netlify)
-   - 50.verification/01.development-verification.md — Build, startup, dev server
-   - 50.verification/02.testing-strategy.md — Testing strategy (Vitest, RTL, E2E, Storybook)
+   - 80.verification/01.development-verification.md — Build, startup, dev server
+   - 80.verification/02.testing-strategy.md — Testing strategy (Vitest, RTL, E2E, Storybook)
 
    Each file MUST include:
-   - Correct examples (code blocks)
-   - Incorrect examples (code blocks)
+   - Correct examples (✅ code blocks)
+   - Incorrect examples (❌ code blocks)
    - Key rules summary table
 
 3. .claude/rules/ (active domains only)
@@ -70,7 +70,7 @@ Generation targets:
    - Each rule file MUST end with a `## Reference` section linking to the corresponding standard file(s):
      ```
      ## Reference
-     > For detailed patterns and examples, Read: claudeos-core/standard/20.frontend-ui/01.component-patterns.md
+     > For detailed patterns and examples, Read: claudeos-core/standard/20.frontend/01.component-patterns.md
      ```
    - `paths:` frontmatter per rule category:
      - `00.core/*` rules: `paths: ["**/*"]`
@@ -81,6 +81,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts", "**/*.tsx"]` — CI config + source with API origin / codegen references
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — directory of all standard files.
 
 4. .claude/rules/50.sync/ (2 sync rules)

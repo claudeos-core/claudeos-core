@@ -70,10 +70,17 @@ async function main() {
 
   // ─── 1. project-analysis.json ──────────────────────────
   console.log("  [1/5] project-analysis.json...");
+  // v2.4.0 — `template` (singular, legacy single-stack form) removed from
+  // recommended-keys list. `templates` (plural object {backend, frontend})
+  // is the canonical form since multi-stack support landed; the consumer
+  // at line ~88 already does `pa.templates || pa.template` fallback for
+  // back-compat. Listing `template` as recommended caused a false-positive
+  // MISSING_KEY WARNING on every healthy multi-stack-aware project where
+  // only `templates` exists.
   const pa = validateJson(
     path.join(GEN_DIR, "project-analysis.json"),
     ["analyzedAt", "stack", "domains", "frontend", "summary"],
-    ["lang", "template", "templates", "rootPackage", "activeDomains"]
+    ["lang", "templates", "rootPackage", "activeDomains"]
   );
   if (pa) {
     if (!pa.stack || !pa.stack.language) {
@@ -167,6 +174,32 @@ async function main() {
         "codeQuality",         // 12. Code quality tools
       ];
 
+      // v2.4.0 — Semantic alias map for sections.
+      //
+      // Pass 2 LLM frequently emits section keys with numeric prefixes
+      // ("1_universalPatterns") or alternate vocabulary ("majorityPatterns"
+      // instead of "sharedPatterns"). The fuzzy normalizer can't catch
+      // these because the stems don't overlap. This alias map adds known
+      // semantic equivalents so the existence check matches when ANY of
+      // the canonical name OR its aliases is present.
+      //
+      // Each entry: canonical name → [...alternate keys (case/separator
+      // insensitive — normalized identically to keys at check time)].
+      const SECTION_ALIASES = {
+        commonPatterns:    ["universalPatterns", "1_universalPatterns", "1universalPatterns", "patterns_universal"],
+        sharedPatterns:    ["majorityPatterns", "2_majorityPatterns", "2majorityPatterns", "patterns_majority"],
+        domainSpecific:    ["domainSpecificPatterns", "3_domainSpecific", "perDomain", "domains"],
+        antiPatterns:      ["antipatternSummary", "4_antiPatterns", "5_antiPatternSummary", "antiPatternSummary"],
+        namingConventions: ["naming", "5_namingConventions", "6_namingConventions"],
+        commonUtilities:   ["sharedUtilities", "utilities", "6_commonUtilities", "7_commonUtilities"],
+        security:          ["securityPatterns", "auth", "authentication", "7_security", "8_security"],
+        testing:           ["testStrategy", "testingStrategy", "9_testing", "10_testing"],
+        logging:           ["loggingStrategy", "monitoring", "loggingMonitoring", "10_logging", "11_logging"],
+        codeQuality:       ["quality", "codeQualityTools", "12_codeQuality", "13_codeQuality"],
+        database:          ["dbPatterns", "8_database"],
+        performance:       ["perfPatterns", "11_performance"],
+      };
+
       // Sections only in backend stacks (java/node-express/django/fastapi/kotlin)
       const BACKEND_SECTIONS = [
         "database",            // 8. DB patterns
@@ -208,15 +241,19 @@ async function main() {
         ...(isKotlinCqrs ? KOTLIN_CQRS_SECTIONS : []),
       ];
 
-      // Key existence validation (case-insensitive fuzzy matching)
+      // Key existence validation (case-insensitive fuzzy matching + alias map)
       // Normalize a key to a comparable form: lowercase, strip separators
-      const normalize = (s) => s.toLowerCase().replace(/[_\-\s]/g, "");
+      const normalize = (s) => s.toLowerCase().replace(/[_\-\s\.]/g, "");
       const normalizedKeys = keys.map(normalize);
       for (const section of sectionsToCheck) {
         const sectionNorm = normalize(section);
-        // Exact normalized match first, then check if any key contains the section name (one-direction only to avoid false positives)
+        // (1) Exact normalized match
+        // (2) Substring match on canonical (one-direction, length >= 6 to avoid false positives)
+        // (3) v2.4.0 — Alias map: any aliased name (normalized) matches a key (normalized)
+        const aliases = (SECTION_ALIASES[section] || []).map(normalize);
         const found = normalizedKeys.some(k => k === sectionNorm)
-          || (sectionNorm.length >= 6 && normalizedKeys.some(k => k.includes(sectionNorm)));
+          || (sectionNorm.length >= 6 && normalizedKeys.some(k => k.includes(sectionNorm)))
+          || aliases.some(a => normalizedKeys.some(k => k === a || (a.length >= 6 && k.includes(a))));
         if (!found) {
           warnings.push({
             file: "pass2-merged.json",
@@ -270,7 +307,13 @@ async function main() {
   console.log("  [5a/5] pass3-complete.json (optional)...");
   const p3path = path.join(GEN_DIR, "pass3-complete.json");
   if (fs.existsSync(p3path)) {
-    const p3 = validateJson(p3path, ["completedAt"], ["backfilled", "reason"]);
+    // v2.4.0 — `backfilled` and `reason` removed from recommended-keys list.
+    // Both are scenario-specific: `backfilled: true` is set only when init.js
+    // backfilled the marker for a pre-v1.7 CLAUDE.md (rare upgrade path),
+    // and `reason` documents that backfill source. Normal Claude-driven
+    // Pass 3 completion never has either — listing them as "recommended"
+    // produced a false-positive MISSING_KEY WARNING on every healthy run.
+    const p3 = validateJson(p3path, ["completedAt"], []);
     if (p3) {
       if (typeof p3.completedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(p3.completedAt)) {
         warnings.push({ file: "pass3-complete.json", type: "INVALID_TIMESTAMP", msg: `completedAt should be ISO 8601 (got ${JSON.stringify(p3.completedAt)})` });
@@ -286,9 +329,17 @@ async function main() {
   console.log("  [5b/5] pass4-memory.json (optional)...");
   const p4path = path.join(GEN_DIR, "pass4-memory.json");
   if (fs.existsSync(p4path)) {
+    // v2.4.0 — `planFiles` removed from optional list because master plan
+    // generation was removed in v2.1.0. Pass 4 normal completion never has
+    // it, so the recommendation produced a false-positive WARNING on every
+    // healthy run. Same for `fallback` (only set when Claude-driven Pass 4
+    // failed and static fallback ran) — its absence is the SUCCESS path.
+    // `seededDecisions` (only when initial decision-log is seeded) and
+    // `ruleFiles` (only when Pass 4 emits rules outside scaffold) are also
+    // scenario-specific; demoted from "recommended" to "purely optional".
     const p4 = validateJson(p4path,
       ["analyzedAt", "passNum", "memoryFiles"],
-      ["planFiles", "ruleFiles", "seededDecisions", "fallback"]
+      [] // No recommended optional keys; all scenario-specific (see comment above)
     );
     if (p4) {
       if (typeof p4.passNum !== "number" || p4.passNum !== 4) {

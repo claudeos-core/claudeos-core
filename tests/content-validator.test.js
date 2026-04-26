@@ -153,6 +153,116 @@ describe("content-validator [10/10] — path-claim verification", () => {
     );
     cleanup(root);
   });
+
+  test("v2.4.0: monorepo apps/<app>/src/ shorthand resolution (no false positive)", () => {
+    // Turborepo / pnpm-workspace projects keep source files under
+    // `apps/<app>/src/...` rather than at the repository root. A rule
+    // that cites the workspace-relative shorthand `src/app/layout.tsx`
+    // is a NORMAL convention even when the actual file lives at
+    // `apps/<app>/src/app/layout.tsx`. Pre-v2.4.0 the validator only
+    // checked `<ROOT>/src/...` directly and produced false-positive
+    // STALE_PATH advisories on every such citation.
+    const root = buildTree({
+      ruleBody: "# Test rule\n\nThe root layout lives at `src/app/layout.tsx`.\n",
+    });
+    // Materialize the file under apps/<app>/src/ — NOT at root.
+    fs.mkdirSync(path.join(root, "apps", "web", "src", "app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "apps", "web", "src", "app", "layout.tsx"), "// ok\n");
+
+    const result = runValidator(root);
+    assert.ok(
+      !result.stdout.includes("STALE_PATH"),
+      `monorepo apps/<app>/src/ shorthand should not flag STALE_PATH; got: ${result.stdout}`
+    );
+    cleanup(root);
+  });
+
+  test("v2.4.0: monorepo packages/<pkg>/src/ shorthand resolution", () => {
+    // Same fallback for shared packages. Citations of `src/utils/helper.ts`
+    // when the file is at `packages/utils/src/utils/helper.ts` should not
+    // flag STALE_PATH.
+    const root = buildTree({
+      ruleBody: "# Test rule\n\nUtility lives at `src/utils/helper.ts`.\n",
+    });
+    fs.mkdirSync(path.join(root, "packages", "shared", "src", "utils"), { recursive: true });
+    fs.writeFileSync(path.join(root, "packages", "shared", "src", "utils", "helper.ts"), "// ok\n");
+
+    const result = runValidator(root);
+    assert.ok(
+      !result.stdout.includes("STALE_PATH"),
+      `monorepo packages/<pkg>/src/ shorthand should not flag STALE_PATH; got: ${result.stdout}`
+    );
+    cleanup(root);
+  });
+
+  test("v2.4.0: ellipsis path segment (`/.../`) is recognized as placeholder", () => {
+    // LLMs commonly use `...` to denote "any subdirectory" in
+    // illustrative path examples, e.g. `src/app/api/.../route.ts`
+    // meaning "any API route under app/api/". Treating these as
+    // STALE_PATH false-positives. v2.4.0 adds `...` to the placeholder
+    // detection regex.
+    const root = buildTree({
+      ruleBody:
+        "# Test rule\n\n" +
+        "Example route: `src/app/api/.../route.ts`\n" +
+        "Example component: `src/components/.../index.ts`\n",
+    });
+    const result = runValidator(root);
+    assert.ok(
+      !result.stdout.includes("STALE_PATH"),
+      `ellipsis paths must be treated as placeholders; got: ${result.stdout}`
+    );
+    cleanup(root);
+  });
+
+  test("v2.4.0: 51.doc-writing-rules.md is excluded from path-claim check", () => {
+    // The documentation-writing rules file is a meta-doc that teaches
+    // "verify file paths before writing them in documents" and naturally
+    // cites example paths as illustrations. Same exclusion class as
+    // 52.ai-work-rules.md.
+    const root = buildTree({
+      ruleBody: "ignored — replaced below",
+    });
+    // Place rule under .claude/rules/00.core/51.doc-writing-rules.md
+    // with cited example paths that don't exist
+    fs.mkdirSync(path.join(root, ".claude/rules/00.core"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".claude/rules/00.core/51.doc-writing-rules.md"),
+      "# Doc Writing Rules\n\n" +
+      "Example: never write `src/middleware.ts` if it doesn't exist.\n" +
+      "Example: `src/lib/example.ts` shouldn't be invented.\n"
+    );
+    // Remove the default test rule so we only check the excluded file
+    fs.rmSync(path.join(root, ".claude/rules/00.core/01.test-rule.md"), { force: true });
+
+    const result = runValidator(root);
+    assert.ok(
+      !result.stdout.includes("STALE_PATH"),
+      `51.doc-writing-rules.md should be excluded from path-claim check; got: ${result.stdout}`
+    );
+    // Output should mention "excluded by design"
+    assert.match(result.stdout, /excluded by design/);
+    cleanup(root);
+  });
+
+  test("v2.4.0: monorepo fallback does NOT mask genuine missing files", () => {
+    // Defense check: when the cited path doesn't exist anywhere (root,
+    // apps/*/src, packages/*/src), STALE_PATH must still fire. The
+    // monorepo fallback only suppresses the false positive when the
+    // file actually exists under SOME workspace.
+    const root = buildTree({
+      ruleBody: "# Test rule\n\nFile at `src/app/genuinely-missing.tsx`.\n",
+    });
+    // Create apps/ workspace dir but NOT the file — fallback should still fail.
+    fs.mkdirSync(path.join(root, "apps", "web", "src", "app"), { recursive: true });
+    fs.writeFileSync(path.join(root, "apps", "web", "src", "app", "different.tsx"), "// not the cited file\n");
+
+    const result = runValidator(root);
+    assert.match(result.stdout, /STALE_PATH/,
+      "monorepo fallback must not mask genuinely missing files");
+    assert.match(result.stdout, /genuinely-missing\.tsx/);
+    cleanup(root);
+  });
 });
 
 describe("content-validator [10/10] — MANIFEST drift", () => {
@@ -251,9 +361,17 @@ describe("content-validator [10/10] — MANIFEST drift", () => {
 describe("content-validator [10/10] — integrated multi-class scenario", () => {
   test("reproduces all drift classes in a combined scenario", () => {
     // Recreate: 2 hallucinated src/ paths in a rule, MANIFEST with 4
-    // skills (2 missing on disk), CLAUDE.md referencing only 1 of the
-    // 4 skills. Expected: STALE_PATH × 2, STALE_SKILL_ENTRY × 2,
-    // MANIFEST_DRIFT × 3.
+    // skills (2 missing on disk), CLAUDE.md referencing MANIFEST + 1
+    // orchestrator. Expected: STALE_PATH × 2, STALE_SKILL_ENTRY × 2.
+    //
+    // v2.4.0 — MANIFEST_DRIFT was previously expected at 3 (one for each
+    // sub-skill not directly mentioned in CLAUDE.md). With the global
+    // MANIFEST coverage rule (CLAUDE.md mentions MANIFEST.md → all
+    // sub-skill paths covered transitively), the 3 sub-skills under
+    // `playground/`, `docs/`, `home/` are now covered, leaving 0 drift
+    // for this scenario. STALE_SKILL_ENTRY (file missing on disk) still
+    // fires for the 2 absent sub-skill files — that's an integrity check
+    // separate from the documentation-coverage check.
     const root = buildTree({
       ruleBody:
         "# Routing rule\n\n" +
@@ -291,7 +409,7 @@ describe("content-validator [10/10] — integrated multi-class scenario", () => 
 
     assert.strictEqual(stalePath, 2, `STALE_PATH count: ${stalePath}`);
     assert.strictEqual(staleSkill, 2, `STALE_SKILL_ENTRY count: ${staleSkill}`);
-    assert.strictEqual(drift, 3, `MANIFEST_DRIFT count: ${drift}`);
+    assert.strictEqual(drift, 0, `MANIFEST_DRIFT count: ${drift} (MANIFEST mention covers sub-skills, v2.4.0)`);
 
     cleanup(root);
   });
@@ -368,12 +486,20 @@ describe("content-validator [10/10] — orchestrator/sub-skill exception (v2.3.0
     cleanup(root);
   });
 
-  test("orchestrator NOT mentioned → every registered skill (including sub-skills) flagged", () => {
-    // Control case: when CLAUDE.md does not mention the orchestrator at
-    // all, the exception does not apply. Every row in MANIFEST must be
-    // accounted for by a CLAUDE.md reference, so we get full drift.
+  test("orchestrator NOT mentioned + MANIFEST mentioned → only top-level orchestrator drifts (sub-skills covered by global MANIFEST)", () => {
+    // v2.4.0 — MANIFEST global-coverage rule. When CLAUDE.md §6 mentions
+    // any MANIFEST.md (the global skill registry), all SUB-SKILL paths
+    // (deep folder paths matching `{category}/{folder}/{file}.md`) are
+    // considered covered transitively because the reader navigates from
+    // MANIFEST to find them. TOP-LEVEL skills (direct `{category}/{file}.md`)
+    // still require direct mention — the exception only applies to
+    // sub-skills that orchestratorFor() can identify by their deep-path
+    // structure.
+    //
+    // This test documents the design: with MANIFEST referenced, only the
+    // top-level orchestrator (which is a direct registration, not a
+    // sub-skill) flags as drift.
     const root = buildBackendCrudTree();
-    // Rewrite CLAUDE.md without the orchestrator reference.
     fs.writeFileSync(
       path.join(root, "CLAUDE.md"),
       "# CLAUDE.md\n\n## 1. Role Definition\n\nbody\nbody\n\n" +
@@ -384,11 +510,34 @@ describe("content-validator [10/10] — orchestrator/sub-skill exception (v2.3.0
 
     const result = runValidator(root);
     const driftCount = (result.stdout.match(/MANIFEST_DRIFT/g) || []).length;
-    // 1 orchestrator + 4 sub-skills = 5 drift rows.
+    assert.strictEqual(
+      driftCount,
+      1,
+      `with MANIFEST mentioned, only top-level orchestrator drifts (sub-skills covered); got ${driftCount}`
+    );
+    // The remaining drift must be the top-level orchestrator, not a sub-skill.
+    assert.match(result.stdout, /01\.scaffold-crud-feature\.md/);
+    cleanup(root);
+  });
+
+  test("orchestrator NOT mentioned + MANIFEST NOT mentioned → every registered skill flagged (no coverage)", () => {
+    // Pure no-coverage control case: CLAUDE.md mentions neither the
+    // orchestrator nor MANIFEST. All 5 registrations drift.
+    const root = buildBackendCrudTree();
+    fs.writeFileSync(
+      path.join(root, "CLAUDE.md"),
+      "# CLAUDE.md\n\n## 1. Role Definition\n\nbody\nbody\n\n" +
+        "## 6. Standard / Rules / Skills Reference\n\n" +
+        "### Skills\n\n" +
+        "- (no skill links)\n"
+    );
+
+    const result = runValidator(root);
+    const driftCount = (result.stdout.match(/MANIFEST_DRIFT/g) || []).length;
     assert.strictEqual(
       driftCount,
       5,
-      `without orchestrator reference, all 5 registered skills drift, got ${driftCount}`
+      `with no coverage, all 5 registered skills drift; got ${driftCount}`
     );
     cleanup(root);
   });
@@ -424,6 +573,158 @@ describe("content-validator [10/10] — orchestrator/sub-skill exception (v2.3.0
       `sub-skill under unrelated parent must still flag, got ${driftCount}`
     );
     assert.match(result.stdout, /other-feature\/01\.thing\.md/);
+    cleanup(root);
+  });
+
+  test("v2.4.0: category-level SKILL.md covers all sub-skills via SKILL.md exception", () => {
+    // The v2.4.0 generator may emit a single category orchestrator at
+    // `{category}/SKILL.md` plus per-domain sub-skills as
+    // `{category}/{parent-stem}/SKILL.md`. The exception must recognize
+    // the category-level SKILL.md as the orchestrator for ALL sub-skills
+    // under that category, regardless of their parent stems.
+    const root = buildTree({
+      manifest:
+        "# Skills Manifest\n\n" +
+        "| Skill | Entry | Purpose | Status |\n" +
+        "|---|---|---|---|\n" +
+        "| backend-crud | `claudeos-core/skills/10.backend-crud/SKILL.md` | category orchestrator | active |\n" +
+        "| sub-widget | `claudeos-core/skills/10.backend-crud/scaffold-widget-feature/SKILL.md` | widget | active |\n" +
+        "| sub-product | `claudeos-core/skills/10.backend-crud/scaffold-product-feature/SKILL.md` | product | active |\n" +
+        "| sub-order | `claudeos-core/skills/10.backend-crud/scaffold-order-feature/SKILL.md` | order | active |\n",
+      skillFiles: [
+        "claudeos-core/skills/10.backend-crud/SKILL.md",
+        "claudeos-core/skills/10.backend-crud/scaffold-widget-feature/SKILL.md",
+        "claudeos-core/skills/10.backend-crud/scaffold-product-feature/SKILL.md",
+        "claudeos-core/skills/10.backend-crud/scaffold-order-feature/SKILL.md",
+      ],
+      claudeMd:
+        "# CLAUDE.md\n\n## 1. Role Definition\n\nbody\nbody\n\n" +
+        "## 6. Standard / Rules / Skills Reference\n\n" +
+        "### Skills\n\n" +
+        "- `claudeos-core/skills/00.shared/MANIFEST.md`\n" +
+        "- `claudeos-core/skills/10.backend-crud/SKILL.md` — backend CRUD orchestrator\n",
+    });
+    const result = runValidator(root);
+    const driftCount = (result.stdout.match(/MANIFEST_DRIFT/g) || []).length;
+    assert.strictEqual(
+      driftCount,
+      0,
+      `v2.4.0 SKILL.md exception must cover all sub-skills under same category, got ${driftCount}`
+    );
+    cleanup(root);
+  });
+
+  test("v2.4.0: sub-skill without NN. prefix is recognized by orchestrator exception", () => {
+    // Pre-v2.4.0 sub-skill paths used `NN.{name}.md`. v2.4.0 generator may
+    // emit `{name}.md` (no NN. prefix) or `SKILL.md`. The orchestratorFor
+    // regex was previously locked to `\d+\.[^/]+\.md$` which rejected the
+    // new forms entirely → fell through to MANIFEST_DRIFT. This test
+    // pins the relaxed regex.
+    const root = buildTree({
+      manifest:
+        "# Skills Manifest\n\n" +
+        "| Skill | Entry | Purpose | Status |\n" +
+        "|---|---|---|---|\n" +
+        "| crud | `claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md` | orchestrator | active |\n" +
+        "| dto | `claudeos-core/skills/10.backend-crud/scaffold-crud-feature/dto.md` | DTO (no NN. prefix) | active |\n" +
+        "| service | `claudeos-core/skills/10.backend-crud/scaffold-crud-feature/service.md` | service (no NN. prefix) | active |\n",
+      skillFiles: [
+        "claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md",
+        "claudeos-core/skills/10.backend-crud/scaffold-crud-feature/dto.md",
+        "claudeos-core/skills/10.backend-crud/scaffold-crud-feature/service.md",
+      ],
+      claudeMd:
+        "# CLAUDE.md\n\n## 1. Role Definition\n\nbody\nbody\n\n" +
+        "### Skills\n\n" +
+        "- `claudeos-core/skills/00.shared/MANIFEST.md`\n" +
+        "- `claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md`\n",
+    });
+    const result = runValidator(root);
+    const driftCount = (result.stdout.match(/MANIFEST_DRIFT/g) || []).length;
+    assert.strictEqual(
+      driftCount,
+      0,
+      `sub-skills without NN. prefix must still be covered by orchestrator exception, got ${driftCount}`
+    );
+    cleanup(root);
+  });
+
+  test("v2.4.0: domains/{name}.md pattern (no sibling orchestrator) covered when MANIFEST mentioned", () => {
+    // Observed scenario: Pass 3c-2 invented a per-domain notes
+    // structure at `{category}/domains/{domain}.md` for 13 domains. There
+    // is NO sibling orchestrator at `{category}/domains.md`, only the
+    // category orchestrator at `{category}/01.scaffold-crud-feature.md`
+    // which doesn't share the "domains" stem.
+    //
+    // Pre-fix behavior: 13 MANIFEST_DRIFT errors (one per domain).
+    // Post-fix behavior: when CLAUDE.md §6 mentions MANIFEST.md (the
+    // global registry), all sub-skill paths — including the new
+    // domains/* form — are considered covered transitively. Only the
+    // top-level orchestrator still requires direct mention (it does, in
+    // this test).
+    const root = buildTree({
+      manifest:
+        "# Skills Manifest\n\n" +
+        "| Skill | Entry | Purpose | Status |\n" +
+        "|---|---|---|---|\n" +
+        "| crud | `claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md` | orchestrator | active |\n" +
+        "| widget | `claudeos-core/skills/10.backend-crud/domains/widget.md` | per-domain notes | active |\n" +
+        "| product | `claudeos-core/skills/10.backend-crud/domains/product.md` | per-domain notes | active |\n" +
+        "| order | `claudeos-core/skills/10.backend-crud/domains/order.md` | per-domain notes | active |\n",
+      skillFiles: [
+        "claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md",
+        "claudeos-core/skills/10.backend-crud/domains/widget.md",
+        "claudeos-core/skills/10.backend-crud/domains/product.md",
+        "claudeos-core/skills/10.backend-crud/domains/order.md",
+      ],
+      claudeMd:
+        "# CLAUDE.md\n\n## 1. Role Definition\n\nbody\nbody\n\n" +
+        "## 6. Standard / Rules / Skills Reference\n\n" +
+        "### Skills\n\n" +
+        "- `claudeos-core/skills/00.shared/MANIFEST.md`\n" +
+        "- `claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md` — CRUD orchestrator\n",
+    });
+    const result = runValidator(root);
+    const driftCount = (result.stdout.match(/MANIFEST_DRIFT/g) || []).length;
+    assert.strictEqual(
+      driftCount,
+      0,
+      `domains/{name}.md sub-skills must be covered by global MANIFEST mention; got ${driftCount}`
+    );
+    cleanup(root);
+  });
+
+  test("v2.4.0: domains/{name}.md pattern still drifts when MANIFEST NOT mentioned", () => {
+    // Negative case: same structure as above but CLAUDE.md does NOT
+    // mention MANIFEST.md. The global-MANIFEST coverage rule does not
+    // apply, and sub-skills under `domains/` (with no sibling orchestrator)
+    // must drift.
+    const root = buildTree({
+      manifest:
+        "# Skills Manifest\n\n" +
+        "| Skill | Entry | Purpose | Status |\n" +
+        "|---|---|---|---|\n" +
+        "| crud | `claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md` | orchestrator | active |\n" +
+        "| widget | `claudeos-core/skills/10.backend-crud/domains/widget.md` | per-domain notes | active |\n" +
+        "| product | `claudeos-core/skills/10.backend-crud/domains/product.md` | per-domain notes | active |\n",
+      skillFiles: [
+        "claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md",
+        "claudeos-core/skills/10.backend-crud/domains/widget.md",
+        "claudeos-core/skills/10.backend-crud/domains/product.md",
+      ],
+      claudeMd:
+        "# CLAUDE.md\n\n## 1. Role Definition\n\nbody\nbody\n\n" +
+        "## 6. Standard / Rules / Skills Reference\n\n" +
+        "### Skills\n\n" +
+        "- `claudeos-core/skills/10.backend-crud/01.scaffold-crud-feature.md`\n",
+    });
+    const result = runValidator(root);
+    const driftCount = (result.stdout.match(/MANIFEST_DRIFT/g) || []).length;
+    assert.strictEqual(
+      driftCount,
+      2,
+      `2 domains/* sub-skills must drift without MANIFEST coverage; got ${driftCount}`
+    );
     cleanup(root);
   });
 

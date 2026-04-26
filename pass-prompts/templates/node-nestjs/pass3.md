@@ -56,21 +56,21 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack, modules, API server info
    - 00.core/02.architecture.md — NestJS module structure, DI container, request lifecycle (middleware → guard → interceptor → pipe → handler → interceptor → filter)
    - 00.core/03.naming-conventions.md — File/variable/type/decorator naming conventions
-   - 10.backend-api/01.controller-patterns.md — @Controller, decorators, parameter binding, response handling
-   - 10.backend-api/02.service-patterns.md — @Injectable, DI, transactions, business logic
-   - 10.backend-api/03.data-access-patterns.md — ORM patterns, repository injection, query optimization
-   - 10.backend-api/04.response-exception.md — Response interceptor, HttpException hierarchy, ExceptionFilter
-   - 10.backend-api/05.validation-dto.md — class-validator, class-transformer, mapped types, ValidationPipe
-   - 10.backend-api/06.guard-interceptor-pipe.md — Guards (auth/role), Interceptors (logging/cache/transform), Pipes (validation/parse)
-   - 10.backend-api/07.module-provider-patterns.md — @Module structure, dynamic modules (forRoot/forFeature), custom providers, global modules
+   - 10.backend/01.controller-patterns.md — @Controller, decorators, parameter binding, response handling
+   - 10.backend/02.service-patterns.md — @Injectable, DI, transactions, business logic
+   - 10.backend/03.data-access-patterns.md — ORM patterns, repository injection, query optimization
+   - 10.backend/04.response-exception.md — Response interceptor, HttpException hierarchy, ExceptionFilter
+   - 10.backend/05.validation-dto.md — class-validator, class-transformer, mapped types, ValidationPipe
+   - 10.backend/06.guard-interceptor-pipe.md — Guards (auth/role), Interceptors (logging/cache/transform), Pipes (validation/parse)
+   - 10.backend/07.module-provider-patterns.md — @Module structure, dynamic modules (forRoot/forFeature), custom providers, global modules
    - 30.security-db/01.security-auth.md — JWT, Passport, Guards, CORS, @nestjs/throttler
    - 30.security-db/02.database-schema.md — Migrations, seeds, schema conventions
    - 30.security-db/03.common-utilities.md — Custom decorators, shared providers, constants
    - 40.infra/01.environment-config.md — @nestjs/config, ConfigModule, environment validation
    - 40.infra/02.logging-monitoring.md — NestJS Logger/pino, LoggingInterceptor, health checks
    - 40.infra/03.cicd-deployment.md — CI/CD pipeline, deployment strategy
-   - 50.verification/01.development-verification.md — Build, startup, API testing
-   - 50.verification/02.testing-strategy.md — Test.createTestingModule, mocking, E2E
+   - 80.verification/01.development-verification.md — Build, startup, API testing
+   - 80.verification/02.testing-strategy.md — Test.createTestingModule, mocking, E2E
 
    Each file MUST include:
    - Correct examples (✅ code blocks)
@@ -84,7 +84,7 @@ Generation targets:
    - Each rule file MUST end with a `## Reference` section linking to the corresponding standard file(s):
      ```
      ## Reference
-     > For detailed patterns and examples, Read: claudeos-core/standard/10.backend-api/01.controller-patterns.md
+     > For detailed patterns and examples, Read: claudeos-core/standard/10.backend/01.controller-patterns.md
      ```
    - `paths:` frontmatter per rule category:
      - `00.core/*` rules: `paths: ["**/*"]`
@@ -95,6 +95,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts"]` — CI config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — directory of all standard files.
      List only the standard files that were actually generated above.
 

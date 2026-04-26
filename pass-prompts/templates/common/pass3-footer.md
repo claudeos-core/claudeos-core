@@ -535,5 +535,109 @@ level (the scaffold's PROJECT_CONTEXT mentions architecture style),
 but it does NOT enumerate rules. Section 6 "Standard / Rules / Skills
 Reference" provides a REFERENCE INDEX (what exists), not rule content.
 
+CRITICAL — Standard files MUST include both ✅ and ❌ examples:
+Every file under `claudeos-core/standard/**/*.md` (except pure index/overview
+files like `00.core/01.project-overview.md`) MUST contain BOTH:
+  - At least one ✅ Correct example (a fenced code block showing the right way)
+  - At least one ❌ Incorrect example (a fenced code block showing the wrong way)
+
+Skipping the ❌ block is a common Pass 3b LLM failure mode that produces
+`[NO_BAD_EXAMPLE]` advisories from `content-validator`. Even if you can only
+think of a minimal contrastive ❌ (a one-line wrong call, a missing
+annotation, a typo'd config key), include it. The contrast is what gives
+the standard its didactic value — a file with only ✅ examples reads as
+"this is one way to do it", whereas ✅+❌ reads as "this is the way; here is
+the failure mode".
+
+Self-check before finalizing each standard file:
+  - Does this file have at least one ```...``` block marked ✅?
+  - Does this file have at least one ```...``` block marked ❌?
+  If either is missing, add it before moving on.
+
+CRITICAL — Per-domain folder convention (`70.domains/{type}/`, plural):
+
+When generating per-domain files (any output that's specific to one
+project domain — e.g. `payment.md`, `order.md`, `member.md`), use the
+canonical `70.domains/` folder (PLURAL, collection-style) and ALWAYS
+include a `{type}/` sub-folder (`backend/` or `frontend/`) regardless
+of single-stack or multi-stack project. Uniform-convention rationale
+in the next paragraph.
+
+  - Per-domain standard:
+    `claudeos-core/standard/70.domains/{type}/{domain}.md`
+    where `{type}` is `backend` or `frontend`
+  - Per-domain rule:
+    `.claude/rules/70.domains/{type}/{domain}-rules.md`
+    (via staging-override path
+    `claudeos-core/generated/.staged-rules/70.domains/{type}/{domain}-rules.md`,
+    each rule file MUST have a `paths:` frontmatter glob scoping to that
+    domain's source directories)
+
+**Why ALWAYS the `{type}/` sub-folder, even for single-stack projects?**
+A single-stack project pays a 1-folder depth cost
+(`70.domains/backend/order.md` instead of `70.domains/order.md`). In
+exchange:
+
+  1. **Zero migration when the other stack is added.** A backend-only
+     project that later adds a Next.js frontend does NOT need to move
+     existing files to `backend/` — they're already there.
+  2. **No LLM probabilistic drift.** Pass 3 LLM never has to decide
+     "is this single-stack or multi?" — the pattern is always the
+     same.
+  3. **One pattern for validators.** `content-validator` and
+     `claude-md-validator` recognize a single layout instead of
+     branching.
+  4. **Future-proof for new stack types** (mobile, cli, agent, ...).
+
+The Pass 3 orchestrator (`bin/commands/init.js`) classifies each
+domain via `project-analysis.json` and emits per-domain target paths
+explicitly in the batch scope note. **Follow the explicit
+per-domain target paths shown in the scope note** rather than infer
+from the domain name. If the scope note shows
+`order → claudeos-core/standard/70.domains/backend/order.md`, that's
+the path to use — the type sub-folder is already classified for you.
+
+  - Per-domain skill notes:
+    `claudeos-core/skills/{category}/domains/{domain}.md`
+    (sub-folder under skill category — `skills/` is a separate namespace
+    from standard/rules, so no number prefix here. The `{category}`
+    folder name already encodes stack: `10.backend-crud/`,
+    `20.frontend-page/`. So skills don't need the additional `{type}/`
+    sub-folder that standard/rules use.)
+  - Per-domain skill ORCHESTRATOR (sibling to the `domains/` sub-folder):
+    `claudeos-core/skills/{category}/02.domains.md`
+    The orchestrator is REQUIRED when the `domains/` sub-folder is
+    populated. It mirrors the canonical pattern already used for
+    `01.scaffold-crud-feature.md` ↔ `scaffold-crud-feature/` (orchestrator
+    file at category root + sub-folder of the same stem). The basename
+    stem (`domains`) MUST match the sub-folder name so
+    `content-validator`'s standard orchestrator-stem matching covers
+    the sub-skills directly — without depending on the
+    global-MANIFEST coverage fallback. The orchestrator content lists
+    every per-domain note file in the `domains/` sub-folder, links to
+    `00.shared/MANIFEST.md`, and describes the per-domain anti-pattern
+    catalog if applicable. Numbered `02.` because `01.scaffold-*-feature.md`
+    already occupies the `01.` slot at the category root.
+
+Why `70.` and not `60.`: `60.memory/*` is the canonical L4 memory rules
+folder (regression-guarded since v2.0.0; cannot move to 70). Putting
+domains at `60.domains/` causes a `60.` prefix collision with
+`60.memory/` that makes directory listings ambiguous. `70.domains/` sits
+after memory and before `90.optional/`, giving per-domain content its
+own clean slot.
+
+Why PLURAL `domains/`: the folder holds N files, one per project domain
+— `payment.md`, `order.md`, etc. This matches the standard filesystem
+convention for collections (`users/user.md`, `posts/post.md`). The other
+numbered category folders (`00.core/`, `10.backend/`, etc.) are singular
+because each represents ONE topic, not a collection of items.
+
+DO NOT use:
+  - `60.domains/` (collides with `60.memory/`)
+  - `70.domain/` (singular is wrong for a collection folder)
+  - Inlining per-domain content into `00.core/*` or topical files
+    (per-domain content is DOMAIN-scoped, topical files are TOPIC-scoped
+    — `paths` glob scoping breaks if they share files)
+
 After completion, run the following commands in order:
 1. npx claudeos-core health

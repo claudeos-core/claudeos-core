@@ -43,6 +43,31 @@ describe("detectStack — Java/Gradle", () => {
     assert.equal(s.buildTool, "gradle");
   });
 
+  it("v2.4.0: packageManager === 'gradle' for Gradle projects", async () => {
+    // Pre-v2.4.0: stack.packageManager was null for Gradle/Maven projects,
+    // surfacing as `PackageMgr: none` in init output. v2.4.0 sets the JVM
+    // build tool as the package manager so downstream display + generated
+    // docs reflect what the project actually uses.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '3.2.0' }
+      dependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.packageManager, "gradle");
+    assert.equal(s.buildTool, "gradle");
+  });
+
+  it("v2.4.0: packageManager === 'gradle' for Kotlin Gradle projects", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle.kts"), `
+      plugins {
+        id("org.springframework.boot") version "3.3.0"
+        kotlin("jvm") version "1.9.22"
+      }
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.packageManager, "gradle");
+  });
+
   it("detects JPA when mybatis is absent", async () => {
     fs.writeFileSync(path.join(tmp, "build.gradle"), `
       plugins { id 'org.springframework.boot' version '3.1.0' }
@@ -176,6 +201,20 @@ describe("detectStack — Java/Maven", () => {
     assert.equal(s.orm, "jpa");
     assert.equal(s.database, "postgresql");
     assert.equal(s.languageVersion, "21");
+  });
+
+  it("v2.4.0: packageManager === 'maven' for Maven projects", async () => {
+    fs.writeFileSync(path.join(tmp, "pom.xml"), `
+      <project>
+        <parent>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-parent</artifactId>
+        </parent>
+      </project>
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.packageManager, "maven");
+    assert.equal(s.buildTool, "maven");
   });
 });
 
@@ -317,6 +356,42 @@ describe("detectStack — Server port (yml and placeholder)", () => {
       `server.port=\${SERVER_PORT:3000}\n`);
     const s = await detectStack(tmp);
     assert.equal(s.port, 3000);
+  });
+
+  it("v2.4.0: extracts port from deeply-nested server: block (>2000 char gap)", async () => {
+    // Regression guard for the 2000-char window limit. Real-world
+    // enterprise YAMLs commonly have `server:` blocks with ssl/http/
+    // tomcat/compression/error children spanning thousands of chars
+    // before `port:`. The pre-v2.4.0 pattern silently missed these
+    // and the detector defaulted to the Spring Boot 8080 fallback.
+    fs.writeFileSync(path.join(tmp, "build.gradle"),
+      `plugins { id 'org.springframework.boot' version '2.5.12' }`);
+    // Build a server: block with ~3000 chars of nested ssl/http/tomcat
+    // config, then `port: 8443` after.
+    const sslBlock = "  ssl:\n" + "    key-store: classpath:keystore.p12\n".repeat(20)
+      + "    key-store-password: changeit\n".repeat(20)
+      + "    key-alias: my-cert\n".repeat(20);
+    const httpBlock = "  http:\n" + "    max-header-size: 32KB\n".repeat(20)
+      + "    encoding: UTF-8\n".repeat(20);
+    const tomcatBlock = "  tomcat:\n" + "    threads:\n      max: 200\n".repeat(20)
+      + "    accesslog:\n      enabled: true\n".repeat(20);
+    const yml = `server:\n${sslBlock}${httpBlock}${tomcatBlock}  port: 8443\n`;
+    // Sanity: confirm the gap really exceeds 2000 chars
+    const gap = yml.indexOf("port: 8443") - "server:\n".length;
+    assert.ok(gap > 2000, `gap should exceed 2000 chars, got ${gap}`);
+    fs.writeFileSync(path.join(tmp, "application-local.yml"), yml);
+    const s = await detectStack(tmp);
+    assert.equal(s.port, 8443);
+  });
+
+  it("v2.4.0: still works with shallow server: block (regression-safe)", async () => {
+    // Ensure the window expansion didn't break the simple case.
+    fs.writeFileSync(path.join(tmp, "build.gradle"),
+      `plugins { id 'org.springframework.boot' version '2.5.12' }`);
+    fs.writeFileSync(path.join(tmp, "application.yml"),
+      `server:\n  ssl:\n    enabled: true\n  port: 8443\n`);
+    const s = await detectStack(tmp);
+    assert.equal(s.port, 8443);
   });
 });
 
@@ -817,23 +892,111 @@ describe("detectStack — Logging framework detection", () => {
     assert.deepEqual(s.loggingFrameworks, []);
   });
 
-  it("does NOT match Logback from a commented-out Gradle dependency", async () => {
-    // Regression guard: a commented-out
-    // `// implementation 'ch.qos.logback:logback-classic:1.4.11'`
-    // (e.g. when the project switches to Spring Boot's managed
-    // version) should not be reported as Logback-in-use. The fix
-    // strips `//`-prefixed and `#`-prefixed lines before running
-    // LOGGING_RULES regexes.
+  it("comment-stripping prevents false-positive Logback detection from commented-out Gradle dep (non-Spring project)", async () => {
+    // Regression guard for the comment-stripping logic in detectLogging():
+    // a commented-out `// implementation 'ch.qos.logback:logback-classic'`
+    // line should not be matched as a real dependency. The fix strips
+    // `//`-prefixed and `#`-prefixed lines before running LOGGING_RULES.
+    //
+    // Uses a non-Spring-Boot Gradle project so the v2.4.0 spring-boot
+    // Logback fallback (which auto-adds Logback to every Spring Boot
+    // project regardless of explicit dep) does not apply.
     fs.writeFileSync(path.join(tmp, "build.gradle"), `
-      plugins { id 'org.springframework.boot' version '3.5.5' }
+      plugins { id 'java' }
       dependencies {
         // implementation 'ch.qos.logback:logback-classic:1.4.11'
-        implementation 'org.springframework.boot:spring-boot-starter'
+        implementation 'org.apache.commons:commons-lang3:3.14.0'
       }
     `);
     const s = await detectStack(tmp);
     assert.ok(!s.loggingFrameworks.includes("logback"),
-      `Should NOT detect Logback from commented-out dep; got ${JSON.stringify(s.loggingFrameworks)}`);
+      `Should NOT detect Logback from commented-out dep in non-Spring project; got ${JSON.stringify(s.loggingFrameworks)}`);
+  });
+
+  it("v2.4.0: Spring Boot project gets Logback via fallback even with no explicit logback dep", async () => {
+    // Spring Boot ships Logback transitively via spring-boot-starter.
+    // Most projects do not declare logback-classic explicitly. The
+    // v2.4.0 fallback adds Logback when framework=spring-boot and no
+    // explicit log4j2 was detected. The `detected` array preserves
+    // provenance via "(spring-boot default)" marker so consumers can
+    // distinguish fallback-derived from explicit declaration.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '3.5.5' }
+      dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter'
+      }
+    `);
+    const s = await detectStack(tmp);
+    assert.ok(s.loggingFrameworks.includes("logback"),
+      `Spring Boot project must report Logback via fallback; got ${JSON.stringify(s.loggingFrameworks)}`);
+    assert.ok(s.detected.includes("logback (spring-boot default)"),
+      `provenance marker missing from detected[]; got ${JSON.stringify(s.detected)}`);
+  });
+
+  it("v2.4.0: port detection finds nested port: inside server: block (after intermediate keys)", async () => {
+    // Real Spring Boot configs commonly have `server:` blocks with
+    // intermediate keys (ssl, http, error) BEFORE the `port:` declaration:
+    //   server:
+    //     ssl:
+    //       enabled: true
+    //     port: 8443
+    // Pre-v2.4.0 pattern only matched `port:` IMMEDIATELY after `server:\n`,
+    // missing this layout. Pattern (5) handles the nested form.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '2.5.12' }
+    `);
+    fs.mkdirSync(path.join(tmp, "src/main/resources/properties"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "src/main/resources/properties/application-local.yml"),
+      "server:\n" +
+      "  ssl:\n" +
+      "    enabled: true\n" +
+      "    key-store: classpath:keystore.p12\n" +
+      "  http:\n" +
+      "    encoding:\n" +
+      "      charset: UTF-8\n" +
+      "  port: 8443\n"
+    );
+    const s = await detectStack(tmp);
+    assert.equal(s.port, 8443,
+      `nested port: in server: block should be detected; got port=${s.port}`);
+  });
+
+  it("v2.4.0: port detection inside nested properties/ subdirectory", async () => {
+    // Some projects keep yml files under a `properties/` subdirectory
+    // (`src/main/resources/properties/application-{profile}.yml`) rather
+    // than at the standard `src/main/resources/` root. The configGlob
+    // `**/{application,bootstrap}*.{yml,yaml,properties}` should match
+    // any depth — verify it does.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '2.5.12' }
+    `);
+    fs.mkdirSync(path.join(tmp, "src/main/resources/properties"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "src/main/resources/properties/application-local.yml"),
+      "server:\n  port: 9090\n"
+    );
+    const s = await detectStack(tmp);
+    assert.equal(s.port, 9090,
+      `port in nested properties/ subdir should be detected; got port=${s.port}`);
+  });
+
+  it("v2.4.0: Spring Boot project with explicit log4j2 does NOT get Logback fallback", async () => {
+    // Opt-out path: when the project explicitly declares log4j2 (e.g.
+    // via spring-boot-starter-log4j2 which excludes Logback), the
+    // fallback must NOT add Logback to avoid mis-reporting both as
+    // active.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '3.5.5' }
+      dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter'
+        implementation 'org.apache.logging.log4j:log4j-core'
+      }
+    `);
+    const s = await detectStack(tmp);
+    assert.ok(s.loggingFrameworks.includes("log4j2"));
+    assert.ok(!s.loggingFrameworks.includes("logback"),
+      `explicit log4j2 must suppress Logback fallback; got ${JSON.stringify(s.loggingFrameworks)}`);
   });
 
   it("detects Logback from yml logging.config reference even when gradle dep is commented", async () => {

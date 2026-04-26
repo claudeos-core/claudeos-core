@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/claudeos-core/claudeos-core/security/advisories/new
+    about: Please report security issues privately via GitHub Security Advisories. See SECURITY.md.
+  - name: Question / Discussion
+    url: https://github.com/claudeos-core/claudeos-core/discussions
+    about: For general questions, ideas, and usage help, please open a discussion instead of an issue.

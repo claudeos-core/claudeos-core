@@ -22,9 +22,42 @@ async function scanJavaDomains(stack, ROOT) {
   let rootPackage = null;
 
   const javaFiles = (await glob("src/main/java/**/*.java", { cwd: ROOT })).map(norm);
+
+  // v2.4.0 — Pick the LONGEST package prefix (1-4 segments) that still
+  // covers ≥80% of layer-bearing files. Pre-v2.4.0 the first matched file
+  // won, which misclassified projects whose actual production code lives
+  // under one root (e.g. `<orgA>.<projectA>.*`) but where a small number
+  // of stub files happen to sit under another deeper subtree (e.g.
+  // `<orgA>.<otherModule>.core.<dir>.*`) — glob enumeration order then
+  // determined the rootPackage non-deterministically.
+  //
+  // Algorithm: count every (1-, 2-, 3-, 4-)segment prefix preceding a
+  // known layer marker. Then pick the longest prefix whose count is at
+  // least 80% of the maximum (1-segment) count. This gives:
+  //   • Mono-package project (`com.example.app.*` only): root = `com.example.app`
+  //     (all 4 prefix lengths tied, longest = most specific root).
+  //   • Multi-module project (95% under `<root>.api.*`, 5% stubs under
+  //     `<root>.misc.*`): root = `<root>.api` (the LONGEST prefix that
+  //     still covers ≥80% of files), not `<root>` (too generic) and
+  //     not the minority `<root>.misc.*` location (no longer first-match).
+  const pkgCounts = new Map();
   for (const f of javaFiles) {
     const m = f.match(/src\/main\/java\/(.+?)\/(controller|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)/);
-    if (m) { rootPackage = m[1].replace(/\//g, "."); break; }
+    if (!m) continue;
+    const segs = m[1].split("/");
+    for (let len = Math.min(4, segs.length); len >= 1; len--) {
+      const prefix = segs.slice(0, len).join(".");
+      pkgCounts.set(prefix, (pkgCounts.get(prefix) || 0) + 1);
+    }
+  }
+  if (pkgCounts.size > 0) {
+    const maxCount = Math.max(...pkgCounts.values());
+    const threshold = Math.ceil(maxCount * 0.8);
+    const candidates = [...pkgCounts.entries()].filter(([_, c]) => c >= threshold);
+    // Among candidates, pick the longest prefix (most specific root that
+    // still covers the majority of files). Tie-break on length DESC.
+    candidates.sort((a, b) => b[0].length - a[0].length);
+    rootPackage = candidates[0][0];
   }
   const domainMap = {};
   let detectedPattern = null;
@@ -172,7 +205,70 @@ async function scanJavaDomains(stack, ROOT) {
     domainMap[d].mappers = mpr.length;
     domainMap[d].dtos = dto.length;
     domainMap[d].xmlMappers = xml.length;
-    const totalFiles = svc.length + agg.length + mpr.length + dto.length + xml.length + domainMap[d].controllers;
+
+    // v2.4.0 — Deep-sweep fallback (Pattern B/D only).
+    //
+    // Pre-v2.4.0: standard globs assume `{domain}/{layer}/X.java`. This
+    // misses two real-world layouts:
+    //   (a) Multi-module split: `front/{domain}/{layer}/` for HTTP
+    //       layer + `core/{domain}/{layer}/` for service/dao layer.
+    //       Standard glob `**/{domain}/{layer}/` actually matches BOTH
+    //       via the leading `**`, so this case generally works.
+    //   (b) Cross-domain coupling: `core/{otherDomain}/{layer}/{domain}/`
+    //       — services for `{domain}` living under a different module's
+    //       layer directory (the layer dir comes BEFORE the domain dir).
+    //       Standard glob `**/{domain}/{layer}/*.java` does NOT match
+    //       this layout.
+    //
+    // When standard globs return zero files for a Pattern B/D domain
+    // that is registered in domainMap (so it does exist), fall back to
+    // a deep sweep: `**/${dn}/**/*.java` finds every .java file under
+    // ANY directory named ${dn}. We then classify each file by walking
+    // up its path to find the nearest layer dir, which catches both
+    // `${dn}/{layer}/` AND `{layer}/${dn}/` placements.
+    //
+    // Restricting to Pattern B/D and to the zero-files case keeps the
+    // legacy behavior identical for projects whose standard globs
+    // already cover everything, and prevents over-counting for
+    // domains with healthy direct-layout file counts.
+    const standardCount = svc.length + agg.length + mpr.length + dto.length + xml.length;
+    if (standardCount === 0 && (p === "B" || p === "D")) {
+      const deepFiles = (await glob(`src/main/java/**/${dn}/**/*.java`, { cwd: ROOT })).map(norm);
+      // v2.4.0 — extended layer recognition. Real-world enterprise codebases
+      // commonly include implementation/support layers beyond the canonical
+      // controller/service/mapper/dto trio. Files in `factory/`, `strategy/`,
+      // `impl/`, `helper/`, etc. were previously dropped by deep-sweep
+      // (no `break`), causing domains with non-standard layer names to
+      // report 0 totalFiles. The recognized list is augmented and a
+      // catch-all classifies any remaining `.java` file under the domain
+      // tree as a service (the most generic backend layer).
+      const SVC_LAYERS = ["aggregator", "facade", "usecase", "orchestrator", "service",
+                          "factory", "strategy", "impl", "helper", "support",
+                          "client", "provider", "manager", "handler", "interceptor",
+                          "filter", "listener", "task", "scheduler", "command", "query",
+                          "validator", "converter", "translator", "resolver"];
+      const DAO_LAYERS = ["mapper", "repository", "dao"];
+      const DTO_LAYERS = ["dto", "vo", "entity", "model", "request", "response", "payload"];
+      for (const f of deepFiles) {
+        const parts = f.split("/");
+        let classified = false;
+        for (let i = parts.length - 2; i >= 0; i--) {
+          const seg = parts[i];
+          if (seg === "controller") { domainMap[d].controllers++; classified = true; break; }
+          if (SVC_LAYERS.includes(seg)) { domainMap[d].services++; classified = true; break; }
+          if (DAO_LAYERS.includes(seg)) { domainMap[d].mappers++; classified = true; break; }
+          if (DTO_LAYERS.includes(seg)) { domainMap[d].dtos++; classified = true; break; }
+        }
+        // Fallback: any unclassified .java file under the domain tree is
+        // counted as a service. This catches layouts like
+        // `core/${dn}/X.java` (no layer subdir) and prevents legitimate
+        // backend domains from reporting 0 totalFiles when their files
+        // happen to live under unrecognized parent directories.
+        if (!classified) domainMap[d].services++;
+      }
+    }
+
+    const totalFiles = domainMap[d].services + domainMap[d].mappers + domainMap[d].dtos + domainMap[d].xmlMappers + domainMap[d].controllers;
     backendDomains.push({ name: d, type: "backend", ...domainMap[d], totalFiles });
   }
 

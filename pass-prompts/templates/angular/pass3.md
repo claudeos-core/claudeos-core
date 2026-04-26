@@ -47,26 +47,26 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack (Angular version, TypeScript version), project structure
    - 00.core/02.architecture.md — Module hierarchy, DI tree, data flow, lazy loading map
    - 00.core/03.naming-conventions.md — File/class/selector/module naming conventions
-   - 20.frontend-ui/01.component-patterns.md — Component structure, lifecycle, OnPush, Signals, I/O
-   - 20.frontend-ui/02.routing-patterns.md — Route config, lazy loading, guards, resolvers
-   - 20.frontend-ui/03.service-di-patterns.md — Injectable, providers, injection tokens, inject()
-   - 20.frontend-ui/04.rxjs-patterns.md — Observable management, operators, subscription cleanup
-   - 20.frontend-ui/05.template-patterns.md — Directives, content projection, control flow (@if/@for)
-   - 20.frontend-ui/06.form-patterns.md — Reactive/Template forms, validators, error handling
-   - 20.frontend-ui/07.state-management.md — NgRx/NGXS/Signal Store patterns
-   - 20.frontend-ui/08.http-patterns.md — HttpClient, interceptors, caching, error handling
-   - 20.frontend-ui/09.styling-patterns.md — ViewEncapsulation, theming, responsive
-   - 10.backend-api/01.api-integration.md — API service abstraction, interceptors (if backend exists)
+   - 20.frontend/01.component-patterns.md — Component structure, lifecycle, OnPush, Signals, I/O
+   - 20.frontend/02.routing-patterns.md — Route config, lazy loading, guards, resolvers
+   - 20.frontend/03.service-di-patterns.md — Injectable, providers, injection tokens, inject()
+   - 20.frontend/04.rxjs-patterns.md — Observable management, operators, subscription cleanup
+   - 20.frontend/05.template-patterns.md — Directives, content projection, control flow (@if/@for)
+   - 20.frontend/06.form-patterns.md — Reactive/Template forms, validators, error handling
+   - 20.frontend/07.state-management.md — NgRx/NGXS/Signal Store patterns
+   - 20.frontend/08.http-patterns.md — HttpClient, interceptors, caching, error handling
+   - 20.frontend/09.styling-patterns.md — ViewEncapsulation, theming, responsive
+   - 10.backend/01.api-integration.md — API service abstraction, interceptors (if backend exists)
    - 30.security-db/01.security-auth.md — Auth guards, JWT interceptor, route protection
    - 40.infra/01.environment-config.md — environment.ts, angular.json, build configuration
    - 40.infra/02.logging-monitoring.md — Error tracking, performance monitoring
    - 40.infra/03.cicd-deployment.md — CI/CD pipeline, ng build --configuration, Docker
-   - 50.verification/01.development-verification.md — ng serve, ng build, Lighthouse
-   - 50.verification/02.testing-strategy.md — TestBed, component harness, E2E strategy
+   - 80.verification/01.development-verification.md — ng serve, ng build, Lighthouse
+   - 80.verification/02.testing-strategy.md — TestBed, component harness, E2E strategy
 
    Each file MUST include:
-   - Correct examples (code blocks in TypeScript)
-   - Incorrect examples (code blocks showing common Angular mistakes)
+   - Correct examples (✅ code blocks in TypeScript)
+   - Incorrect examples (❌ code blocks showing common Angular mistakes)
    - Key rules summary table
 
 3. .claude/rules/ (active domains only)
@@ -83,6 +83,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.ts"]` — CI config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` as a directory of all standard files
 
 4. .claude/rules/50.sync/ (2 sync rules)

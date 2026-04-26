@@ -76,7 +76,7 @@ test("buildPass3Context — happy path produces slim structured context", () => 
       summary: { totalDomains: 2, backendDomains: 2, frontendDomains: 0, totalFiles: 70 },
       activeDomains: {
         "00.core": true, "10.backend": true, "20.frontend": false,
-        "30.security-db": true, "40.infra": true, "50.verification": true, "90.optional": true,
+        "30.security-db": true, "40.infra": true, "80.verification": true, "90.optional": true,
       },
     };
     fs.writeFileSync(path.join(tmp, "project-analysis.json"), JSON.stringify(analysis));

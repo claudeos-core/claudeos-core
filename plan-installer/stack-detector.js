@@ -270,6 +270,10 @@ async function detectStack(ROOT) {
     const g = readFileSafe(path.join(ROOT, gradleFile));
     if (g) {
       stack.buildTool = "gradle"; stack.detected.push(gradleFile);
+      // v2.4.0 — JVM project package manager. Set "gradle" so generated docs
+      // and downstream tooling don't show "PackageMgr: none" for a build tool
+      // that IS the package manager. Only set if not already detected.
+      if (!stack.packageManager) stack.packageManager = "gradle";
       if (g.includes("spring-boot")) { stack.language = "java"; stack.framework = "spring-boot"; stack.detected.push("spring-boot"); }
       const svPatterns = [
         /org\.springframework\.boot.*version\s*['"]([^'"]+)['"]/,
@@ -483,6 +487,8 @@ async function detectStack(ROOT) {
     const pom = readFileSafe(path.join(ROOT, "pom.xml"));
     if (pom) {
       if (!stack.buildTool) { stack.buildTool = "maven"; stack.language = "java"; stack.detected.push("pom.xml"); }
+      // v2.4.0 — JVM package manager (parallel to Gradle case above).
+      if (!stack.packageManager) stack.packageManager = "maven";
       const sv = pom.match(/<spring-boot[^>]*version>([^<]+)/);
       if (sv) stack.frameworkVersion = sv[1];
       // Java version — Maven commonly uses three patterns:
@@ -815,6 +821,7 @@ async function detectStack(ROOT) {
       // framework default).
       const portPatterns = [
         // (1) direct numeric literal in yml `server:\n  port: N`
+        //     (port immediately after server: with no intermediate keys)
         /server:\s*\n\s*port:\s*(\d+)/,
         // (2) flat-key style `server.port=N` or `server.port: N`
         /server\.port\s*[=:]\s*(\d+)/,
@@ -824,6 +831,29 @@ async function detectStack(ROOT) {
         /server:\s*\n\s*port:\s*\$\{[^}:]+:(\d+)\}/,
         // (4) placeholder-with-default in flat-key form
         /server\.port\s*[=:]\s*\$\{[^}:]+:(\d+)\}/,
+        // (5) v2.4.0 — nested-block yml: `server:` block with intermediate
+        //     keys (e.g. `ssl:`, `http:`, `error:`, `tomcat:`, `compression:`)
+        //     BEFORE `port:`. Real Spring Boot configs often look like:
+        //       server:
+        //         ssl:
+        //           key-store: ...
+        //         port: 8443
+        //     Pre-v2.4.0 pattern (1) requires `port:` immediately after
+        //     `server:\n`, missing this common form. The lazy-quantified
+        //     gap allows up to ~20000 chars between `server:` and `port:`,
+        //     while the leading-whitespace constraint on `port:` ensures
+        //     we match an INDENTED key (still inside the server: block),
+        //     not an outdented sibling key at column 0.
+        //
+        //     v2.4.0: window expanded from 2000 to 20000 chars after
+        //     observing an enterprise YAML where the `server:` block
+        //     contained ssl/http/tomcat/compression children spanning
+        //     ~3000 chars before `port: 8443`. The 2000 limit silently
+        //     missed the port and the detector defaulted to the Spring
+        //     Boot 8080 fallback.
+        /^server:[\s\S]{0,20000}?\n[ \t]+port:\s*(\d+)/m,
+        // (6) v2.4.0 — same nested-block form with placeholder-with-default
+        /^server:[\s\S]{0,20000}?\n[ \t]+port:\s*\$\{[^}:]+:(\d+)\}/m,
       ];
       for (const re of portPatterns) {
         const pm = c.match(re);
@@ -910,6 +940,20 @@ async function detectStack(ROOT) {
     if (!stack.port && envInfo.port) {
       stack.port = envInfo.port;
     }
+  }
+
+  // v2.4.0 — Spring Boot ships Logback as the default logging implementation
+  // via spring-boot-starter (transitively). Most projects do not declare
+  // `ch.qos.logback:logback-classic` explicitly because the starter brings
+  // it in. The dependency-only LOGGING_RULES regex therefore misses Logback
+  // for the common case. Fill in the default unless the project has
+  // explicitly opted into log4j2 (in which case spring-boot-starter-log4j2
+  // would replace the Logback default).
+  if (stack.framework === "spring-boot"
+      && !stack.loggingFrameworks.includes("log4j2")
+      && !stack.loggingFrameworks.includes("logback")) {
+    stack.loggingFrameworks.push("logback");
+    stack.detected.push("logback (spring-boot default)");
   }
 
   return stack;

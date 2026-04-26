@@ -1,6 +1,6 @@
 {
   "name": "claudeos-core",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "description": "Auto-generate Claude Code documentation from your actual source code — Standards, Rules, Skills, and Guides tailored to your project",
   "main": "bin/cli.js",
   "bin": {
@@ -24,6 +24,8 @@
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
     "README.zh-CN.md",
     "README.ja.md",
     "README.es.md",

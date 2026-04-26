@@ -51,21 +51,21 @@ Generation targets:
    - 00.core/01.project-overview.md — Stack, modules, server info
    - 00.core/02.architecture.md — Application factory, Blueprint hierarchy, request flow
    - 00.core/03.naming-conventions.md — Module/model/blueprint/route naming conventions
-   - 10.backend-api/01.route-blueprint-patterns.md — Blueprint structure, route decorators, request/response handling
-   - 10.backend-api/02.model-schema-patterns.md — SQLAlchemy models, marshmallow/WTForms serialization
-   - 10.backend-api/03.service-patterns.md — Service layer, business logic separation
-   - 10.backend-api/04.response-error-patterns.md — Response formatting, error handlers, custom exceptions
+   - 10.backend/01.route-blueprint-patterns.md — Blueprint structure, route decorators, request/response handling
+   - 10.backend/02.model-schema-patterns.md — SQLAlchemy models, marshmallow/WTForms serialization
+   - 10.backend/03.service-patterns.md — Service layer, business logic separation
+   - 10.backend/04.response-error-patterns.md — Response formatting, error handlers, custom exceptions
    - 30.security-db/01.security-auth.md — Authentication, CSRF, session management, environment variables
    - 30.security-db/02.database-patterns.md — SQLAlchemy patterns, migrations, relationships
    - 40.infra/01.environment-config.md — Config classes, environment variables, extension initialization
    - 40.infra/02.logging-monitoring.md — app.logger, request logging, error tracking
    - 40.infra/03.cicd-deployment.md — CI/CD, gunicorn, Docker deployment
-   - 50.verification/01.development-verification.md — Build, startup, flask run
-   - 50.verification/02.testing-strategy.md — pytest, test_client, fixtures, DB testing
+   - 80.verification/01.development-verification.md — Build, startup, flask run
+   - 80.verification/02.testing-strategy.md — pytest, test_client, fixtures, DB testing
 
    Each file MUST include:
-   - Correct examples (code blocks)
-   - Incorrect examples (code blocks)
+   - Correct examples (✅ code blocks)
+   - Incorrect examples (❌ code blocks)
    - Key rules summary table
 
 3. .claude/rules/ (active domains only)
@@ -82,6 +82,7 @@ Generation targets:
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.py"]` — CI / deploy config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]`
      - `60.memory/*` rules: forward reference — Pass 4 will generate 4 files (01.decision-log, 02.failure-patterns, 03.compaction, 04.auto-rule-update), each with file-specific `paths`. Pass 3 must STILL list ```.claude/rules/60.memory/*``` as a row in CLAUDE.md Section 6 Rules table so developers/Claude see the category exists.
+     - `70.domains/*` rules (multi-domain projects only): per-domain rules at `.claude/rules/70.domains/{type}/{domain}-rules.md` (where `{type}` is `backend` or `frontend`, ALWAYS present even in single-stack projects for uniform layout + zero-migration future-proofing), each with a `paths:` glob scoped to that domain's source directories so the rule auto-loads only when editing files within the relevant domain. Folder name is PLURAL (`domains/`) — collection of N per-domain files — and each file inside uses the SINGULAR domain name (`{domain}-rules.md`). DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT skip the `{type}/` sub-folder. See pass3-footer.md "Per-domain folder convention" for the full rationale.
    - MUST generate `.claude/rules/00.core/00.standard-reference.md` — directory of all standard files
 
 4. .claude/rules/50.sync/ (2 sync rules)

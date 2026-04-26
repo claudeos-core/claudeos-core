@@ -78,6 +78,77 @@ describe("splitDomainGroups", () => {
     assert.equal(groups[0].estimatedFiles, 100);
     assert.deepEqual(groups[1].domains, ["small"]);
   });
+
+  // ─── totalLines (optional weighted splitting, v2.3.3+) ──────
+  //
+  // `totalLines` is an optional field that scanners may populate to give the
+  // splitter a second axis besides file count. When present, a group flushes
+  // if adding the next domain would exceed MAX_LINES_PER_GROUP (8000). When
+  // absent (domains use only the legacy `{name, totalFiles}` shape), the
+  // line-budget check is a no-op and splitting behaves exactly as before.
+
+  it("ignores totalLines when absent (legacy shape backward compatible)", () => {
+    // Exactly the same domains as "splits when exceeding MAX_DOMAINS_PER_GROUP"
+    // test above — verifies that legacy callers get identical output.
+    const domains = Array.from({ length: 6 }, (_, i) => ({ name: `d${i}`, totalFiles: 5 }));
+    const groups = splitDomainGroups(domains, "frontend", "node-nextjs");
+    assert.equal(groups.length, 2);
+    assert.equal(groups[0].domains.length, 4);
+    assert.equal(groups[1].domains.length, 2);
+  });
+
+  it("flushes on line budget when totalLines exceeds MAX_LINES_PER_GROUP (8000)", () => {
+    // Two small-file-count domains that each carry a large single file.
+    // File-count axis would combine them (10+10=20 < 40), but line-count
+    // axis should force a split (5000+5000=10000 > 8000).
+    const domains = [
+      { name: "heavy-a", totalFiles: 10, totalLines: 5000 },
+      { name: "heavy-b", totalFiles: 10, totalLines: 5000 },
+    ];
+    const groups = splitDomainGroups(domains, "backend", "java-spring");
+    assert.equal(groups.length, 2);
+    assert.deepEqual(groups[0].domains, ["heavy-a"]);
+    assert.deepEqual(groups[1].domains, ["heavy-b"]);
+  });
+
+  it("does NOT flush on line budget when totalLines stays under threshold", () => {
+    // 3000+3000=6000 < 8000 → combined. File axis also fits (15+15=30 < 40).
+    const domains = [
+      { name: "medium-a", totalFiles: 15, totalLines: 3000 },
+      { name: "medium-b", totalFiles: 15, totalLines: 3000 },
+    ];
+    const groups = splitDomainGroups(domains, "backend", "java-spring");
+    assert.equal(groups.length, 1);
+    assert.deepEqual(groups[0].domains, ["medium-a", "medium-b"]);
+  });
+
+  it("accepts mixed shape (some domains with totalLines, others without)", () => {
+    // Scanner migration period: frontend scanner emits totalLines, but a
+    // hypothetical backend scanner in the same run has not yet been
+    // extended. Mixed-shape input must not crash and must behave correctly.
+    const domains = [
+      { name: "no-lines", totalFiles: 10 },                  // totalLines absent
+      { name: "with-lines", totalFiles: 10, totalLines: 2000 },
+    ];
+    const groups = splitDomainGroups(domains, "backend", "java-spring");
+    // Both fit within all budgets — combined into one group.
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].domains.length, 2);
+  });
+
+  it("treats negative or non-number totalLines as absent (defensive)", () => {
+    // Guard against scanner bugs. Malformed totalLines must not corrupt
+    // splitting — the domain should be accepted as line-count-unknown.
+    const domains = [
+      { name: "a", totalFiles: 10, totalLines: -100 },
+      { name: "b", totalFiles: 10, totalLines: "not-a-number" },
+      { name: "c", totalFiles: 10, totalLines: NaN },
+    ];
+    const groups = splitDomainGroups(domains, "backend", "java-spring");
+    // All three combine (legacy-shape fallback): 30 files < 40, 3 domains < 4.
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].domains.length, 3);
+  });
 });
 
 // ─── determineActiveDomains ──────────────────────────────────

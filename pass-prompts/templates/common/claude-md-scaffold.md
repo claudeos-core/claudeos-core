@@ -279,6 +279,12 @@ Unlike rules that auto-load via `paths` glob, this layer is referenced **on-dema
 4. **Record repeated errors**: If the same error occurs ≥2 times and the root cause is non-obvious, register it in `failure-patterns.md` with a new pattern-id.
 5. **Periodic compaction**: When a memory file approaches 400 lines or has not been tidied up for over a month, run `npx claudeos-core memory compact`.
 6. **Review rule-update proposals**: Review proposals in `auto-rule-update.md` with confidence ≥ 0.70. When accepting, edit the corresponding rule file and log the decision in `decision-log.md`.
+
+**Session Resume (after auto-compact or restart)**: Claude Code's auto-compact feature may truncate session context mid-work, and a restarted session starts with a fresh context window. When resuming work:
+
+- **Re-scan** `failure-patterns.md` — error patterns referenced pre-compact may have been dropped from context.
+- **Re-read the 3 most recent entries** of `decision-log.md` — new decisions may have been recorded during the truncated portion of the session.
+- **Re-match rules by `paths` glob** for the current working files — CLAUDE.md is always loaded, but `paths`-conditional rules may not have been re-loaded after compact. Explicitly Read the relevant rule files if needed.
 ```
 
 ---
@@ -555,6 +561,63 @@ Format: `**{category}**: {explanation}`
   Example row for 60.memory:
   `.claude/rules/60.memory/*` | Auto-loaded when editing L4 memory
   files (decision-log · failure-patterns · compaction · auto-rule-update) |
+  Example row for 70.domains (only when the project has multi-batch
+  domain output — see "Per-domain folder convention" below):
+  `.claude/rules/70.domains/*` | Auto-loaded when editing files within
+  a specific domain (paths-scoped, one rule file per domain) |
+
+**Per-domain folder convention (canonical, v2.4.0+)**:
+
+When a project has multiple distinct domains and Pass 3 emits per-domain
+output (typical for backends with ≥4 domains, multi-batch runs, or
+projects where rules need domain-specific `paths` glob scoping), the
+canonical folder is **`70.domains/{type}/`** (PLURAL collection +
+ALWAYS-typed sub-folder), and each file inside uses the singular
+domain name:
+
+  - `claudeos-core/standard/70.domains/{type}/{domain}.md` — `{type}`
+    is `backend` or `frontend`
+  - `.claude/rules/70.domains/{type}/{domain}-rules.md` — per-domain rule
+    (with `paths` frontmatter scoping to that domain's source directories)
+
+The `{type}/` sub-folder is ALWAYS present, even in single-stack
+projects (backend-only or frontend-only). Reasons: (1) zero file moves
+when a single-stack project later adds the other stack, (2) no LLM
+probabilistic drift between Pass 3 runs (one pattern always), (3) one
+pattern for validators to recognize, (4) future-proof for new stack
+types (mobile/cli/agent).
+
+The Pass 3 orchestrator (`bin/commands/init.js`) classifies each domain
+via `project-analysis.json` and emits per-domain target paths
+explicitly in the batch scope note — you (the LLM) should follow the
+explicit paths shown there.
+  - `claudeos-core/skills/{category}/domains/{domain}.md` — per-domain
+    skill notes (sub-folder under skill category, no number prefix
+    because skills/ is a separate namespace from standard/rules)
+  - `claudeos-core/skills/{category}/02.domains.md` — sibling
+    ORCHESTRATOR for the `domains/` sub-folder (REQUIRED whenever
+    `domains/` is populated). Mirrors the canonical pattern
+    `01.scaffold-*-feature.md` ↔ `scaffold-*-feature/`: orchestrator
+    file at category root + sub-folder of the same stem. Stem
+    (`domains`) MUST match sub-folder name so `content-validator`'s
+    standard orchestrator-stem matching covers the sub-skills
+    directly without depending on the global-MANIFEST coverage
+    fallback. The per-domain note files INSIDE `domains/` carry NO
+    numeric prefix (`payment.md`, not `01.payment.md`) — domains are
+    independent siblings without execution order, unlike the
+    sequenced CRUD sub-skills (`01.dto.md` → `08.test.md`) where
+    numbers encode the scaffolding step order.
+
+The `70.` prefix sits AFTER `60.memory` (which is regression-guarded to
+60) and BEFORE `90.optional`, giving per-domain content its own clean
+slot in the rules numbering. The folder name is plural (`domains/`)
+because it holds N files, one per project domain — matching the standard
+filesystem convention `users/user.md`, `posts/post.md`. The other
+numbered category folders (`00.core/`, `10.backend/`, etc.) are singular
+because each represents ONE topic, not a collection.
+
+DO NOT use `60.domains/` (collides with `60.memory/`) and DO NOT use
+`70.domain/` (singular folder is incorrect for a collection).
 
 **Sub-section 3**: `### Skills (Automated Repeated-task Procedures)`
 - Bullet list
@@ -643,6 +706,24 @@ Workflow: `#### Memory Workflow` — FIXED 6-step numbered list
 4. Record repeated errors — failure-patterns add
 5. Periodic compaction — memory compact command
 6. Review rule-update proposals — auto-rule-update review
+
+**Session Resume block** (RECOMMENDED, follows the 6-step numbered list
+as prose — not a new H4 subsection). Opens with bold label
+`**Session Resume (after auto-compact or restart)**:` followed by a
+3-bullet list covering: re-scan `failure-patterns.md`, re-read the 3
+most recent entries of `decision-log.md`, and re-match rules by `paths`
+glob for current working files. This block addresses Claude Code's
+auto-compact behavior that may truncate session context mid-work.
+
+New CLAUDE.md generation (`npx claudeos-core init`) emits this block
+by default. Existing CLAUDE.md files without it remain structurally
+valid — the validator does not enforce Session Resume presence, only
+that if present it follows the prose-not-H4 form.
+
+The Session Resume block MUST NOT be a `####` subsection — the Section
+8 structural validator enforces EXACTLY 2 `####` headings (L4 Memory
+Files + Memory Workflow). Session Resume is prose inside the Memory
+Workflow section, not a sibling heading.
 
 **Section 8 single-occurrence rule** (enforces the "one canonical home"
 principle):

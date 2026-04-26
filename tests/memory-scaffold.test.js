@@ -83,6 +83,119 @@ test("scaffoldRules: no 60.runtime or 70.memory directory is created", () => {
   fs.rmSync(d, { recursive: true, force: true });
 });
 
+// v2.4.0 — Per-domain folder convention regression guard.
+//
+// Memory rules live at `60.memory/*` (regression-guarded above). Per-domain
+// rules use the canonical `70.domains/*` slot — PLURAL folder name because
+// it holds N per-domain files. The `60.` prefix MUST NOT be used for
+// `domains/` because it collides with `60.memory/`. Earlier P2 #3 fix
+// initially introduced `60.domains/` and was corrected to `70.domains/`
+// in this same release. This guard pins both: the canonical slot is 70,
+// and the canonical folder name is plural.
+test("70.domains/ is canonical per-domain rules folder (NOT 60.domains, NOT 70.domain)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const TOOLS = path.resolve(__dirname, "..");
+
+  // Templates that should reference 70.domains/
+  const templatesDir = path.join(TOOLS, "pass-prompts/templates");
+  const stacks = ["angular", "java-spring", "kotlin-spring", "node-express",
+                  "node-fastify", "node-nestjs", "node-nextjs", "node-vite",
+                  "python-django", "python-fastapi", "python-flask", "vue-nuxt"];
+  for (const stack of stacks) {
+    const f = path.join(templatesDir, stack, "pass3.md");
+    const c = fs.readFileSync(f, "utf-8");
+    assert.ok(c.includes("70.domains"),
+      `${stack}/pass3.md must reference 70.domains/ canonical slot`);
+    // 60.domains/ may appear ONLY in negative-warning context ("DO NOT use 60.domains/")
+    // — count must be ≤ 1 (single warning) and never as a prescription.
+    const sixtyDomainCount = (c.match(/60\.domains/g) || []).length;
+    assert.ok(sixtyDomainCount <= 1,
+      `${stack}/pass3.md may have at most 1 negative-warning mention of 60.domains/, got ${sixtyDomainCount}`);
+    if (sixtyDomainCount === 1) {
+      // Verify it's in a negative context (preceded by "DO NOT" or similar).
+      assert.match(c, /DO NOT use `60\.domains/i,
+        `${stack}/pass3.md mentions 60.domains/ — must be in DO NOT warning context`);
+    }
+  }
+
+  // Footer + scaffold canonical reference
+  const footer = fs.readFileSync(path.join(templatesDir, "common/pass3-footer.md"), "utf-8");
+  assert.ok(footer.includes("70.domains/"),
+    "pass3-footer.md must define 70.domains/ canonical convention");
+  assert.match(footer, /DO NOT use:[\s\S]*60\.domains\//,
+    "pass3-footer.md must list 60.domains/ in DO NOT-use list");
+
+  const scaffold = fs.readFileSync(path.join(templatesDir, "common/claude-md-scaffold.md"), "utf-8");
+  assert.ok(scaffold.includes("70.domains"),
+    "claude-md-scaffold.md must reference 70.domains/ canonical slot");
+});
+
+// v2.4.0 — `02.domains.md` orchestrator convention regression guard.
+//
+// Skills sub-folders follow the `01.scaffold-*-feature.md` ↔
+// `scaffold-*-feature/` orchestrator-and-folder pattern. The same
+// pattern applies to per-domain notes: `02.domains.md` orchestrator
+// at category root + `domains/` sub-folder beneath it. The basename
+// stem (`domains`) MUST match the sub-folder name so `content-validator`'s
+// standard orchestrator-stem matching covers all sub-skills directly,
+// without depending on the global-MANIFEST coverage fallback.
+//
+// This guard pins three things:
+//   1. The orchestrator file name is `02.domains.md` (NOT `02.domain.md`,
+//      NOT `domains.md` without numeric prefix, NOT a different number).
+//   2. The convention is documented in pass3-footer.md and
+//      claude-md-scaffold.md.
+//   3. init.js's `buildStageCorePrompt("3c", ...)` instructs Pass 3c-core
+//      to GENERATE the orchestrator before 3c-N batches run.
+test("02.domains.md is canonical per-domain skills orchestrator (sibling to domains/)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const TOOLS = path.resolve(__dirname, "..");
+
+  // (1) pass3-footer.md MUST document the 02.domains.md orchestrator
+  //     pairing with the `domains/` sub-folder.
+  const footer = fs.readFileSync(
+    path.join(TOOLS, "pass-prompts/templates/common/pass3-footer.md"),
+    "utf-8"
+  );
+  assert.match(footer, /02\.domains\.md/,
+    "pass3-footer.md must reference `02.domains.md` orchestrator filename");
+  assert.match(footer, /sibling to the `domains\/` sub-folder|sibling.*domains/i,
+    "pass3-footer.md must explain the orchestrator/sub-folder pairing");
+
+  // (2) claude-md-scaffold.md MUST mention 02.domains.md as a sibling
+  //     pattern to 01.scaffold-*-feature.md.
+  const scaffold = fs.readFileSync(
+    path.join(TOOLS, "pass-prompts/templates/common/claude-md-scaffold.md"),
+    "utf-8"
+  );
+  assert.match(scaffold, /02\.domains\.md/,
+    "claude-md-scaffold.md must reference `02.domains.md` orchestrator pattern");
+
+  // (3) init.js's 3c-core scope MUST instruct Pass 3 to generate the
+  //     `02.domains.md` orchestrator BEFORE 3c-N batches.
+  const initSrc = fs.readFileSync(
+    path.join(TOOLS, "bin/commands/init.js"),
+    "utf-8"
+  );
+  assert.match(initSrc, /02\.domains\.md/,
+    "init.js must reference `02.domains.md` in the 3c-core scope note");
+  assert.match(initSrc, /Per-domain orchestrator.*REQUIRED/i,
+    "init.js 3c-core scope must mark the per-domain orchestrator as REQUIRED");
+
+  // (4) NEGATIVE GUARD: filename must NOT be `02.domain.md` (singular)
+  //     or any other number prefix at category root for this purpose.
+  const allFiles = [footer, scaffold, initSrc];
+  for (const c of allFiles) {
+    // Disallow singular `02.domain.md` (without trailing `s`) when used as
+    // a category-root orchestrator. The check is conservative: any
+    // appearance of `02.domain.md` should be wrong.
+    assert.doesNotMatch(c, /02\.domain\.md\b/,
+      "convention must use plural `02.domains.md`, not singular `02.domain.md`");
+  }
+});
+
 test("scaffoldRules: rule file paths reference memory/ not runtime/", () => {
   const d = tmpDir("ms-rules-paths-");
   scaffoldRules(d);

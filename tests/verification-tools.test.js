@@ -397,3 +397,60 @@ describe("sync-checker", () => {
     assert.ok(r.output.includes("Orphaned"), "should report orphaned");
   });
 });
+
+// ─── health-checker (3-tier severity, v2.4.0) ─────────────────
+//
+// Documents the soft-fail tier introduced for content-validator: when
+// content-validator exits non-zero with only quality advisories
+// (STALE_PATH, MANIFEST_DRIFT, NO_BAD_EXAMPLE), the health-checker must
+// classify the result as `advisory` (ℹ️) rather than `fail` (❌) and
+// must NOT propagate that to its own exit code. Real structural failures
+// (plan-validator, sync-checker, manifest-generator) still gate the
+// overall health result. This separation prevents the "❌ fail + 'non-fatal'
+// dual signal" UX confusion observed in field testing.
+
+describe("health-checker — soft-fail tier", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("content-validator with only advisories renders as ℹ️ advisory + health exits 0", () => {
+    // Empty project: content-validator finds MISSING/EMPTY directories
+    // but no real structural failures from plan-validator/sync-checker
+    // (both gracefully no-op in the absence of plan/ + sync-map). Setup
+    // must include manifest-generator's expected stale-report directory.
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, ".gitignore"), "");
+
+    const r = runTool(path.join(TOOLS_DIR, "health-checker/index.js"), tmp, true);
+    // health-checker exits 1 if manifest-generator fails (no plan content).
+    // We accept either exit 0 OR exit 1 here — what matters is the
+    // CONTENT-VALIDATOR-specific signal in the output.
+    assert.match(r.output, /content-validator/);
+    // Must show ℹ️ icon (advisory tier), not ❌ (fail).
+    assert.match(r.output, /content-validator.*ℹ️|ℹ️.*content-validator/s,
+      `content-validator should render as ℹ️ advisory; output:\n${r.output}`);
+    // Must NOT classify content-validator as "fail" in the summary table.
+    assert.doesNotMatch(r.output, /content-validator\s+fail/,
+      `content-validator must not appear as 'fail'; output:\n${r.output}`);
+  });
+
+  it("summary line distinguishes advisory from real failure", () => {
+    // Setup: a project where content-validator fires advisories but no
+    // hard failures from other tools.
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+    writeFile(path.join(tmp, ".gitignore"), "");
+
+    const r = runTool(path.join(TOOLS_DIR, "health-checker/index.js"), tmp, true);
+    // Either "All systems operational" (with optional advisory/warning
+    // tail) when no real fails — or "N failed" when real fails exist.
+    // We assert the new tail format is present when applicable.
+    if (/All systems operational/.test(r.output)) {
+      // The tail should mention "advisory" if content-validator surfaced any.
+      // (Strict assertion — content-validator always surfaces advisories on
+      // an empty tree because of MISSING dirs.)
+      assert.match(r.output, /advisory/i,
+        `summary should include advisory tail; output:\n${r.output}`);
+    }
+  });
+});

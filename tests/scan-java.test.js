@@ -306,6 +306,154 @@ describe("scanJavaDomains — root package", () => {
     assert.ok(rootPackage, "should extract root package");
     assert.ok(rootPackage.includes("com.example"), `should contain com.example, got: ${rootPackage}`);
   });
+
+  it("v2.4.0: mono-package project picks the most specific (longest) prefix", async () => {
+    // For a single-package project, all 1-, 2-, 3-segment prefixes have
+    // the same count. The frequency-based picker should choose the
+    // LONGEST (most specific) — `com.example.app`, not `com`.
+    for (const d of ["user", "order", "payment"]) {
+      touch(path.join(tmp, `src/main/java/com/example/app/${d}/controller/${d}Controller.java`));
+      touch(path.join(tmp, `src/main/java/com/example/app/${d}/service/${d}Service.java`));
+    }
+    const stack = { language: "java", buildTool: "gradle" };
+    const { rootPackage } = await scanJavaDomains(stack, tmp);
+    assert.equal(rootPackage, "com.example.app",
+      `mono-package should resolve to most-specific root, got: ${rootPackage}`);
+  });
+
+  it("v2.4.0: multi-module project picks the majority root, not the first-glob match", async () => {
+    // Pre-v2.4.0 the first matched file's prefix won, which broke
+    // multi-module projects with a small minority subtree. Here 6
+    // domains live under `org.foo.api.*` and only 1 stub lives under
+    // `org.foo.misc.legacy.*` — the expected root is `org.foo.api`.
+    // (An adversarial glob ordering — minority files first — would
+    // otherwise pick `org.foo.misc.legacy` under the old logic.)
+    for (const d of ["user", "order", "payment", "report", "audit", "invoice"]) {
+      touch(path.join(tmp, `src/main/java/org/foo/api/${d}/controller/${d}Controller.java`));
+      touch(path.join(tmp, `src/main/java/org/foo/api/${d}/service/${d}Service.java`));
+    }
+    // Single minority stub under a different subtree.
+    touch(path.join(tmp, `src/main/java/org/foo/misc/legacy/controller/LegacyController.java`));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { rootPackage } = await scanJavaDomains(stack, tmp);
+    assert.equal(rootPackage, "org.foo.api",
+      `multi-module should pick majority root, got: ${rootPackage}`);
+  });
+
+  it("v2.4.0: Pattern B deep-sweep fallback finds cross-module files (front + core split)", async () => {
+    // Multi-module layout: HTTP layer at `front/{domain}/controller/`,
+    // service/dao at `core/{domain}/service|dao/`. Pre-v2.4.0 the
+    // standard glob `**/{domain}/{layer}/` covered both via leading `**`,
+    // but cross-domain coupling cases (next test) were missed. Verify
+    // multi-module layout still produces correct counts.
+    touch(path.join(tmp, "src/main/java/org/foo/api/front/widget/controller/WidgetController.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/front/widget/aggregator/WidgetAggregator.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/widget/service/WidgetService.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/widget/dao/WidgetDao.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    const widget = backendDomains.find((d) => d.name === "widget");
+    assert.ok(widget, "widget domain must be registered");
+    assert.ok(widget.totalFiles >= 4, `widget should count ≥4 files across both modules; got ${widget.totalFiles}`);
+    assert.ok(widget.services >= 1, `service in core/{domain}/ should be counted; got services=${widget.services}`);
+    assert.ok(widget.mappers >= 1, `dao in core/{domain}/ should be counted; got mappers=${widget.mappers}`);
+  });
+
+  it("v2.4.0: Pattern B deep-sweep fallback finds cross-domain coupling (layer/domain inverted)", async () => {
+    // Cross-domain coupling pattern: domain "notification" has its
+    // controller at `front/notification/controller/`, but its services
+    // live UNDER `core/inventory/service/notification/*` (a different
+    // module owns the file location). The pre-v2.4.0 standard glob
+    // `**/notification/service/*.java` does NOT match this layout (layer
+    // comes BEFORE domain). The deep-sweep fallback catches it because
+    // `**/notification/**/*.java` matches the file, and walking-up
+    // finds `service` as the nearest layer dir.
+    touch(path.join(tmp, "src/main/java/org/foo/api/front/notification/controller/NotificationController.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/inventory/service/notification/NotificationService.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/inventory/service/notification/NotificationServiceImpl.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    const notif = backendDomains.find((d) => d.name === "notification");
+    assert.ok(notif, "notification domain must be registered (via primary controller)");
+    assert.ok(notif.services >= 2,
+      `cross-domain services under core/{other}/service/notification/ must be counted; got services=${notif.services}`);
+    assert.ok(notif.totalFiles >= 3,
+      `notification should count ≥3 files (1 controller + 2 services); got totalFiles=${notif.totalFiles}`);
+  });
+
+  it("v2.4.0: deep-sweep recognizes implementation layers (factory/strategy/impl/etc.)", async () => {
+    // Real-world enterprise codebases place code under non-canonical
+    // implementation layers like factory/strategy/impl/handler/manager.
+    // Pre-v2.4.0 deep-sweep only recognized service|aggregator|facade|
+    // usecase|orchestrator and dropped any file whose nearest layer
+    // didn't match. This caused legitimate domains to report 0 totalFiles
+    // and made downstream Pass 1 batches see "~0 files" for groups that
+    // actually contain substantial code.
+    //
+    // Setup: domain "settle" has its controller at front/settle/controller/,
+    // so Pattern B picks it up. But all its real code lives under
+    // core/settle/{factory,strategy,impl,handler,helper}/ — non-standard
+    // layers. Standard glob `**/settle/{service,mapper,dao}/*.java`
+    // returns 0 files, so deep-sweep fires.
+    touch(path.join(tmp, "src/main/java/org/foo/api/front/settle/controller/SettleController.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/settle/factory/SettleFactory.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/settle/strategy/CardStrategy.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/settle/strategy/CashStrategy.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/settle/impl/AbstractSettleImpl.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/settle/handler/SettleHandler.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/settle/helper/SettleHelper.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    const settle = backendDomains.find((d) => d.name === "settle");
+    assert.ok(settle, "settle domain must be registered");
+    // Expect 1 controller + 6 services (factory/strategy×2/impl/handler/helper)
+    assert.ok(settle.services >= 6,
+      `non-canonical layers must be counted as services; got services=${settle.services}`);
+    assert.ok(settle.totalFiles >= 7,
+      `settle should count ≥7 files; got totalFiles=${settle.totalFiles}`);
+  });
+
+  it("v2.4.0: deep-sweep classifies bare-domain .java files as services (catch-all)", async () => {
+    // Even more degenerate layout: domain "nft" has files DIRECTLY under
+    // core/nft/ with no layer subdir at all (e.g., NftService.java sits at
+    // core/nft/NftService.java). Without the catch-all, deep-sweep walks
+    // up the path, finds no recognized layer (only "nft" and "core"), and
+    // doesn't increment any counter. Result: nft reports 0 totalFiles
+    // even though it has real code.
+    touch(path.join(tmp, "src/main/java/org/foo/api/front/nft/controller/NftController.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/nft/NftService.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/nft/NftClient.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/api/core/nft/NftConverter.java"));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    const nft = backendDomains.find((d) => d.name === "nft");
+    assert.ok(nft, "nft domain must be registered");
+    assert.ok(nft.totalFiles >= 4,
+      `bare-domain files must be counted via catch-all; got totalFiles=${nft.totalFiles}`);
+  });
+
+  it("v2.4.0: 80% threshold tolerates a small minority subtree", async () => {
+    // 9 files under `<root>.api`, 1 file under `<root>.tools`.
+    // 1-segment `org` count = 10
+    // 2-segment `org.foo` count = 10
+    // 3-segment `org.foo.api` count = 9 (≥80% of 10 = 8 → eligible)
+    // 3-segment `org.foo.tools` count = 1 (< 8 → not eligible)
+    // Longest among eligible = `org.foo.api`.
+    for (let i = 0; i < 9; i++) {
+      touch(path.join(tmp, `src/main/java/org/foo/api/d${i}/controller/D${i}.java`));
+    }
+    touch(path.join(tmp, `src/main/java/org/foo/tools/admin/controller/AdminController.java`));
+
+    const stack = { language: "java", buildTool: "gradle" };
+    const { rootPackage } = await scanJavaDomains(stack, tmp);
+    assert.equal(rootPackage, "org.foo.api",
+      `80% threshold should pick 'org.foo.api' over 'org.foo'; got: ${rootPackage}`);
+  });
 });
 
 // ─── Full fallback ─────────────────────────────────────────

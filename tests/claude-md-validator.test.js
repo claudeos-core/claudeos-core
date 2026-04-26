@@ -31,7 +31,7 @@ describe("claude-md-validator — valid fixtures pass (all 10 languages)", () =>
   // language must also update this list.
   const ALL_SUPPORTED_LANGS = [
     { code: "en", name: "English" },
-    { code: "ko", name: "Korean" }, // uses realworld-ko-fixed.md (realistic-size fixture, §9 removed)
+    { code: "ko", name: "Korean" },
     { code: "ja", name: "Japanese" },
     { code: "zh-CN", name: "Chinese (Simplified)" },
     { code: "es", name: "Spanish" },
@@ -43,7 +43,7 @@ describe("claude-md-validator — valid fixtures pass (all 10 languages)", () =>
   ];
 
   for (const { code, name } of ALL_SUPPORTED_LANGS) {
-    const fname = code === "ko" ? "realworld-ko-fixed.md" : `valid-${code}.md`;
+    const fname = `valid-${code}.md`;
     test(`${name} (${code}) valid CLAUDE.md passes all structural checks`, () => {
       const report = validate(fixture(fname));
       if (!report.valid) {
@@ -57,7 +57,7 @@ describe("claude-md-validator — valid fixtures pass (all 10 languages)", () =>
 
 describe("claude-md-validator — §9 anti-pattern detection (language-invariant)", () => {
   test("Korean §9 re-declaration: detects all four symptom classes", () => {
-    const report = validate(fixture("realworld-ko-bad.md"));
+    const report = validate(fixture("bad-ko.md"));
     assert.strictEqual(report.valid, false);
 
     // S1 — section count
@@ -183,7 +183,7 @@ describe("claude-md-validator — edge cases", () => {
     const pathMod = require("node:path");
 
     const badContent = fs.readFileSync(
-      fixture("realworld-ko-bad.md"),
+      fixture("bad-ko.md"),
       "utf8"
     );
     const tmpDir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "bom-bad-"));
@@ -503,5 +503,66 @@ describe("claude-md-validator — file not found", () => {
     assert.strictEqual(report.valid, false);
     const missing = report.errors.find((e) => e.id === "FILE_MISSING");
     assert.ok(missing);
+  });
+});
+
+// ─── Session Resume block (v2.4.0+) ─────────────────────────────
+//
+// The Session Resume block is a RECOMMENDED (not required) prose
+// subsection inside Section 8's "Memory Workflow" H4. It appears as a
+// bold-labeled paragraph followed by a 3-bullet list, NOT as a third
+// `#### Session Resume` heading. The structural validator enforces
+// exactly 2 H4 headings in Section 8 (L4 Memory Files + Memory
+// Workflow), so a Session Resume H4 is rejected; the prose form is
+// accepted and does not require its own structural check because it
+// passes through as ordinary section content.
+//
+// Rationale for RECOMMENDED-not-required: existing CLAUDE.md files
+// generated before v2.4.0 do not carry the block, and we want them to
+// remain structurally valid. Scaffold guidance instructs new
+// generation to include it, but the validator stays permissive on
+// presence to preserve backward compatibility.
+describe("claude-md-validator — Session Resume block (v2.4.0)", () => {
+  test("valid CLAUDE.md with Session Resume prose block passes all checks", () => {
+    // The positive fixture includes the Session Resume block inside
+    // Memory Workflow as a bold-labeled paragraph + 3 bullets. This
+    // MUST pass exactly the same checks as valid-en.md (which does
+    // NOT include the block) — Session Resume presence is additive.
+    const report = validate(fixture("valid-en-with-session-resume.md"));
+    if (!report.valid) {
+      console.error(
+        "Unexpected Session Resume positive fixture failures:",
+        report.errors
+      );
+    }
+    assert.strictEqual(report.valid, true);
+    assert.strictEqual(report.errors.length, 0);
+  });
+
+  test("Session Resume placed as a 3rd H4 under Section 8 fails with S-H4-8", () => {
+    // The negative fixture puts Session Resume as `#### Session Resume`
+    // — a third H4 sibling to L4 Memory Files and Memory Workflow.
+    // Structural validator must reject this with S-H4-8 (exactly 2
+    // H4 headings required in Section 8).
+    const report = validate(fixture("bad-session-resume-as-h4.md"));
+    assert.strictEqual(report.valid, false);
+
+    const h4Error = report.errors.find((e) => e.id === "S-H4-8");
+    assert.ok(
+      h4Error,
+      "expected S-H4-8 error when Session Resume is placed as a 3rd H4"
+    );
+    assert.match(h4Error.message, /exactly 2 #### headings/);
+    assert.match(h4Error.message, /found 3/);
+  });
+
+  test("backward compat: valid-en.md without Session Resume still passes", () => {
+    // Explicitly asserts backward compatibility. Projects generated
+    // before v2.4.0 have no Session Resume block; they must continue
+    // to validate without any change. This prevents the test suite
+    // from accidentally drifting into requiring the block.
+    const report = validate(fixture("valid-en.md"));
+    assert.strictEqual(report.valid, true);
+    assert.strictEqual(report.errors.length, 0);
   });
 });

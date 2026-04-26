@@ -4,6 +4,7 @@
 
 Quick navigation to recent releases:
 
+- [`2.4.2`](#242--2026-04-26) — README structural tightening + 9-language re-sync (same-day after v2.4.1 docs overhaul)
 - [`2.4.1`](#241--2026-04-26) — Documentation overhaul, 10-language localization, fixture sanitization (post-release docs)
 - [`2.4.0`](#240--2026-04-25) — Session Continuity Protocol (v2.4 series feature 1 of 3)
 - [`2.3.3`](#233--2026-04-24) — Template emoji consistency + optional `totalLines` splitter axis
@@ -20,6 +21,20 @@ Quick navigation to recent releases:
 - [`1.5.x`](#151--2026-04-06) — Initial public preview
 
 For older entries scroll past v1.5.0 or use the GitHub blame view.
+
+---
+
+## [2.4.2] — 2026-04-26
+
+Same-day documentation patch on top of v2.4.1. **No source code, scanner, template, or validator change.** Test suite remains 736 / 736 pass.
+
+- **English README tightening** — tagline back to one bold line, "What is this?" condensed to two paragraphs (every named example preserved), demo-block headings demoted (`##` → `####` / `#####`) so they don't pollute the outer H2 ladder, decorative emojis stripped (📺/📄/🛡️/🧠 from `<details>` summaries; 🚀/🎉/📦/📋 from terminal-output ASCII art) to match the actual `--lang en` runner output. `fabricated` → `invented` in the `content-validator` description.
+- **NEW `## Tested on`** — single-row reference benchmark for `spring-boot-realworld-example-app` (187 → 75 files, 5 / 5 validators pass), inserted before `## Quick Start`.
+- **NEW `## If this saved you time`** — short ⭐ / issues / PRs call-to-action between `## FAQ` and `## Documentation`.
+- **Memory Layer command relocation** — `memory compact` / `memory propose-rules` moved out of `## Daily Workflow` into `## Memory Layer`. Daily Workflow is now strictly the three-command core (`init` / `lint` / `health`).
+- **Footer + License rewrite** — explicit `© 2025–2026 ClaudeOS-Core contributors`; maintainer line replaces the old "built with care" hook.
+- **9-language README re-sync** — all 9 localized READMEs (`ko`, `zh-CN`, `ja`, `es`, `vi`, `hi`, `ru`, `fr`, `de`) rewritten to mirror the new English structure. All 10 READMEs share identical metrics: **512 lines, 16 H2 sections, 4 `<details>` blocks, 26 code fences** (was 514 / 14 / 4 / 28). Demo blocks (terminal output / `CLAUDE.md` excerpt / `01.controller-rules.md` / `decision-log.md` seed) byte-identical across all 10 (MD5-verified). Every `docs/X.md` → `docs/{lang}/X.md` (19 per file); 3 inline anchor refs localized to translated slugs; `## Supported Stacks` heading kept English in all translations for a stable cross-language anchor.
+- **Version** — `package.json` and `package-lock.json` (top-level + `packages.""`) bumped to `2.4.2`.
 
 ---
 

@@ -7,15 +7,13 @@
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
 
-**让 Claude Code 第一次就遵循 _你项目的_ 约定 — 而不是 generic 默认值。**
-
-deterministic Node.js scanner 先读取你的代码,然后 4-pass Claude 流水线写出完整的文档集 — `CLAUDE.md` + 自动加载的 `.claude/rules/` + standards + skills + L4 memory。10 种输出语言、5 个 post-generation validator,以及阻止 LLM 编造代码中不存在的文件或 framework 的明确 path allowlist。
-
-在 [**12 个栈**](#supported-stacks)上即开即用 (含 monorepo) — 一条 `npx` 命令,无需配置,中断可 resume,重跑 idempotent。
+**从你实际的源代码自动生成 `CLAUDE.md` + `.claude/rules/` 的 deterministic CLI — Node.js scanner + 4-pass Claude 流水线 + 5 个 validator。12 个栈、10 种语言、不会编造路径。**
 
 ```bash
 npx claudeos-core init
 ```
+
+适用于 [**12 个栈**](#supported-stacks) (含 monorepo) — 一条命令、零配置、可 resume、重跑 idempotent。
 
 [🇺🇸 English](README.md) · [🇰🇷 한국어](README.ko.md) · [🇯🇵 日本語](README.ja.md) · [🇪🇸 Español](README.es.md) · [🇻🇳 Tiếng Việt](README.vi.md) · [🇮🇳 हिन्दी](README.hi.md) · [🇷🇺 Русский](README.ru.md) · [🇫🇷 Français](README.fr.md) · [🇩🇪 Deutsch](README.de.md)
 
@@ -23,42 +21,26 @@ npx claudeos-core init
 
 ## 这是什么?
 
-你在用 Claude Code。它很强大,但每次会话都从零开始 — 它对 _你的_ 项目结构没有任何记忆。所以它会回退到"看上去通用"的默认值,这些默认值很少和你团队实际的做法匹配:
+每次会话,Claude Code 都会回退到 framework 默认值。你的团队用 **MyBatis**,而 Claude 写 JPA。你的 wrapper 是 `ApiResponse.ok()`,而 Claude 写 `ResponseEntity.success()`。你的包是 layer-first 的,而 Claude 生成 domain-first。每个 repo 都手写 `.claude/rules/` 可以解决 — 直到代码演进、规则漂移。
 
-- 你的团队用 **MyBatis**,但 Claude 生成 JPA repository。
-- 你的响应封装是 `ApiResponse.ok()`,但 Claude 写的是 `ResponseEntity.success()`。
-- 你的包是 layer-first (`controller/order/`),但 Claude 创建的是 domain-first (`order/controller/`)。
-- 你的错误走的是中央 middleware,但 Claude 在每个 endpoint 散布 `try/catch`。
+**ClaudeOS-Core 从你实际的源代码 deterministic 地重新生成它们。** Node.js scanner 先读取 (栈、ORM、包布局、文件路径)。随后 4-pass Claude 流水线写出完整集合 — `CLAUDE.md` + 自动加载的 `.claude/rules/` + standards + skills — 受 LLM 无法逃逸的明确 path allowlist 约束。5 个 validator 在 ship 前验证输出。
 
-你会希望每个项目都有一份 `.claude/rules/` — Claude Code 每个会话自动加载 — 但每个新 repo 手写这些 rules 要花数小时,且代码演进时会 drift。
+结果:相同输入 → byte-identical 输出,可输出 10 种语言中任一种,不会编造路径。(详见下方 [有什么不同](#有什么不同)。)
 
-**ClaudeOS-Core 从你的实际源代码为你写好它们。** deterministic Node.js scanner 先读你的项目 (栈、ORM、包 layout、约定、文件路径)。然后 4-pass Claude 流水线把抽取出的事实变成完整的文档集:
-
-- **`CLAUDE.md`** — Claude 每次会话先读的项目索引
-- **`.claude/rules/`** — 按分类自动加载的 rules (`00.core` / `10.backend` / `20.frontend` / `30.security-db` / `40.infra` / `60.memory` / `70.domains` / `80.verification`)
-- **`claudeos-core/standard/`** — 参考文档 (每条 rule 背后的"为什么")
-- **`claudeos-core/skills/`** — 可复用模式 (CRUD scaffolding、页面模板)
-- **`claudeos-core/memory/`** — 随项目共同生长的 decision log + failure pattern
-
-因为 scanner 把一份明确的 path allowlist 交给 Claude,LLM **无法编造代码里不存在的文件或 framework**。5 个 post-generation validator (`claude-md-validator`、`content-validator`、`pass-json-validator`、`plan-validator`、`sync-checker`) 在出货前验证输出 — language-invariant,无论你用英语、中文还是其他 8 种语言生成,都适用同一套规则。
-
-```
-之前:  你 → Claude Code → "看上去还行" 的代码 → 每次手动修正
-之后:  你 → Claude Code → 与你项目匹配的代码 → 直接发布
-```
+针对长期项目,会单独 seed 一个 [Memory Layer](#memory-layer-可选用于长期项目)。
 
 ---
 
-## 在真实项目上看效果
+## 在真实项目上看看
 
-在 [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) 上运行 — Java 11 · Spring Boot 2.6 · MyBatis · SQLite · 187 source files。结果:**75 generated files**,总耗时 **53 分钟**,所有 validator ✅。
+在 [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) 上运行 — Java 11 · Spring Boot 2.6 · MyBatis · SQLite · 187 个源文件。结果:**生成 75 个文件**,总耗时 **53 分钟**,所有 validator ✅。
 
 <p align="center">
   <img src="docs/assets/spring-boot-realworld-demo.gif" alt="ClaudeOS-Core init running on spring-boot-realworld-example-app — stack detection, 4-pass pipeline, validators, completion summary" width="769">
 </p>
 
 <details>
-<summary><strong>📺 终端输出 (文本版,便于搜索和复制)</strong></summary>
+<summary><strong>终端输出 (文本版,便于搜索 & 复制)</strong></summary>
 
 ```text
 ╔════════════════════════════════════════════════════╗
@@ -93,18 +75,18 @@ npx claudeos-core init
     [██████████░░░░░░░░░░] 50% (2/4)
 
 [6] Pass 3 — Generating all files...
-    🚀 Pass 3 split mode (3a → 3b → 3c → 3d-aux)
+    Pass 3 split mode (3a → 3b → 3c → 3d-aux)
     ✅ 3a complete (2m 57s)            — pass3a-facts.md (187-path allowlist)
     ✅ 3b complete (18m 49s)           — CLAUDE.md + 19 standards + 20 rules
     ✅ 3c complete (12m 35s)           — 13 skills + 9 guides
     ✅ 3d-aux complete (3m 18s)        — database/ + mcp-guide/
-    🎉 Pass 3 split complete: 4/4 stages successful
+    Pass 3 split complete: 4/4 stages successful
     [███████████████░░░░░] 75% (3/4)
 
 [7] Pass 4 — Memory scaffolding...
-    📦 Pass 4 staged-rules: 6 rule files moved to .claude/rules/
+    Pass 4 staged-rules: 6 rule files moved to .claude/rules/
     ✅ Pass 4 complete (5m)
-       📋 Gap-fill: all 12 expected files already present
+       Gap-fill: all 12 expected files already present
     [████████████████████] 100% (4/4)
 
 ╔═══════════════════════════════════════╗
@@ -133,7 +115,7 @@ npx claudeos-core init
 </details>
 
 <details>
-<summary><strong>📄 生成的 <code>CLAUDE.md</code> 节选 (实际输出 — Section 1 + 2)</strong></summary>
+<summary><strong>最终落到你 <code>CLAUDE.md</code> 里的内容 (真实节选 — Section 1 + 2)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -142,7 +124,7 @@ npx claudeos-core init
 > Java 11 + Spring Boot 2.6, exposing both REST and GraphQL endpoints
 > over a hexagonal MyBatis persistence layer.
 
-## 1. Role Definition
+#### 1. Role Definition
 
 As the senior developer for this repository, you are responsible for
 writing, modifying, and reviewing code. Responses must be written in English.
@@ -150,7 +132,7 @@ A Java Spring Boot REST + GraphQL API server organized around a hexagonal
 (ports & adapters) architecture, with a CQRS-lite read/write split inside
 an XML-driven MyBatis persistence layer and JWT-based authentication.
 
-## 2. Project Overview
+#### 2. Project Overview
 
 | Item | Value |
 |---|---|
@@ -166,12 +148,12 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-上面所有的值 — 精确的依赖坐标、`dev.db` 文件名、`V1__create_tables.sql` 迁移名、"no JPA" — 都是 scanner 在 Claude 写文件之前先从 `build.gradle` / `application.properties` / 源码树中提取出来的。没有任何东西是猜的。
+上面的每一个值 — 准确的依赖坐标、`dev.db` 文件名、`V1__create_tables.sql` 迁移名、"no JPA" — 都是 Claude 写文件之前由 scanner 从 `build.gradle` / `application.properties` / 源代码树中提取的。没有任何一项是猜的。
 
 </details>
 
 <details>
-<summary><strong>🛡️ 一个被自动加载的真实 rule 文件 (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
+<summary><strong>一个真实的自动加载 rule (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
 
 ````markdown
 ---
@@ -179,9 +161,9 @@ paths:
   - "**/*"
 ---
 
-# Controller Rules
+#### Controller Rules
 
-## REST (`io.spring.api.*`)
+##### REST (`io.spring.api.*`)
 
 - Controllers are the SOLE response wrapper for HTTP — no aggregator/facade above them.
   Return `ResponseEntity<?>` or a body Spring serializes via `JacksonCustomizations`.
@@ -194,13 +176,13 @@ paths:
 - Let exceptions propagate to `io.spring.api.exception.CustomizeExceptionHandler`
   (`@ControllerAdvice`). Do NOT `try/catch` business exceptions inside the controller.
 
-## GraphQL (`io.spring.graphql.*`)
+##### GraphQL (`io.spring.graphql.*`)
 
 - DGS components (`@DgsComponent`) are the sole GraphQL response wrappers.
   Use `@DgsQuery` / `@DgsData` / `@DgsMutation`.
 - Resolve the current user via `io.spring.graphql.SecurityUtil.getCurrentUser()`.
 
-## Examples
+##### Examples
 
 ✅ Correct:
 ```java
@@ -228,15 +210,15 @@ public ResponseEntity<?> create(@RequestBody NewArticleParam p) {
 ```
 ````
 
-`paths: ["**/*"]` glob 表示无论你在该项目里编辑哪个文件,Claude Code 都会自动加载这条 rule。rule 中的每个类名、包路径、exception handler 都直接来自被扫描的源代码 — 包括项目实际的 `CustomizeExceptionHandler` 与 `JacksonCustomizations`。
+`paths: ["**/*"]` glob 意味着只要你编辑项目里任何一个文件,Claude Code 就会自动加载这条 rule。rule 中所有的类名、包路径和 exception handler 都直接来自被扫描的源代码 — 包括项目实际存在的 `CustomizeExceptionHandler` 和 `JacksonCustomizations`。
 
 </details>
 
 <details>
-<summary><strong>🧠 自动生成的 <code>decision-log.md</code> 种子 (实际输出)</strong></summary>
+<summary><strong>自动生成的 <code>decision-log.md</code> 种子 (真实节选)</strong></summary>
 
 ```markdown
-## 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
+#### 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
 
 - **Context:** `io.spring.core.*` exposes `*Repository` ports (e.g.,
   `io.spring.core.article.ArticleRepository`) implemented by
@@ -255,24 +237,34 @@ public ResponseEntity<?> create(@RequestBody NewArticleParam p) {
   split the persistence model.
 ```
 
-Pass 4 用从 `pass2-merged.json` 提取的架构决策为 `decision-log.md` 播种,这样以后的会话不仅记得代码库 _长成什么样_,也记得 _为什么_ 这样。每个被考虑过的选项 ("JPA/Hibernate"、"MyBatis-Plus") 和每个 consequence 都基于实际的 `build.gradle` 依赖块。
+Pass 4 用从 `pass2-merged.json` 中提取的架构决策来 seed `decision-log.md`,这样后续会话不仅记得代码 _长什么样_,还记得 _为什么_ 是这样。每个选项 ("JPA/Hibernate"、"MyBatis-Plus") 和每个后果都基于真实的 `build.gradle` 依赖块。
 
 </details>
 
 ---
 
-## Quick Start
+## 已测试
 
-**前置条件:** Node.js 18+,[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 已安装并完成认证。
+ClaudeOS-Core 提供基于真实 OSS 项目的参考基准。如果你在公开 repo 上跑过它,欢迎 [开 issue](https://github.com/claudeos-core/claudeos-core/issues) — 我们会把它加到这个表里。
+
+| 项目 | 栈 | Scanned → Generated | 状态 |
+|---|---|---|---|
+| [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) | Java 11 · Spring Boot 2.6 · MyBatis · SQLite | 187 → 75 文件 | ✅ 5 个 validator 全部通过 |
+
+---
+
+## 快速开始
+
+**前置条件:** Node.js 18+,已安装并认证的 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)。
 
 ```bash
 # 1. 进入你的项目根目录
 cd my-spring-boot-project
 
-# 2. 运行 init (它会分析你的代码并请求 Claude 写出 rules)
+# 2. 运行 init (它会分析你的代码,然后请 Claude 写规则)
 npx claudeos-core init
 
-# 3. 完成。打开 Claude Code 开始编码 — rules 已经加载好了。
+# 3. 完成。打开 Claude Code 开始编码 — 规则已经加载好了。
 ```
 
 `init` 完成后**你会得到**:
@@ -281,84 +273,84 @@ npx claudeos-core init
 your-project/
 ├── .claude/
 │   └── rules/                    ← Claude Code 自动加载
-│       ├── 00.core/              (通用 rules — 命名、架构)
-│       ├── 10.backend/           (后端栈 rules,如有)
-│       ├── 20.frontend/          (前端栈 rules,如有)
+│       ├── 00.core/              (通用规则 — 命名、架构)
+│       ├── 10.backend/           (后端栈规则,如有)
+│       ├── 20.frontend/          (前端栈规则,如有)
 │       ├── 30.security-db/       (安全 & DB 约定)
 │       ├── 40.infra/             (env、日志、CI/CD)
-│       ├── 50.sync/              (文档同步提醒 — rules only)
-│       ├── 60.memory/            (memory rules — Pass 4,rules only)
-│       ├── 70.domains/{type}/    (按域 rules,type = backend|frontend)
+│       ├── 50.sync/              (文档同步提醒 — 仅 rules)
+│       ├── 60.memory/            (内存规则 — Pass 4,仅 rules)
+│       ├── 70.domains/{type}/    (按域规则,type = backend|frontend)
 │       └── 80.verification/      (测试策略 + 构建验证提醒)
 ├── claudeos-core/
 │   ├── standard/                 ← 参考文档 (镜像分类结构)
 │   │   ├── 00.core/              (项目概览、架构、命名)
-│   │   ├── 10.backend/           (后端 reference — 仅当存在后端栈)
-│   │   ├── 20.frontend/          (前端 reference — 仅当存在前端栈)
-│   │   ├── 30.security-db/       (安全 & DB reference)
-│   │   ├── 40.infra/             (env / 日志 / CI-CD reference)
-│   │   ├── 70.domains/{type}/    (按域 reference)
-│   │   ├── 80.verification/      (构建 / 启动 / 测试 reference — standard only)
-│   │   └── 90.optional/          (栈相关附加 — standard only)
+│   │   ├── 10.backend/           (后端参考 — 如果是后端栈)
+│   │   ├── 20.frontend/          (前端参考 — 如果是前端栈)
+│   │   ├── 30.security-db/       (安全 & DB 参考)
+│   │   ├── 40.infra/             (env / 日志 / CI-CD 参考)
+│   │   ├── 70.domains/{type}/    (按域参考)
+│   │   ├── 80.verification/      (构建 / 启动 / 测试参考 — 仅 standard)
+│   │   └── 90.optional/          (栈相关附加 — 仅 standard)
 │   ├── skills/                   (Claude 可应用的可复用模式)
 │   ├── guide/                    (常见任务的 how-to 指南)
-│   ├── database/                 (schema 概览、迁移指南)
+│   ├── database/                 (Schema 概览、迁移指南)
 │   ├── mcp-guide/                (MCP 集成笔记)
 │   └── memory/                   (decision log、failure patterns、compaction)
-└── CLAUDE.md                     (Claude 最先读取的索引)
+└── CLAUDE.md                     (Claude 最先读的索引)
 ```
 
-`rules/` 与 `standard/` 之间共享相同数字 prefix 的分类代表同一概念领域 (例如 `10.backend` rules ↔ `10.backend` standards)。Rules-only 分类:`50.sync` (文档同步提醒)、`60.memory` (Pass 4 memory)。Standard-only 分类:`90.optional` (无强制力的栈相关附加)。其他 prefix (`00`、`10`、`20`、`30`、`40`、`70`、`80`) 在 `rules/` 和 `standard/` 中都存在。现在 Claude Code 认识你的项目了。
+`rules/` 和 `standard/` 中共享相同数字前缀的分类代表同一个概念领域 (例如 `10.backend` rules ↔ `10.backend` standards)。仅 rules 的分类:`50.sync` (文档同步提醒)、`60.memory` (Pass 4 内存)。仅 standard 的分类:`90.optional` (无强制力的栈附加)。其他所有前缀 (`00`、`10`、`20`、`30`、`40`、`70`、`80`) 在 `rules/` 和 `standard/` 中**都**会出现。现在 Claude Code 了解你的项目了。
 
 ---
 
-## 适合谁?
+## 这是给谁用的?
 
-| 你是… | 这个工具消除的痛点 |
+| 你是... | 它解决的痛点 |
 |---|---|
-| **用 Claude Code 启动新项目的独立开发者** | "每个会话都要教 Claude 我的约定" — 消失。`CLAUDE.md` + 8 个分类 `.claude/rules/` 一次生成完毕。 |
-| **维护跨 repo 共享标准的团队负责人** | 改包名、换 ORM、改 response wrapper 时 `.claude/rules/` 会 drift。ClaudeOS-Core 以 deterministic 方式重新同步 — 同输入 → byte-identical 输出,无 diff 噪音。 |
-| **已经在用 Claude Code 但厌倦修代码** | 错误的 response wrapper、错误的包 layout、明明用 MyBatis 却生成 JPA、明明有中央 middleware 却散布 `try/catch`。scanner 提取你真实的约定;每个 Claude pass 都基于明确的 path allowlist 运行。 |
-| **新 repo onboarding** (既有项目 / 加入团队) | 在 repo 上跑 `init`,得到一份活的架构地图:CLAUDE.md 里的 stack 表、按 layer 的 rules with ✅/❌ 示例、用主要决策的"为什么"播种好的 decision log (JPA vs MyBatis、REST vs GraphQL 等)。读 5 个文件胜过读 5,000 个源文件。 |
-| **使用中文 / 韩语 / 日语 / 其他 7 种语言** | 大多数 Claude Code rule generator 只支持英文。ClaudeOS-Core 用 **10 种语言** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) 写完整套,并提供 **byte-identical 结构验证** — 不论输出语言如何,`claude-md-validator` 给出同一个 verdict。 |
-| **在 monorepo 中工作** (Turborepo、pnpm/yarn workspaces、Lerna) | 一次运行同时分析 backend + frontend 域,各用独立 prompt;`apps/*/` 与 `packages/*/` 自动 walk;按栈输出的 rules 落在 `70.domains/{type}/` 之下。 |
-| **OSS 贡献者或实验项目** | 输出对 gitignore 友好 — `claudeos-core/` 是你的本地工作目录,只有 `CLAUDE.md` + `.claude/` 需要随仓库发布。中断时 resume-safe;重跑 idempotent (不带 `--force` 时手工编辑会被保留)。 |
+| **用 Claude Code 启动新项目的独立开发者** | "每个会话都教 Claude 我的约定" — 不存在了。`CLAUDE.md` + 8 类 `.claude/rules/` 一次生成。 |
+| **维护多个 repo 共享标准的团队负责人** | 重命名包、换 ORM、改 response wrapper 时 `.claude/rules/` 漂移。ClaudeOS-Core 会 deterministic 地重新同步 — 相同输入、byte-identical 输出、无 diff 噪音。 |
+| **已经在用 Claude Code 但厌倦了修生成代码** | response wrapper 错、包布局错、用 MyBatis 却写 JPA、用了集中式 middleware 却到处 `try/catch`。scanner 提取你真实的约定;每个 Claude pass 都对照明确的 path allowlist 运行。 |
+| **正在 onboard 一个新 repo** (老项目、加入新团队) | 在 repo 上跑 `init`,得到一份活的架构地图:CLAUDE.md 中的栈表、按层 rules 含 ✅/❌ 示例、用主要决策的 "为什么" seed 出来的 decision log (JPA 还是 MyBatis、REST 还是 GraphQL 等)。读 5 个文件比读 5,000 个源文件强。 |
+| **用韩语 / 日语 / 中文 / 等 7 种语言工作** | 大多数 Claude Code 规则生成器只支持英语。ClaudeOS-Core 用 **10 种语言** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) 写完整集合,并附带 **byte-identical 结构验证** — 无论输出哪种语言,`claude-md-validator` 的判定都一致。 |
+| **运行在 monorepo 上** (Turborepo、pnpm/yarn workspaces、Lerna) | 一次运行中后端 + 前端域用各自 prompt 分析;`apps/*/` 和 `packages/*/` 自动遍历;按栈的规则 emit 到 `70.domains/{type}/` 下。 |
+| **为 OSS 贡献或做实验** | 输出对 gitignore 友好 — `claudeos-core/` 是你本地的工作目录,只有 `CLAUDE.md` + `.claude/` 需要 ship。中断时 resume-safe;重跑 idempotent (不加 `--force` 时你手动改的规则会被保留)。 |
 
-**不适合的场景:** 你想要无需 scan 步骤、第一天就开箱即用的 one-size-fits-all 预设 agents/skills/rules 包 (各工具的定位见 [docs/zh-CN/comparison.md](docs/zh-CN/comparison.md));你的项目还不属于[受支持的栈](#supported-stacks);或者你只需要单一 `CLAUDE.md` (内置的 `claude /init` 已经够用 — 不需要再装别的工具)。
+**不适合的情况:**你想要一个 day-one 就能用、不需要扫描步骤的 one-size-fits-all preset 包 (哪个工具适合哪种场景见 [docs/zh-CN/comparison.md](docs/zh-CN/comparison.md));你的项目还不属于 [支持的栈](#supported-stacks);或你只需要一个 `CLAUDE.md` (内置的 `claude /init` 就够用 — 不必再装别的工具)。
 
 ---
 
-## 它是怎么工作的?
+## 工作原理
 
 ClaudeOS-Core 把通常的 Claude Code 工作流反过来:
 
 ```
 通常:    你描述项目 → Claude 猜你的栈 → Claude 写文档
-本工具:  代码读出你的栈 → 代码把已确认的事实交给 Claude → Claude 基于事实写文档
+本工具:  代码读你的栈 → 代码把已确认事实交给 Claude → Claude 基于事实写文档
 ```
 
-流水线分 **三个阶段**运行,LLM 调用的两侧都有代码:
+流水线分**三个阶段**运行,LLM 调用两边都有代码:
 
-**1. Step A — Scanner (deterministic,无 LLM)。** Node.js scanner walk 你的项目根,读 `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`,解析 `.env*` 文件 (对 `PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 等敏感变量做 redaction),分类你的架构模式 (Java 5 模式 A/B/C/D/E、Kotlin CQRS / 多模块、Next.js App vs. Pages Router、FSD、components-pattern),发现领域,并构建一份所有存在的源文件路径的明确 allowlist。输出:`project-analysis.json` — 后续所有步骤的单一 source of truth。
+**1. Step A — Scanner (deterministic、无 LLM)。** Node.js scanner 遍历你的项目根目录,读 `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`,解析 `.env*` 文件 (对 `PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 等敏感变量做 redaction),分类架构模式 (Java 的 5 种模式 A/B/C/D/E、Kotlin CQRS / 多模块、Next.js App vs Pages Router、FSD、components-pattern),发现域,并构建一份所有存在源文件路径的明确 allowlist。输出:`project-analysis.json` — 后续所有阶段的单一事实源。
 
-**2. Step B — 4-Pass Claude 流水线 (受 Step A 的事实约束)。**
-- **Pass 1** 按域组读取代表文件,每个域抽取 ~50–100 个约定 — response wrapper、logging library、error handling、命名约定、test pattern。每个域组运行一次 (`max 4 domains, 40 files per group`),所以 context 永远不会 overflow。
-- **Pass 2** 把所有按域的分析合并成项目级全景图,在域之间不一致时挑选 dominant 约定。
-- **Pass 3** 写出 `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides — 切分成 stage (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide),即使 `pass2-merged.json` 很大,每个 stage 的 prompt 也能 fit 进 LLM 的 context window。≥16 域的项目把 3b/3c 进一步切成 ≤15 域 batch。
-- **Pass 4** 为 L4 memory layer (`decision-log.md`、`failure-patterns.md`、`compaction.md`、`auto-rule-update.md`) 播种,并补充通用 scaffold rules。Pass 4 **禁止修改 `CLAUDE.md`** — Pass 3 的 Section 8 是 authoritative。
+**2. Step B — 4-Pass Claude 流水线 (受 Step A 事实约束)。**
+- **Pass 1** 按域组读取代表性文件,提取每个域 ~50–100 条约定 — response wrapper、日志库、错误处理、命名约定、测试模式。每个域组运行一次 (`max 4 domains, 40 files per group`),context 永远不会溢出。
+- **Pass 2** 把所有按域的分析合并为项目级全景,在域之间存在分歧时挑选主导约定。
+- **Pass 3** 写出 `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides — 拆成多个 stage (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide),即使 `pass2-merged.json` 很大,每个 stage 的 prompt 也能装进 LLM 的 context window。≥16 域的项目会把 3b/3c 拆成 ≤15 域的 batch。
+- **Pass 4** 为 L4 内存层 (`decision-log.md`、`failure-patterns.md`、`compaction.md`、`auto-rule-update.md`) 播种,并加入通用 scaffold rules。Pass 4 **禁止修改 `CLAUDE.md`** — Pass 3 的 Section 8 是 authoritative。
 
-**3. Step C — Verification (deterministic,无 LLM)。** 5 个 validator 检查输出:
-- `claude-md-validator` — 对 `CLAUDE.md` 做 25 项结构检查 (8 个 section、H3/H4 计数、memory file uniqueness、T1 canonical heading invariant)。Language-invariant:无论 `--lang` 是什么,verdict 相同。
-- `content-validator` — 10 项内容检查,包括 path-claim 验证 (`STALE_PATH` 抓出编造的 `src/...` 引用) 和 MANIFEST drift 检测。
-- `pass-json-validator` — Pass 1/2/3/4 JSON well-formedness + stack-aware section 计数。
-- `plan-validator` — plan ↔ disk 一致性 (legacy,自 v2.1.0 起大部分 no-op)。
-- `sync-checker` — 跨 7 个被追踪目录的 disk ↔ `sync-map.json` 注册一致性。
+**3. Step C — Verification (deterministic、无 LLM)。** 5 个 validator 检查输出:
+- `claude-md-validator` — 对 `CLAUDE.md` 进行 25 项结构检查 (8 个 section、H3/H4 计数、内存文件唯一性、T1 canonical heading 不变量)。Language-invariant:无论 `--lang` 是什么,判定一致。
+- `content-validator` — 10 项内容检查,含 path-claim 校验 (`STALE_PATH` 抓出虚构的 `src/...` 引用) 和 MANIFEST 漂移检测。
+- `pass-json-validator` — Pass 1/2/3/4 输出的 JSON well-formedness + 栈感知的 section 计数。
+- `plan-validator` — plan ↔ disk 一致性 (legacy,自 v2.1.0 起基本是 no-op)。
+- `sync-checker` — 7 个跟踪目录上的 disk ↔ `sync-map.json` 注册一致性。
 
-三档严重度 (`fail` / `warn` / `advisory`),所以对用户能手动修复的 LLM 幻觉,warning 不会卡死 CI。
+三档严重度 (`fail` / `warn` / `advisory`),所以警告不会因为用户能手动修复的 LLM hallucination 把 CI 卡死。
 
-把整个流程绑在一起的 invariant:**Claude 只能引用代码中实际存在的路径**,因为 Step A 给了它一份 finite allowlist。如果 LLM 仍然试图编造 (罕见但在某些 seed 上确实会发生),Step C 会在 docs 出货前抓出来。
+把所有这些串起来的不变量是:**Claude 只能引用你代码中真实存在的路径**,因为 Step A 给了它一份有限的 allowlist。如果 LLM 还是想编 (在某些 seed 下偶尔会发生),Step C 会在 docs ship 之前抓出来。
 
-每个 pass 的细节、基于 marker 的 resume、用于绕过 Claude Code `.claude/` sensitive-path block 的 staged-rules workaround,以及 stack 检测内部细节,见 [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)。
+每个 pass 的细节、基于 marker 的 resume、绕开 Claude Code 的 `.claude/` 敏感路径限制的 staged-rules workaround、栈检测内部机制,见 [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)。
 
 ---
 
@@ -372,143 +364,149 @@ ClaudeOS-Core 把通常的 Claude Code 工作流反过来:
 
 多栈项目 (例如 Spring Boot 后端 + Next.js 前端) 开箱即用。
 
-每个 scanner 的检测规则和提取内容,见 [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md)。
+检测规则与每个 scanner 提取的内容,见 [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md)。
 
 ---
 
 ## 日常工作流
 
-三条命令覆盖约 95% 的使用场景:
+三个命令覆盖 ~95% 的使用场景:
 
 ```bash
-# 在某个项目首次运行
+# 在项目上首次运行
 npx claudeos-core init
 
-# 手动改了 standards 或 rules 之后
+# 你手动改完 standards 或 rules 之后
 npx claudeos-core lint
 
-# 健康检查 (commit 前或在 CI 中运行)
+# 健康检查 (commit 前或在 CI 中跑)
 npx claudeos-core health
 ```
 
-memory layer 维护用的另外两条:
-
-```bash
-# 压缩 failure-patterns 日志 (定期运行)
-npx claudeos-core memory compact
-
-# 把高频 failure pattern 提升为提议规则
-npx claudeos-core memory propose-rules
-```
-
-每条命令的完整选项,见 [docs/zh-CN/commands.md](docs/zh-CN/commands.md)。
+每条命令的全部选项,见 [docs/zh-CN/commands.md](docs/zh-CN/commands.md)。Memory layer 命令 (`memory compact`、`memory propose-rules`) 在下方 [Memory Layer](#memory-layer-可选用于长期项目) 章节里说明。
 
 ---
 
-## 它有什么不同
+## 有什么不同
 
-大多数 Claude Code 文档工具是从描述出发 (你告诉工具,工具告诉 Claude)。ClaudeOS-Core 是从你的实际源代码出发 (工具读取,工具把已确认的事实告诉 Claude,Claude 只写已确认的内容)。
+大多数 Claude Code 文档工具是从描述生成的 (你告诉工具,工具告诉 Claude)。ClaudeOS-Core 是从你实际的源代码生成的 (工具读、工具告诉 Claude 已确认的内容、Claude 只写已确认的内容)。
 
 三个具体后果:
 
-1. **Deterministic stack detection.** 同一个项目 + 同样的代码 = 同样的输出。不会出现"这次 Claude 又掷出了别的"。
-2. **No invented paths.** Pass 3 的 prompt 显式列出所有允许的源路径;Claude 不能引用不存在的路径。
-3. **Multi-stack aware.** 同一次运行中,后端和前端域使用不同的分析 prompt。
+1. **Deterministic 栈检测。** 同样的项目 + 同样的代码 = 同样的输出。不会出现 "这次 Claude 又另一种走法"。
+2. **不会编造路径。** Pass 3 prompt 明确列出每条允许的源代码路径;Claude 不可能引用不存在的路径。
+3. **多栈感知。** 同一次运行内,后端和前端域使用不同的分析 prompt。
 
-与其他工具的 scope 对比,见 [docs/zh-CN/comparison.md](docs/zh-CN/comparison.md)。对比关注的是**每个工具做什么**,而不是**哪个更好** — 大部分是互补的。
+与其他工具的 scope 并排对照,见 [docs/zh-CN/comparison.md](docs/zh-CN/comparison.md)。比较关心的是 **每个工具做什么**,而不是 **谁更好** — 多数是互补关系。
 
 ---
 
-## 验证 (post-generation)
+## 验证 (生成后)
 
-Claude 写完文档后,代码会去验证。5 个独立 validator:
+Claude 写完 docs 之后,代码再去验证它们。5 个独立 validator:
 
-| Validator | 它检查什么 | 由谁触发 |
+| Validator | 检查内容 | 由谁运行 |
 |---|---|---|
-| `claude-md-validator` | CLAUDE.md 的结构性不变量 (8 sections,language-invariant) | `claudeos-core lint` |
-| `content-validator` | 引用的路径是否真实存在;manifest 一致性 | `health` (advisory) |
-| `pass-json-validator` | Pass 1 / 2 / 3 / 4 的输出是 well-formed JSON | `health` (warn) |
-| `plan-validator` | 保存的 plan 与 disk 上的内容一致 | `health` (fail-on-error) |
-| `sync-checker` | Disk 文件与 `sync-map.json` 的注册项一致 (orphaned/unregistered 检测) | `health` (fail-on-error) |
+| `claude-md-validator` | CLAUDE.md 结构不变量 (8 个 section、language-invariant) | `claudeos-core lint` |
+| `content-validator` | path 引用是否真实存在;manifest 一致性 | `health` (advisory) |
+| `pass-json-validator` | Pass 1 / 2 / 3 / 4 输出是合法 JSON | `health` (warn) |
+| `plan-validator` | 保存的 plan 是否与磁盘匹配 | `health` (fail-on-error) |
+| `sync-checker` | 磁盘文件是否与 `sync-map.json` 注册匹配 (检测孤儿/未注册) | `health` (fail-on-error) |
 
-`health-checker` 用三档严重度 (fail / warn / advisory) 编排这 4 个运行时 validator,并以适合 CI 的 exit code 退出。`claude-md-validator` 通过 `lint` 命令单独运行,因为结构 drift 是 re-init 信号,不是软警告。可随时运行:
+`health-checker` 会以三档严重度 (fail / warn / advisory) 编排四个运行时 validator,并以适合 CI 的退出码退出。`claude-md-validator` 通过 `lint` 命令单独运行,因为结构漂移是 re-init 信号,而非软警告。可随时运行:
 
 ```bash
 npx claudeos-core health
 ```
 
-每个 validator 的检查项详情,见 [docs/zh-CN/verification.md](docs/zh-CN/verification.md)。
+每个 validator 的具体检查项,见 [docs/zh-CN/verification.md](docs/zh-CN/verification.md)。
 
 ---
 
-## Memory Layer (可选,适合长期项目)
+## Memory Layer (可选,用于长期项目)
 
-v2.0 起,ClaudeOS-Core 会写出一个包含 4 个文件的 `claudeos-core/memory/` 文件夹:
+在以上的 scaffolding 流水线之外,ClaudeOS-Core 会为 context 跨越单次会话存活的项目 seed 一个 `claudeos-core/memory/` 文件夹。它是可选的 — 如果你只想要 `CLAUDE.md` + rules,可以忽略它。
 
-- `decision-log.md` — 仅追加的"为什么选 X 而不是 Y"
-- `failure-patterns.md` — 带有 frequency/importance 评分的反复出现的错误
-- `compaction.md` — memory 如何随时间被自动压缩
-- `auto-rule-update.md` — 应当成为新规则的模式
+四个文件,都由 Pass 4 写入:
 
-可以运行 `npx claudeos-core memory propose-rules` 让 Claude 查看近期的 failure pattern,并提议要添加的新规则。
+- `decision-log.md` — append-only 形式的"为什么选 X 而不是 Y",从 `pass2-merged.json` seed
+- `failure-patterns.md` — 带 frequency/importance 评分的复发错误
+- `compaction.md` — 内存如何随时间自动 compaction
+- `auto-rule-update.md` — 应该升格为新 rule 的模式
 
-memory 模型与生命周期,见 [docs/zh-CN/memory-layer.md](docs/zh-CN/memory-layer.md)。
+两个命令长期维护这一层:
+
+```bash
+# 压缩 failure-patterns 日志 (定期跑)
+npx claudeos-core memory compact
+
+# 把高频 failure pattern 升格为提议的 rule
+npx claudeos-core memory propose-rules
+```
+
+内存模型与生命周期,见 [docs/zh-CN/memory-layer.md](docs/zh-CN/memory-layer.md)。
 
 ---
 
 ## FAQ
 
 **Q: 我需要 Claude API key 吗?**
-A: 不需要。ClaudeOS-Core 使用你已安装的 Claude Code — 它把 prompt 通过管道送给本机的 `claude -p`。不用额外开账号。
+A: 不需要。ClaudeOS-Core 用你已有的 Claude Code 安装 — 它把 prompt pipe 给你机器上的 `claude -p`。无需额外账号。
 
-**Q: 这会覆盖我现有的 CLAUDE.md 或 `.claude/rules/` 吗?**
-A: 在新项目上首次运行:它会创建。不带 `--force` 重新运行:保留你的修改 — 上一次运行的 pass marker 会被检测到,对应的 pass 被跳过。带 `--force` 重新运行:全部清掉重新生成 (你的修改会丢失 — 这就是 `--force` 的含义)。见 [docs/zh-CN/safety.md](docs/zh-CN/safety.md)。
+**Q: 它会覆盖我已有的 CLAUDE.md 或 `.claude/rules/` 吗?**
+A: 在干净项目上首次运行:它会创建。不带 `--force` 重跑:你的编辑会被保留 — 上次运行的 pass marker 被检测到,这些 pass 会被跳过。带 `--force` 重跑:全部抹掉重新生成 (你的编辑会丢失 — 这就是 `--force` 的含义)。见 [docs/zh-CN/safety.md](docs/zh-CN/safety.md)。
 
-**Q: 我的栈不被支持。可以加吗?**
-A: 可以。新栈需要约 3 个 prompt 模板 + 一个 domain scanner。8 步指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+**Q: 我的栈不在支持列表。我能加一个吗?**
+A: 可以。新栈大约需要 3 个 prompt 模板 + 一个域 scanner。8 步指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-**Q: 如何用韩语 (或其他语言) 生成文档?**
-A: `npx claudeos-core init --lang ko`。支持 10 种语言:en、ko、ja、zh-CN、es、vi、hi、ru、fr、de。
+**Q: 怎么用中文 (或其他语言) 生成文档?**
+A: `npx claudeos-core init --lang zh-CN`。支持 10 种语言:en、ko、ja、zh-CN、es、vi、hi、ru、fr、de。
 
-**Q: 它能用于 monorepo 吗?**
-A: 可以 — Turborepo (`turbo.json`)、pnpm workspaces (`pnpm-workspace.yaml`)、Lerna (`lerna.json`) 和 npm/yarn workspaces (`package.json#workspaces`) 由 stack-detector 检测。每个 app 拥有独立分析。其他 monorepo 布局 (例如 NX) 不会被特别检测,但通用的 `apps/*/` 与 `packages/*/` 模式仍会被各栈 scanner 拾取。
+**Q: 它能用在 monorepo 上吗?**
+A: 可以 — Turborepo (`turbo.json`)、pnpm workspaces (`pnpm-workspace.yaml`)、Lerna (`lerna.json`)、npm/yarn workspaces (`package.json#workspaces`) 都会被 stack-detector 检测到。每个 app 都有自己的分析。其他 monorepo 布局 (例如 NX) 不会专门检测,但通用的 `apps/*/` 和 `packages/*/` 模式仍会被各栈 scanner 识别。
 
-**Q: 如果 Claude Code 生成了我不同意的 rules 怎么办?**
-A: 直接编辑。然后运行 `npx claudeos-core lint` 验证 CLAUDE.md 在结构上仍然有效。在后续 `init` 运行 (不带 `--force`) 中,你的修改会被保留 — resume 机制会跳过已有 marker 的 pass。
+**Q: 如果 Claude Code 生成了我不同意的规则怎么办?**
+A: 直接编辑它们。然后跑 `npx claudeos-core lint` 确认 CLAUDE.md 结构仍然有效。在不带 `--force` 的后续 `init` 运行中,你的编辑会被保留 — resume 机制会跳过有 marker 的 pass。
 
-**Q: 在哪里报告 bug?**
-A: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues)。安全相关问题见 [SECURITY.md](SECURITY.md)。
+**Q: 在哪里报 bug?**
+A: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues)。安全问题见 [SECURITY.md](SECURITY.md)。
 
 ---
 
-## Documentation
+## 如果这为你节省了时间
+
+GitHub 上点一个 ⭐ 能让项目保持可见,也帮别人发现它。Issue、PR 和栈模板贡献都欢迎 — 见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+---
+
+## 文档
 
 | 主题 | 阅读 |
 |---|---|
-| 4-pass 流水线如何工作 (比图更深入) | [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md) |
-| 架构的可视化图示 (Mermaid) | [docs/zh-CN/diagrams.md](docs/zh-CN/diagrams.md) |
-| Stack 检测 — 每个 scanner 看什么 | [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md) |
-| Memory layer — decision log 和 failure pattern | [docs/zh-CN/memory-layer.md](docs/zh-CN/memory-layer.md) |
+| 4-pass 流水线如何工作 (比图更深) | [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md) |
+| 架构的可视化图 (Mermaid) | [docs/zh-CN/diagrams.md](docs/zh-CN/diagrams.md) |
+| 栈检测 — 每个 scanner 看什么 | [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md) |
+| 内存层 — decision log 与 failure pattern | [docs/zh-CN/memory-layer.md](docs/zh-CN/memory-layer.md) |
 | 5 个 validator 详解 | [docs/zh-CN/verification.md](docs/zh-CN/verification.md) |
-| 所有 CLI 命令和选项 | [docs/zh-CN/commands.md](docs/zh-CN/commands.md) |
+| 所有 CLI 命令与选项 | [docs/zh-CN/commands.md](docs/zh-CN/commands.md) |
 | 手动安装 (不用 `npx`) | [docs/zh-CN/manual-installation.md](docs/zh-CN/manual-installation.md) |
 | Scanner 覆盖 — `.claudeos-scan.json` | [docs/zh-CN/advanced-config.md](docs/zh-CN/advanced-config.md) |
-| 安全性:re-init 时保留什么 | [docs/zh-CN/safety.md](docs/zh-CN/safety.md) |
-| 与同类工具的对比 (scope,而非质量) | [docs/zh-CN/comparison.md](docs/zh-CN/comparison.md) |
+| 安全:re-init 时保留什么 | [docs/zh-CN/safety.md](docs/zh-CN/safety.md) |
+| 与同类工具对比 (scope,不是质量) | [docs/zh-CN/comparison.md](docs/zh-CN/comparison.md) |
 | 错误与恢复 | [docs/zh-CN/troubleshooting.md](docs/zh-CN/troubleshooting.md) |
 
 ---
 
 ## 贡献
 
-欢迎贡献 — 添加栈支持、改进 prompt、修 bug。见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎贡献 — 增加栈支持、改进 prompt、修 bug。见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-行为准则与安全策略见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) 和 [SECURITY.md](SECURITY.md)。
+行为准则与安全策略见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) 与 [SECURITY.md](SECURITY.md)。
 
-## License
+## 许可证
 
-[ISC](LICENSE) — 任何用途均可免费使用,包括商用。
+[ISC License](LICENSE)。可自由用于任何用途,含商业用途。© 2025–2026 ClaudeOS-Core contributors。
 
 ---
 
-<sub>由 [@claudeos-core](https://github.com/claudeos-core) 用心打造。如果它为你节省了时间,在 GitHub 上点个 ⭐ 帮助保持可见。</sub>
+<sub>由 [claudeos-core](https://github.com/claudeos-core) 团队维护。Issue 与 PR:<https://github.com/claudeos-core/claudeos-core>。</sub>

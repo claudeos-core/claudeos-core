@@ -7,15 +7,13 @@
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
 
-**Haz que Claude Code siga las convenciones de TU proyecto al primer intento — no los valores predeterminados genéricos.**
-
-Un scanner determinístico de Node.js lee tu código primero; luego una pipeline de Claude de 4 pasadas escribe el conjunto completo — `CLAUDE.md` + `.claude/rules/` auto-cargado + standards + skills + L4 memory. 10 idiomas de salida, 5 validators post-generación, y un allowlist explícito de rutas que impide al LLM inventar archivos o frameworks que no están en tu código.
-
-Funciona en [**12 stacks**](#supported-stacks) (monorepos incluidos) — un solo comando `npx`, sin configuración, resume-safe, idempotente.
+**Una CLI deterministic que auto-genera `CLAUDE.md` + `.claude/rules/` desde tu código fuente real — Node.js scanner + 4-pass Claude pipeline + 5 validators. 12 stacks, 10 idiomas, sin paths inventados.**
 
 ```bash
 npx claudeos-core init
 ```
+
+Funciona en [**12 stacks**](#supported-stacks) (monorepos incluidos) — un solo comando, sin configuración, resume-safe, idempotente.
 
 [🇺🇸 English](README.md) · [🇰🇷 한국어](README.ko.md) · [🇨🇳 中文](README.zh-CN.md) · [🇯🇵 日本語](README.ja.md) · [🇻🇳 Tiếng Việt](README.vi.md) · [🇮🇳 हिन्दी](README.hi.md) · [🇷🇺 Русский](README.ru.md) · [🇫🇷 Français](README.fr.md) · [🇩🇪 Deutsch](README.de.md)
 
@@ -23,42 +21,26 @@ npx claudeos-core init
 
 ## ¿Qué es esto?
 
-Usas Claude Code. Es potente, pero cada sesión empieza desde cero — no tiene memoria de cómo está estructurado _tu_ proyecto. Así que recurre a valores predeterminados "generalmente buenos" que rara vez coinciden con lo que tu equipo realmente hace:
+Claude Code recurre a los valores por defecto del framework cada sesión. Tu equipo usa **MyBatis**, pero Claude escribe JPA. Tu wrapper es `ApiResponse.ok()`, pero Claude escribe `ResponseEntity.success()`. Tus paquetes son layer-first, pero Claude genera domain-first. Escribir a mano `.claude/rules/` para cada repo lo soluciona — hasta que el código evoluciona y tus rules empiezan a hacer drift.
 
-- Tu equipo usa **MyBatis**, pero Claude genera repositorios JPA.
-- Tu wrapper de respuesta es `ApiResponse.ok()`, pero Claude escribe `ResponseEntity.success()`.
-- Tus paquetes son layer-first (`controller/order/`), pero Claude crea domain-first (`order/controller/`).
-- Tus errores pasan por middleware centralizado, pero Claude esparce `try/catch` por cada endpoint.
+**ClaudeOS-Core las regenera de forma deterministic, desde tu código fuente real.** Un Node.js scanner lee primero (stack, ORM, layout de paquetes, paths de archivos). Luego un 4-pass Claude pipeline escribe el conjunto completo — `CLAUDE.md` + `.claude/rules/` auto-cargado + standards + skills — restringido por un path allowlist explícito del que el LLM no puede escapar. Cinco validators verifican el output antes de que se entregue.
 
-Te gustaría tener un set de `.claude/rules/` por proyecto — Claude Code lo carga automáticamente cada sesión — pero escribir esas reglas a mano para cada repo nuevo lleva horas, y se desactualizan a medida que el código evoluciona.
+El resultado: misma entrada → output byte-identical, en cualquiera de 10 idiomas, sin paths inventados. (Detalles abajo en [Qué lo hace diferente](#qué-lo-hace-diferente).)
 
-**ClaudeOS-Core las escribe por ti, desde tu código fuente real.** Un scanner determinístico de Node.js lee tu proyecto primero (stack, ORM, layout de paquetes, convenciones, rutas de archivos). Luego una pipeline de Claude de 4 pasadas convierte los hechos extraídos en un conjunto de documentación completo:
-
-- **`CLAUDE.md`** — el índice del proyecto que Claude lee en cada sesión
-- **`.claude/rules/`** — reglas auto-cargadas por categoría (`00.core` / `10.backend` / `20.frontend` / `30.security-db` / `40.infra` / `60.memory` / `70.domains` / `80.verification`)
-- **`claudeos-core/standard/`** — documentos de referencia (el "por qué" detrás de cada regla)
-- **`claudeos-core/skills/`** — patrones reutilizables (CRUD scaffolding, plantillas de página)
-- **`claudeos-core/memory/`** — decision log + failure patterns que crecen con el proyecto
-
-Como el scanner le entrega a Claude un allowlist explícito de rutas, el LLM **no puede inventar archivos o frameworks que no estén en tu código**. Cinco validators post-generación (`claude-md-validator`, `content-validator`, `pass-json-validator`, `plan-validator`, `sync-checker`) verifican la salida antes de que se envíe — language-invariant, así que las mismas reglas se aplican generes en inglés, español, o cualquiera de los otros 8 idiomas.
-
-```
-Antes:    Tú → Claude Code → código "generalmente bueno" → corrección manual cada vez
-Después:  Tú → Claude Code → código que coincide con TU proyecto → listo para enviar
-```
+Una [Memory Layer](#memory-layer-opcional-para-proyectos-de-larga-duración) separada se siembra para proyectos de larga duración.
 
 ---
 
-## Velo en un proyecto real
+## Míralo en un proyecto real
 
-Ejecutado en [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) — Java 11 · Spring Boot 2.6 · MyBatis · SQLite · 187 archivos fuente. Salida: **75 archivos generados**, tiempo total **53 minutos**, todos los validators ✅.
+Ejecutado en [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) — Java 11 · Spring Boot 2.6 · MyBatis · SQLite · 187 source files. Output: **75 generated files**, tiempo total **53 minutos**, todos los validators ✅.
 
 <p align="center">
   <img src="docs/assets/spring-boot-realworld-demo.gif" alt="ClaudeOS-Core init running on spring-boot-realworld-example-app — stack detection, 4-pass pipeline, validators, completion summary" width="769">
 </p>
 
 <details>
-<summary><strong>📺 Salida del terminal (versión texto, para búsqueda y copia)</strong></summary>
+<summary><strong>Salida de terminal (versión texto, para búsqueda y copia)</strong></summary>
 
 ```text
 ╔════════════════════════════════════════════════════╗
@@ -93,18 +75,18 @@ Ejecutado en [`spring-boot-realworld-example-app`](https://github.com/gothinkste
     [██████████░░░░░░░░░░] 50% (2/4)
 
 [6] Pass 3 — Generating all files...
-    🚀 Pass 3 split mode (3a → 3b → 3c → 3d-aux)
+    Pass 3 split mode (3a → 3b → 3c → 3d-aux)
     ✅ 3a complete (2m 57s)            — pass3a-facts.md (187-path allowlist)
     ✅ 3b complete (18m 49s)           — CLAUDE.md + 19 standards + 20 rules
     ✅ 3c complete (12m 35s)           — 13 skills + 9 guides
     ✅ 3d-aux complete (3m 18s)        — database/ + mcp-guide/
-    🎉 Pass 3 split complete: 4/4 stages successful
+    Pass 3 split complete: 4/4 stages successful
     [███████████████░░░░░] 75% (3/4)
 
 [7] Pass 4 — Memory scaffolding...
-    📦 Pass 4 staged-rules: 6 rule files moved to .claude/rules/
+    Pass 4 staged-rules: 6 rule files moved to .claude/rules/
     ✅ Pass 4 complete (5m)
-       📋 Gap-fill: all 12 expected files already present
+       Gap-fill: all 12 expected files already present
     [████████████████████] 100% (4/4)
 
 ╔═══════════════════════════════════════╗
@@ -133,7 +115,7 @@ Ejecutado en [`spring-boot-realworld-example-app`](https://github.com/gothinkste
 </details>
 
 <details>
-<summary><strong>📄 Lo que termina en tu <code>CLAUDE.md</code> (extracto real — Section 1 + 2)</strong></summary>
+<summary><strong>Lo que termina en tu <code>CLAUDE.md</code> (extracto real — Sección 1 + 2)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -142,7 +124,7 @@ Ejecutado en [`spring-boot-realworld-example-app`](https://github.com/gothinkste
 > Java 11 + Spring Boot 2.6, exposing both REST and GraphQL endpoints
 > over a hexagonal MyBatis persistence layer.
 
-## 1. Role Definition
+#### 1. Role Definition
 
 As the senior developer for this repository, you are responsible for
 writing, modifying, and reviewing code. Responses must be written in English.
@@ -150,7 +132,7 @@ A Java Spring Boot REST + GraphQL API server organized around a hexagonal
 (ports & adapters) architecture, with a CQRS-lite read/write split inside
 an XML-driven MyBatis persistence layer and JWT-based authentication.
 
-## 2. Project Overview
+#### 2. Project Overview
 
 | Item | Value |
 |---|---|
@@ -166,12 +148,12 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-Cada valor de arriba — coordenadas exactas de dependencias, el nombre de archivo `dev.db`, el nombre de la migración `V1__create_tables.sql`, "no JPA" — es extraído por el scanner desde `build.gradle` / `application.properties` / el árbol de fuentes antes de que Claude escriba el archivo. Nada se adivina.
+Cada valor de arriba — coordenadas exactas de dependencies, el nombre de archivo `dev.db`, el nombre de migración `V1__create_tables.sql`, "no JPA" — es extraído por el scanner desde `build.gradle` / `application.properties` / el árbol de fuentes antes de que Claude escriba el archivo. Nada se adivina.
 
 </details>
 
 <details>
-<summary><strong>🛡️ Una regla auto-cargada real (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
+<summary><strong>Una rule auto-cargada real (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
 
 ````markdown
 ---
@@ -179,9 +161,9 @@ paths:
   - "**/*"
 ---
 
-# Controller Rules
+#### Controller Rules
 
-## REST (`io.spring.api.*`)
+##### REST (`io.spring.api.*`)
 
 - Controllers are the SOLE response wrapper for HTTP — no aggregator/facade above them.
   Return `ResponseEntity<?>` or a body Spring serializes via `JacksonCustomizations`.
@@ -194,13 +176,13 @@ paths:
 - Let exceptions propagate to `io.spring.api.exception.CustomizeExceptionHandler`
   (`@ControllerAdvice`). Do NOT `try/catch` business exceptions inside the controller.
 
-## GraphQL (`io.spring.graphql.*`)
+##### GraphQL (`io.spring.graphql.*`)
 
 - DGS components (`@DgsComponent`) are the sole GraphQL response wrappers.
   Use `@DgsQuery` / `@DgsData` / `@DgsMutation`.
 - Resolve the current user via `io.spring.graphql.SecurityUtil.getCurrentUser()`.
 
-## Examples
+##### Examples
 
 ✅ Correct:
 ```java
@@ -228,15 +210,15 @@ public ResponseEntity<?> create(@RequestBody NewArticleParam p) {
 ```
 ````
 
-El glob `paths: ["**/*"]` significa que Claude Code carga automáticamente esta regla cada vez que editas cualquier archivo del proyecto. Cada nombre de clase, ruta de paquete, y exception handler en la regla viene directamente del código fuente escaneado — incluyendo el `CustomizeExceptionHandler` y `JacksonCustomizations` reales del proyecto.
+El glob `paths: ["**/*"]` significa que Claude Code auto-carga esta rule cada vez que editas cualquier archivo del proyecto. Cada nombre de clase, path de paquete y exception handler de la rule viene directamente del código escaneado — incluyendo el `CustomizeExceptionHandler` y `JacksonCustomizations` reales del proyecto.
 
 </details>
 
 <details>
-<summary><strong>🧠 Un seed auto-generado de <code>decision-log.md</code> (extracto real)</strong></summary>
+<summary><strong>Una semilla auto-generada de <code>decision-log.md</code> (extracto real)</strong></summary>
 
 ```markdown
-## 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
+#### 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
 
 - **Context:** `io.spring.core.*` exposes `*Repository` ports (e.g.,
   `io.spring.core.article.ArticleRepository`) implemented by
@@ -255,24 +237,34 @@ El glob `paths: ["**/*"]` significa que Claude Code carga automáticamente esta 
   split the persistence model.
 ```
 
-Pass 4 inicializa `decision-log.md` con las decisiones arquitectónicas extraídas de `pass2-merged.json`, así las sesiones futuras recuerdan *por qué* el código se ve como se ve — no solo *cómo* se ve. Cada opción ("JPA/Hibernate", "MyBatis-Plus") y cada consecuencia están fundamentadas en el bloque real de dependencias de `build.gradle`.
+Pass 4 siembra `decision-log.md` con las decisiones arquitectónicas extraídas de `pass2-merged.json` para que las sesiones futuras recuerden *por qué* la base de código se ve como se ve — no solo *cómo* se ve. Cada opción ("JPA/Hibernate", "MyBatis-Plus") y cada consecuencia está fundamentada en el bloque real de dependencies de `build.gradle`.
 
 </details>
 
 ---
 
-## Quick Start
+## Probado en
 
-**Requisitos previos:** Node.js 18+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) instalado y autenticado.
+ClaudeOS-Core viene con benchmarks de referencia sobre proyectos OSS reales. Si lo has usado en un repo público, por favor [abre un issue](https://github.com/claudeos-core/claudeos-core/issues) — lo añadiremos a esta tabla.
+
+| Proyecto | Stack | Scanned → Generated | Estado |
+|---|---|---|---|
+| [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) | Java 11 · Spring Boot 2.6 · MyBatis · SQLite | 187 → 75 files | ✅ los 5 validators pasan |
+
+---
+
+## Inicio rápido
+
+**Prerrequisitos:** Node.js 18+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) instalado y autenticado.
 
 ```bash
 # 1. Ve a la raíz de tu proyecto
 cd my-spring-boot-project
 
-# 2. Ejecuta init (esto analiza tu código y le pide a Claude que escriba las reglas)
+# 2. Ejecuta init (esto analiza tu código y le pide a Claude que escriba las rules)
 npx claudeos-core init
 
-# 3. Listo. Abre Claude Code y empieza a programar — tus reglas ya están cargadas.
+# 3. Listo. Abre Claude Code y empieza a programar — tus rules ya están cargadas.
 ```
 
 **Lo que obtienes** después de que `init` termina:
@@ -281,34 +273,34 @@ npx claudeos-core init
 your-project/
 ├── .claude/
 │   └── rules/                    ← Auto-cargado por Claude Code
-│       ├── 00.core/              (reglas generales — naming, arquitectura)
-│       ├── 10.backend/           (reglas de stack backend, si las hay)
-│       ├── 20.frontend/          (reglas de stack frontend, si las hay)
+│       ├── 00.core/              (rules generales — naming, arquitectura)
+│       ├── 10.backend/           (rules del stack backend, si las hay)
+│       ├── 20.frontend/           (rules del stack frontend, si las hay)
 │       ├── 30.security-db/       (convenciones de seguridad y DB)
 │       ├── 40.infra/             (env, logging, CI/CD)
 │       ├── 50.sync/              (recordatorios de doc-sync — solo rules)
-│       ├── 60.memory/            (reglas de memoria — Pass 4, solo rules)
-│       ├── 70.domains/{type}/    (reglas por dominio, type = backend|frontend)
-│       └── 80.verification/      (estrategia de pruebas + recordatorios de verificación de build)
+│       ├── 60.memory/            (memory rules — Pass 4, solo rules)
+│       ├── 70.domains/{type}/    (rules por dominio, type = backend|frontend)
+│       └── 80.verification/      (estrategia de testing + recordatorios de verificación de build)
 ├── claudeos-core/
-│   ├── standard/                 ← Documentos de referencia (espejan la estructura de categorías)
+│   ├── standard/                 ← Docs de referencia (refleja la estructura de categorías)
 │   │   ├── 00.core/              (resumen del proyecto, arquitectura, naming)
 │   │   ├── 10.backend/           (referencia backend — si hay stack backend)
 │   │   ├── 20.frontend/          (referencia frontend — si hay stack frontend)
 │   │   ├── 30.security-db/       (referencia de seguridad y DB)
-│   │   ├── 40.infra/             (referencia env / logging / CI-CD)
+│   │   ├── 40.infra/             (referencia de env / logging / CI-CD)
 │   │   ├── 70.domains/{type}/    (referencia por dominio)
-│   │   ├── 80.verification/      (referencia de build / arranque / pruebas — solo standard)
+│   │   ├── 80.verification/      (referencia de build / startup / testing — solo standard)
 │   │   └── 90.optional/          (extras específicos del stack — solo standard)
 │   ├── skills/                   (patrones reutilizables que Claude puede aplicar)
 │   ├── guide/                    (guías how-to para tareas comunes)
-│   ├── database/                 (resumen de esquema, guía de migraciones)
+│   ├── database/                 (resumen del schema, guía de migración)
 │   ├── mcp-guide/                (notas de integración MCP)
 │   └── memory/                   (decision log, failure patterns, compaction)
 └── CLAUDE.md                     (el índice que Claude lee primero)
 ```
 
-Las categorías que comparten el mismo prefijo numérico entre `rules/` y `standard/` representan la misma área conceptual (p. ej., reglas `10.backend` ↔ standards `10.backend`). Categorías solo de rules: `50.sync` (recordatorios de sincronización de docs) y `60.memory` (memoria de Pass 4). Categoría solo de standard: `90.optional` (extras específicos del stack sin enforcement). Todos los demás prefijos (`00`, `10`, `20`, `30`, `40`, `70`, `80`) aparecen en AMBOS `rules/` y `standard/`. Claude Code ahora conoce tu proyecto.
+Las categorías que comparten el mismo prefijo numérico entre `rules/` y `standard/` representan la misma área conceptual (ej.: rules `10.backend` ↔ standards `10.backend`). Categorías solo de rules: `50.sync` (recordatorios de doc sync) y `60.memory` (memory de Pass 4). Categoría solo de standard: `90.optional` (extras específicos del stack sin enforcement). Todos los demás prefijos (`00`, `10`, `20`, `30`, `40`, `70`, `80`) aparecen en AMBOS `rules/` y `standard/`. Claude Code ahora conoce tu proyecto.
 
 ---
 
@@ -316,49 +308,49 @@ Las categorías que comparten el mismo prefijo numérico entre `rules/` y `stand
 
 | Eres... | El dolor que esto elimina |
 |---|---|
-| **Un dev en solitario** empezando un proyecto nuevo con Claude Code | "Enseñarle a Claude mis convenciones cada sesión" — desaparece. `CLAUDE.md` + `.claude/rules/` de 8 categorías generados en una sola pasada. |
-| **Un team lead** manteniendo estándares compartidos entre repos | El `.claude/rules/` se desincroniza cuando la gente renombra paquetes, cambia de ORM, o modifica wrappers de respuesta. ClaudeOS-Core re-sincroniza determinísticamente — misma entrada, salida byte-idéntica, sin ruido en los diffs. |
-| **Ya usas Claude Code** pero estás cansado de corregir el código generado | Wrapper de respuesta incorrecto, layout de paquetes incorrecto, JPA cuando usas MyBatis, `try/catch` esparcido cuando tu proyecto usa middleware centralizado. El scanner extrae tus convenciones reales; cada pasada de Claude se ejecuta contra un allowlist explícito de rutas. |
-| **Haciendo onboarding a un nuevo repo** (proyecto existente, uniéndote a un equipo) | Ejecuta `init` en el repo, obtén un mapa de arquitectura vivo: tabla de stack en CLAUDE.md, reglas por capa con ejemplos ✅/❌, decision log seedeado con el "por qué" detrás de las decisiones principales (JPA vs MyBatis, REST vs GraphQL, etc.). Leer 5 archivos le gana a leer 5,000 archivos fuente. |
-| **Trabajando en español / coreano / japonés / chino / 6 idiomas más** | La mayoría de los generadores de reglas de Claude Code son solo en inglés. ClaudeOS-Core escribe el conjunto completo en **10 idiomas** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) con **validación estructural byte-idéntica** — el mismo veredicto de `claude-md-validator` independientemente del idioma de salida. |
-| **Trabajando con un monorepo** (Turborepo, pnpm/yarn workspaces, Lerna) | Dominios backend + frontend analizados en una sola ejecución con prompts separados; `apps/*/` y `packages/*/` recorridos automáticamente; reglas por stack emitidas bajo `70.domains/{type}/`. |
-| **Contribuyendo a OSS o experimentando** | La salida es gitignore-friendly — `claudeos-core/` es tu directorio de trabajo local, solo `CLAUDE.md` + `.claude/` necesitan enviarse. Resume-safe si se interrumpe; idempotente al re-ejecutar (tus ediciones manuales en las reglas sobreviven sin `--force`). |
+| **Un dev en solitario** que empieza un nuevo proyecto con Claude Code | "Enseñarle a Claude mis convenciones cada sesión" — desaparece. `CLAUDE.md` + `.claude/rules/` de 8 categorías generados de una sola pasada. |
+| **Un team lead** que mantiene estándares compartidos entre repos | Drift de `.claude/rules/` cuando alguien renombra paquetes, cambia ORMs o response wrappers. ClaudeOS-Core re-sincroniza de forma deterministic — misma entrada, output byte-identical, sin ruido en el diff. |
+| **Ya usas Claude Code** pero estás cansado de arreglar el código generado | Wrapper de respuesta incorrecto, layout de paquete equivocado, JPA cuando usas MyBatis, `try/catch` desperdigado cuando tu proyecto usa middleware centralizado. El scanner extrae tus convenciones reales; cada Claude pass se ejecuta contra un path allowlist explícito. |
+| **Onboarding a un nuevo repo** (proyecto existente, te incorporas a un equipo) | Ejecuta `init` en el repo, obtén un mapa arquitectónico vivo: tabla de stack en CLAUDE.md, rules por capa con ejemplos ✅/❌, decision log sembrado con el "porqué" detrás de las decisiones mayores (JPA vs MyBatis, REST vs GraphQL, etc.). Leer 5 archivos vence a leer 5.000 archivos fuente. |
+| **Trabajando en coreano / japonés / chino / 7 idiomas más** | La mayoría de generadores de rules de Claude Code son solo en inglés. ClaudeOS-Core escribe el conjunto completo en **10 idiomas** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) con **validación estructural byte-identical** — mismo veredicto de `claude-md-validator` independientemente del idioma de salida. |
+| **Trabajando en un monorepo** (Turborepo, pnpm/yarn workspaces, Lerna) | Dominios backend + frontend analizados en una sola ejecución con prompts separados; `apps/*/` y `packages/*/` recorridos automáticamente; rules por stack emitidas bajo `70.domains/{type}/`. |
+| **Contribuyendo a OSS o experimentando** | El output es gitignore-friendly — `claudeos-core/` es tu directorio de trabajo local, solo `CLAUDE.md` + `.claude/` necesitan entregarse. Resume-safe si se interrumpe; idempotente en re-ejecuciones (tus ediciones manuales a las rules sobreviven sin `--force`). |
 
-**No es para ti si:** quieres un bundle preset de tipo "talla única" con agentes/skills/rules que funcione el primer día sin paso de escaneo (ver [docs/es/comparison.md](docs/es/comparison.md) para entender qué encaja en cada caso), tu proyecto aún no encaja en uno de los [stacks soportados](#supported-stacks), o solo necesitas un único `CLAUDE.md` (el `claude /init` integrado es suficiente — no hace falta instalar otra herramienta).
+**No encaja si:** quieres un bundle preset one-size-fits-all de agents/skills/rules que funcione el día uno sin paso de scan (ver [docs/es/comparison.md](docs/es/comparison.md) para qué encaja dónde), tu proyecto aún no coincide con uno de los [stacks soportados](#supported-stacks), o solo necesitas un único `CLAUDE.md` (el `claude /init` integrado es suficiente — no hace falta instalar otra herramienta).
 
 ---
 
 ## ¿Cómo funciona?
 
-ClaudeOS-Core invierte el flujo de trabajo habitual de Claude Code:
+ClaudeOS-Core invierte el flujo habitual de Claude Code:
 
 ```
-Habitual:    Tú describes el proyecto → Claude adivina tu stack → Claude escribe docs
-Aquí:        El código lee tu stack → El código pasa hechos confirmados a Claude → Claude escribe docs a partir de hechos
+Habitual: Tú describes el proyecto → Claude adivina tu stack → Claude escribe docs
+Esto:     El código lee tu stack → El código pasa hechos confirmados a Claude → Claude escribe docs desde hechos
 ```
 
-La pipeline corre en **tres etapas**, con código a ambos lados de la llamada al LLM:
+El pipeline corre en **tres etapas**, con código a ambos lados de la llamada al LLM:
 
-**1. Step A — Scanner (determinístico, sin LLM).** Un scanner Node.js recorre la raíz de tu proyecto, lee `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`, parsea archivos `.env*` (con redacción de variables sensibles para `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), clasifica tu patrón de arquitectura (los 5 patrones de Java A/B/C/D/E, Kotlin CQRS / multi-módulo, Next.js App vs. Pages Router, FSD, components-pattern), descubre dominios, y construye un allowlist explícito de cada ruta de archivo fuente que existe. Salida: `project-analysis.json` — la única fuente de verdad para lo que sigue.
+**1. Step A — Scanner (deterministic, sin LLM).** Un Node.js scanner recorre la raíz de tu proyecto, lee `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`, parsea archivos `.env*` (con redacción de variables sensibles para `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), clasifica tu pattern de arquitectura (los 5 patterns A/B/C/D/E de Java, Kotlin CQRS / multi-module, Next.js App vs. Pages Router, FSD, components-pattern), descubre dominios y construye un allowlist explícito con cada path de archivo fuente que existe. Output: `project-analysis.json` — la única source of truth para lo que sigue.
 
-**2. Step B — Pipeline de Claude de 4 pasadas (restringida por los hechos del Step A).**
-- **Pass 1** lee archivos representativos por grupo de dominio y extrae ~50–100 convenciones por dominio — wrappers de respuesta, librerías de logging, manejo de errores, convenciones de naming, patrones de testing. Se ejecuta una vez por grupo de dominio (`máx 4 dominios, 40 archivos por grupo`) para que el contexto nunca se desborde.
-- **Pass 2** fusiona todo el análisis por dominio en una imagen a nivel de proyecto y resuelve los desacuerdos eligiendo la convención dominante.
-- **Pass 3** escribe `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides — dividido en stages (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide) para que el prompt de cada stage quepa en la ventana de contexto del LLM incluso cuando `pass2-merged.json` es grande. Sub-divide 3b/3c en batches de ≤15 dominios para proyectos con ≥16 dominios.
-- **Pass 4** seedea la capa de memoria L4 (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`) y agrega reglas universales de scaffold. Pass 4 tiene **prohibido modificar `CLAUDE.md`** — la Section 8 de Pass 3 es autoritativa.
+**2. Step B — 4-Pass Claude pipeline (restringido por los hechos del Step A).**
+- **Pass 1** lee archivos representativos por grupo de dominios y extrae ~50–100 convenciones por dominio — response wrappers, librerías de logging, manejo de errores, convenciones de naming, patterns de testing. Se ejecuta una vez por grupo de dominios (`max 4 domains, 40 files per group`) para que el contexto nunca desborde.
+- **Pass 2** fusiona todo el análisis por-dominio en una imagen del proyecto entera y resuelve desacuerdos eligiendo la convención dominante.
+- **Pass 3** escribe `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides — dividido en stages (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide) para que el prompt de cada stage entre en la context window del LLM incluso cuando `pass2-merged.json` es grande. Sub-divide 3b/3c en lotes de ≤15 dominios para proyectos con ≥16 dominios.
+- **Pass 4** siembra la L4 memory layer (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`) y añade rules universales de scaffold. A Pass 4 le está **prohibido modificar `CLAUDE.md`** — la Sección 8 de Pass 3 es authoritative.
 
-**3. Step C — Verification (determinístico, sin LLM).** Cinco validators verifican la salida:
-- `claude-md-validator` — 25 checks estructurales en `CLAUDE.md` (8 secciones, conteos H3/H4, unicidad de archivos de memoria, invariante T1 de heading canónico). Language-invariant: mismo veredicto independientemente de `--lang`.
-- `content-validator` — 10 checks de contenido incluyendo verificación de path-claim (`STALE_PATH` atrapa referencias `src/...` fabricadas) y detección de drift en MANIFEST.
-- `pass-json-validator` — well-formedness JSON de Pass 1/2/3/4 + conteo de secciones consciente del stack.
+**3. Step C — Verificación (deterministic, sin LLM).** Cinco validators revisan el output:
+- `claude-md-validator` — 25 chequeos estructurales sobre `CLAUDE.md` (8 secciones, conteos H3/H4, unicidad de archivos de memory, invariante T1 de heading canónico). Language-invariant: mismo veredicto independientemente de `--lang`.
+- `content-validator` — 10 chequeos de contenido incluyendo verificación de path-claim (`STALE_PATH` atrapa referencias inventadas tipo `src/...`) y detección de drift de MANIFEST.
+- `pass-json-validator` — well-formedness JSON de Pass 1/2/3/4 + conteo de secciones stack-aware.
 - `plan-validator` — consistencia plan ↔ disco (legacy, mayormente no-op desde v2.1.0).
 - `sync-checker` — consistencia de registro disco ↔ `sync-map.json` a través de 7 directorios rastreados.
 
-Tres niveles de severidad (`fail` / `warn` / `advisory`) para que las warnings nunca bloqueen CI por hallucinations del LLM que el usuario puede arreglar manualmente.
+Tres niveles de severidad (`fail` / `warn` / `advisory`) para que las warnings nunca bloqueen el CI por hallucinations del LLM que el usuario puede corregir manualmente.
 
-El invariante que ata todo: **Claude solo puede citar rutas que realmente existen en tu código**, porque el Step A le entrega un allowlist finito. Si el LLM aun así intenta inventar algo (raro pero ocurre con ciertos seeds), el Step C lo atrapa antes de que los docs se envíen.
+El invariante que lo une todo: **Claude solo puede citar paths que existen realmente en tu código**, porque Step A le entrega un allowlist finito. Si el LLM aún intenta inventar algo (raro pero pasa con ciertos seeds), Step C lo atrapa antes de que los docs se entreguen.
 
-Para detalles por pasada, resume basado en marker, el workaround de staged-rules para el block de path sensible `.claude/` de Claude Code, e internals de detección de stack, ver [docs/es/architecture.md](docs/es/architecture.md).
+Para detalles per-pass, resume basado en markers, el workaround de staged-rules para el bloque de path sensible `.claude/` de Claude Code, y los internals de detección de stack, ver [docs/es/architecture.md](docs/es/architecture.md).
 
 ---
 
@@ -370,9 +362,9 @@ Para detalles por pasada, resume basado en marker, el workaround de staged-rules
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
-Los proyectos multi-stack (p. ej., Spring Boot backend + Next.js frontend) funcionan sin más.
+Los proyectos multi-stack (ej.: backend Spring Boot + frontend Next.js) funcionan out of the box.
 
-Para reglas de detección y lo que cada scanner extrae, ver [docs/es/stacks.md](docs/es/stacks.md).
+Para reglas de detección y qué extrae cada scanner, ver [docs/es/stacks.md](docs/es/stacks.md).
 
 ---
 
@@ -384,36 +376,26 @@ Tres comandos cubren ~95% del uso:
 # Primera vez en un proyecto
 npx claudeos-core init
 
-# Después de editar manualmente standards o rules
+# Después de que editaste manualmente standards o rules
 npx claudeos-core lint
 
-# Health check (ejecuta antes de commits, o en CI)
+# Health check (ejecutar antes de commits, o en CI)
 npx claudeos-core health
 ```
 
-Dos más para mantenimiento del memory layer:
-
-```bash
-# Compactar el log de failure-patterns (ejecuta periódicamente)
-npx claudeos-core memory compact
-
-# Promover patrones de fallos frecuentes a reglas propuestas
-npx claudeos-core memory propose-rules
-```
-
-Para todas las opciones de cada comando, ver [docs/es/commands.md](docs/es/commands.md).
+Para las opciones completas de cada comando, ver [docs/es/commands.md](docs/es/commands.md). Los comandos de memory layer (`memory compact`, `memory propose-rules`) están documentados en la sección [Memory Layer](#memory-layer-opcional-para-proyectos-de-larga-duración) abajo.
 
 ---
 
-## Qué hace diferente a esto
+## Qué lo hace diferente
 
-La mayoría de las herramientas de documentación de Claude Code generan a partir de una descripción (tú le dices a la herramienta, la herramienta le dice a Claude). ClaudeOS-Core genera a partir de tu código fuente real (la herramienta lee, la herramienta le dice a Claude lo que está confirmado, Claude escribe solo lo que está confirmado).
+La mayoría de las herramientas de documentación de Claude Code generan desde una descripción (tú le dices a la herramienta, la herramienta le dice a Claude). ClaudeOS-Core genera desde tu código fuente real (la herramienta lee, la herramienta le dice a Claude qué está confirmado, Claude escribe solo lo confirmado).
 
 Tres consecuencias concretas:
 
-1. **Detección determinística del stack.** Mismo proyecto + mismo código = misma salida. Nada de "esta vez Claude tiró el dado distinto".
-2. **Sin rutas inventadas.** El prompt de Pass 3 lista explícitamente cada ruta de origen permitida; Claude no puede citar rutas que no existen.
-3. **Multi-stack consciente.** Los dominios backend y frontend usan distintos prompts de análisis en la misma ejecución.
+1. **Detección de stack deterministic.** Mismo proyecto + mismo código = mismo output. Nada de "esta vez Claude tiró distinto."
+2. **Sin paths inventados.** El prompt de Pass 3 lista explícitamente cada path fuente permitido; Claude no puede citar paths que no existen.
+3. **Multi-stack aware.** Los dominios backend y frontend usan prompts de análisis distintos en la misma ejecución.
 
 Para una comparación lado a lado de scope con otras herramientas, ver [docs/es/comparison.md](docs/es/comparison.md). La comparación trata sobre **qué hace cada herramienta**, no **cuál es mejor** — la mayoría son complementarias.
 
@@ -421,63 +403,79 @@ Para una comparación lado a lado de scope con otras herramientas, ver [docs/es/
 
 ## Verificación (post-generación)
 
-Después de que Claude escribe los docs, el código los verifica. Cinco validators separados:
+Después de que Claude escribe los docs, el código los verifica. Cinco validators independientes:
 
-| Validator | Qué comprueba | Lo ejecuta |
+| Validator | Qué chequea | Ejecutado por |
 |---|---|---|
 | `claude-md-validator` | Invariantes estructurales de CLAUDE.md (8 secciones, language-invariant) | `claudeos-core lint` |
-| `content-validator` | Las rutas declaradas existen realmente; consistencia del manifest | `health` (advisory) |
-| `pass-json-validator` | Las salidas Pass 1 / 2 / 3 / 4 son JSON bien formado | `health` (warn) |
+| `content-validator` | Los path claims existen realmente; consistencia de manifest | `health` (advisory) |
+| `pass-json-validator` | Outputs de Pass 1 / 2 / 3 / 4 son JSON well-formed | `health` (warn) |
 | `plan-validator` | El plan guardado coincide con lo que hay en disco | `health` (fail-on-error) |
-| `sync-checker` | Los archivos en disco coinciden con los registros de `sync-map.json` (detección de huérfanos/no registrados) | `health` (fail-on-error) |
+| `sync-checker` | Los archivos en disco coinciden con los registros de `sync-map.json` (detección de orphaned/unregistered) | `health` (fail-on-error) |
 
-Un `health-checker` orquesta los cuatro validators de runtime con severidad de tres niveles (fail / warn / advisory) y termina con el código adecuado para CI. `claude-md-validator` se ejecuta por separado vía el comando `lint` ya que el drift estructural es una señal de re-init, no un soft warning. Ejecuta cuando quieras:
+Un `health-checker` orquesta los cuatro validators de runtime con tres niveles de severidad (fail / warn / advisory) y termina con el código apropiado para CI. `claude-md-validator` corre por separado vía el comando `lint` ya que el drift estructural es una señal de re-init, no una soft warning. Ejecutable en cualquier momento:
 
 ```bash
 npx claudeos-core health
 ```
 
-Para los checks de cada validator en detalle, ver [docs/es/verification.md](docs/es/verification.md).
+Para los chequeos detallados de cada validator, ver [docs/es/verification.md](docs/es/verification.md).
 
 ---
 
 ## Memory Layer (opcional, para proyectos de larga duración)
 
-Después de v2.0, ClaudeOS-Core escribe una carpeta `claudeos-core/memory/` con cuatro archivos:
+Más allá del pipeline de scaffolding de arriba, ClaudeOS-Core siembra una carpeta `claudeos-core/memory/` para proyectos donde el contexto sobrevive a una sola sesión. Es opcional — puedes ignorarla si todo lo que quieres es `CLAUDE.md` + rules.
 
-- `decision-log.md` — append-only "por qué elegimos X sobre Y"
-- `failure-patterns.md` — errores recurrentes con puntuaciones de frequency/importance
-- `compaction.md` — cómo se auto-compacta la memoria con el tiempo
-- `auto-rule-update.md` — patrones que deberían convertirse en nuevas reglas
+Cuatro archivos, todos escritos por Pass 4:
 
-Puedes ejecutar `npx claudeos-core memory propose-rules` para pedirle a Claude que mire los patrones de fallos recientes y sugiera nuevas reglas para añadir.
+- `decision-log.md` — append-only "por qué elegimos X sobre Y", sembrado desde `pass2-merged.json`
+- `failure-patterns.md` — errores recurrentes con scores de frequency/importance
+- `compaction.md` — cómo se auto-compacta la memory con el tiempo
+- `auto-rule-update.md` — patterns que deberían convertirse en nuevas rules
 
-Para el modelo de memoria y el ciclo de vida, ver [docs/es/memory-layer.md](docs/es/memory-layer.md).
+Dos comandos mantienen esta capa con el tiempo:
+
+```bash
+# Compactar el log de failure-patterns (ejecutar periódicamente)
+npx claudeos-core memory compact
+
+# Promover failure patterns frecuentes a rules propuestas
+npx claudeos-core memory propose-rules
+```
+
+Para el modelo de memory y su ciclo de vida, ver [docs/es/memory-layer.md](docs/es/memory-layer.md).
 
 ---
 
 ## FAQ
 
-**P: ¿Necesito una API key de Claude?**
-R: No. ClaudeOS-Core usa tu instalación existente de Claude Code — canaliza prompts a `claude -p` en tu máquina. No necesitas cuentas extra.
+**Q: ¿Necesito una API key de Claude?**
+A: No. ClaudeOS-Core usa tu instalación existente de Claude Code — pipea prompts a `claude -p` en tu máquina. Sin cuentas extra.
 
-**P: ¿Esto sobrescribirá mi CLAUDE.md o `.claude/rules/` existente?**
-R: Primera ejecución en un proyecto nuevo: los crea. Re-ejecutar sin `--force` preserva tus ediciones — los marcadores de pase de la ejecución anterior se detectan y los pases se omiten. Re-ejecutar con `--force` borra y regenera todo (tus ediciones se pierden — eso es lo que `--force` significa). Ver [docs/es/safety.md](docs/es/safety.md).
+**Q: ¿Esto sobrescribirá mi CLAUDE.md o `.claude/rules/` existentes?**
+A: Primera ejecución en un proyecto fresco: los crea. Re-ejecutar sin `--force` preserva tus ediciones — los pass markers de la ejecución anterior se detectan y los passes se saltan. Re-ejecutar con `--force` borra y regenera todo (tus ediciones se pierden — eso significa `--force`). Ver [docs/es/safety.md](docs/es/safety.md).
 
-**P: Mi stack no está soportado. ¿Puedo añadir uno?**
-R: Sí. Los stacks nuevos necesitan ~3 plantillas de prompt + un domain scanner. Ver [CONTRIBUTING.md](CONTRIBUTING.md) para la guía de 8 pasos.
+**Q: Mi stack no está soportado. ¿Puedo añadir uno?**
+A: Sí. Los nuevos stacks necesitan ~3 prompt templates + un domain scanner. Ver [CONTRIBUTING.md](CONTRIBUTING.md) para la guía de 8 pasos.
 
-**P: ¿Cómo genero docs en español (u otro idioma)?**
-R: `npx claudeos-core init --lang es`. 10 idiomas soportados: en, ko, ja, zh-CN, es, vi, hi, ru, fr, de.
+**Q: ¿Cómo genero docs en coreano (u otro idioma)?**
+A: `npx claudeos-core init --lang ko`. 10 idiomas soportados: en, ko, ja, zh-CN, es, vi, hi, ru, fr, de.
 
-**P: ¿Funciona con monorepos?**
-R: Sí — Turborepo (`turbo.json`), pnpm workspaces (`pnpm-workspace.yaml`), Lerna (`lerna.json`) y npm/yarn workspaces (`package.json#workspaces`) son detectados por el stack-detector. Cada app obtiene su propio análisis. Otras estructuras de monorepo (p. ej., NX) no se detectan específicamente, pero los patrones genéricos `apps/*/` y `packages/*/` los siguen detectando los scanners por stack.
+**Q: ¿Funciona con monorepos?**
+A: Sí — Turborepo (`turbo.json`), pnpm workspaces (`pnpm-workspace.yaml`), Lerna (`lerna.json`) y npm/yarn workspaces (`package.json#workspaces`) son detectados por el stack-detector. Cada app obtiene su propio análisis. Otros layouts de monorepo (ej.: NX) no se detectan específicamente, pero los patterns genéricos `apps/*/` y `packages/*/` siguen siendo recogidos por los scanners por stack.
 
-**P: ¿Qué pasa si Claude Code genera reglas con las que no estoy de acuerdo?**
-R: Edítalas directamente. Luego ejecuta `npx claudeos-core lint` para verificar que CLAUDE.md sigue siendo estructuralmente válido. Tus ediciones se preservan en ejecuciones posteriores de `init` (sin `--force`) — el mecanismo de resume omite los pases cuyos marcadores existen.
+**Q: ¿Y si Claude Code genera rules con las que no estoy de acuerdo?**
+A: Edítalas directamente. Luego ejecuta `npx claudeos-core lint` para verificar que CLAUDE.md sigue siendo estructuralmente válido. Tus ediciones se preservan en ejecuciones posteriores de `init` (sin `--force`) — el mecanismo de resume salta los passes cuyos markers existen.
 
-**P: ¿Dónde reporto bugs?**
-R: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues). Para problemas de seguridad, ver [SECURITY.md](SECURITY.md).
+**Q: ¿Dónde reporto bugs?**
+A: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues). Para problemas de seguridad, ver [SECURITY.md](SECURITY.md).
+
+---
+
+## Si esto te ahorró tiempo
+
+Una ⭐ en GitHub mantiene visible el proyecto y ayuda a otros a encontrarlo. Issues, PRs y contribuciones de stack templates son todas bienvenidas — ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -485,15 +483,15 @@ R: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues). Para 
 
 | Tema | Lee esto |
 |---|---|
-| Cómo funciona la pipeline de 4 pasadas (más profundo que el diagrama) | [docs/es/architecture.md](docs/es/architecture.md) |
+| Cómo funciona el 4-pass pipeline (más profundo que el diagrama) | [docs/es/architecture.md](docs/es/architecture.md) |
 | Diagramas visuales (Mermaid) de la arquitectura | [docs/es/diagrams.md](docs/es/diagrams.md) |
 | Detección de stack — qué busca cada scanner | [docs/es/stacks.md](docs/es/stacks.md) |
 | Memory layer — decision logs y failure patterns | [docs/es/memory-layer.md](docs/es/memory-layer.md) |
 | Los 5 validators en detalle | [docs/es/verification.md](docs/es/verification.md) |
-| Cada comando CLI y opción | [docs/es/commands.md](docs/es/commands.md) |
+| Cada comando CLI y sus opciones | [docs/es/commands.md](docs/es/commands.md) |
 | Instalación manual (sin `npx`) | [docs/es/manual-installation.md](docs/es/manual-installation.md) |
 | Overrides del scanner — `.claudeos-scan.json` | [docs/es/advanced-config.md](docs/es/advanced-config.md) |
-| Seguridad: qué se preserva al re-init | [docs/es/safety.md](docs/es/safety.md) |
+| Seguridad: qué se preserva en re-init | [docs/es/safety.md](docs/es/safety.md) |
 | Comparación con herramientas similares (scope, no calidad) | [docs/es/comparison.md](docs/es/comparison.md) |
 | Errores y recuperación | [docs/es/troubleshooting.md](docs/es/troubleshooting.md) |
 
@@ -501,14 +499,14 @@ R: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues). Para 
 
 ## Contribuir
 
-Las contribuciones son bienvenidas — añadir soporte de stacks, mejorar prompts, arreglar bugs. Ver [CONTRIBUTING.md](CONTRIBUTING.md).
+Las contribuciones son bienvenidas — añadir soporte de stack, mejorar prompts, arreglar bugs. Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Para el Código de Conducta y la política de seguridad, ver [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) y [SECURITY.md](SECURITY.md).
+Para el Code of Conduct y la política de seguridad, ver [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) y [SECURITY.md](SECURITY.md).
 
 ## Licencia
 
-[ISC](LICENSE) — gratis para cualquier uso, incluyendo comercial.
+[ISC License](LICENSE). Libre para cualquier uso, incluyendo comercial. © 2025–2026 ClaudeOS-Core contributors.
 
 ---
 
-<sub>Construido con cuidado por [@claudeos-core](https://github.com/claudeos-core). Si esto te ahorró tiempo, una ⭐ en GitHub ayuda a mantenerlo visible.</sub>
+<sub>Mantenido por el equipo de [claudeos-core](https://github.com/claudeos-core). Issues y PRs en <https://github.com/claudeos-core/claudeos-core>.</sub>

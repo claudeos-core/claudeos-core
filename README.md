@@ -7,15 +7,13 @@
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
 
-**Make Claude Code follow YOUR project's conventions on the first try — not generic defaults.**
-
-A deterministic Node.js scanner reads your code first; a 4-pass Claude pipeline then writes the full set — `CLAUDE.md` + auto-loaded `.claude/rules/` + standards + skills + L4 memory. 10 output languages, 5 post-generation validators, and an explicit path allowlist that prevents the LLM from inventing files or frameworks not in your code.
-
-Works on [**12 stacks**](#supported-stacks) (monorepos included) — one `npx` command, no config, resume-safe, idempotent.
+**A deterministic CLI that auto-generates `CLAUDE.md` + `.claude/rules/` from your actual source code — Node.js scanner + 4-pass Claude pipeline + 5 validators. 12 stacks, 10 languages, no invented paths.**
 
 ```bash
 npx claudeos-core init
 ```
+
+Works on [**12 stacks**](#supported-stacks) (monorepos included) — one command, no config, resume-safe, idempotent.
 
 [🇰🇷 한국어](README.ko.md) · [🇨🇳 中文](README.zh-CN.md) · [🇯🇵 日本語](README.ja.md) · [🇪🇸 Español](README.es.md) · [🇻🇳 Tiếng Việt](README.vi.md) · [🇮🇳 हिन्दी](README.hi.md) · [🇷🇺 Русский](README.ru.md) · [🇫🇷 Français](README.fr.md) · [🇩🇪 Deutsch](README.de.md)
 
@@ -23,29 +21,13 @@ npx claudeos-core init
 
 ## What is this?
 
-You use Claude Code. It's powerful, but every session starts fresh — it has no memory of how _your_ project is structured. So it falls back to "generally good" defaults that rarely match what your team actually does:
+Claude Code falls back to framework defaults every session. Your team uses **MyBatis**, but Claude writes JPA. Your wrapper is `ApiResponse.ok()`, but Claude writes `ResponseEntity.success()`. Your packages are layer-first, but Claude generates domain-first. Hand-writing `.claude/rules/` for each repo solves it — until the code evolves and your rules drift.
 
-- Your team uses **MyBatis**, but Claude generates JPA repositories.
-- Your response wrapper is `ApiResponse.ok()`, but Claude writes `ResponseEntity.success()`.
-- Your packages are layer-first (`controller/order/`), but Claude creates domain-first (`order/controller/`).
-- Your errors go through centralized middleware, but Claude scatters `try/catch` in every endpoint.
+**ClaudeOS-Core regenerates them deterministically, from your actual source code.** A Node.js scanner reads first (stack, ORM, package layout, file paths). A 4-pass Claude pipeline then writes the full set — `CLAUDE.md` + auto-loaded `.claude/rules/` + standards + skills — constrained by an explicit path allowlist that the LLM cannot escape. Five validators verify the output before it ships.
 
-You'd want a `.claude/rules/` set per project — Claude Code auto-loads it every session — but writing those rules by hand for each new repo takes hours, and they drift as the code evolves.
+The result: same input → byte-identical output, in any of 10 languages, with no invented paths. (Detail in [What makes this different](#what-makes-this-different) below.)
 
-**ClaudeOS-Core writes them for you, from your actual source code.** A deterministic Node.js scanner reads your project first (stack, ORM, package layout, conventions, file paths). Then a 4-pass Claude pipeline turns the extracted facts into a complete documentation set:
-
-- **`CLAUDE.md`** — the project index Claude reads on every session
-- **`.claude/rules/`** — auto-loaded rules per category (`00.core` / `10.backend` / `20.frontend` / `30.security-db` / `40.infra` / `60.memory` / `70.domains` / `80.verification`)
-- **`claudeos-core/standard/`** — reference docs (the "why" behind each rule)
-- **`claudeos-core/skills/`** — reusable patterns (CRUD scaffolding, page templates)
-- **`claudeos-core/memory/`** — decision log + failure patterns that grow with the project
-
-Because the scanner hands Claude an explicit path allowlist, the LLM **cannot invent files or frameworks that aren't in your code**. Five post-generation validators (`claude-md-validator`, `content-validator`, `pass-json-validator`, `plan-validator`, `sync-checker`) verify the output before it ships — language-invariant, so the same rules apply whether you generate in English, Korean, or any of 8 other languages.
-
-```
-Before:  You → Claude Code → "generally good" code → manual fixing each time
-After:   You → Claude Code → code that matches YOUR project → ship it
-```
+A separate [Memory Layer](#memory-layer-optional-for-long-running-projects) is seeded for long-running projects.
 
 ---
 
@@ -58,7 +40,7 @@ Run on [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spri
 </p>
 
 <details>
-<summary><strong>📺 Terminal output (text version, for search & copy)</strong></summary>
+<summary><strong>Terminal output (text version, for search & copy)</strong></summary>
 
 ```text
 ╔════════════════════════════════════════════════════╗
@@ -93,18 +75,18 @@ Run on [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spri
     [██████████░░░░░░░░░░] 50% (2/4)
 
 [6] Pass 3 — Generating all files...
-    🚀 Pass 3 split mode (3a → 3b → 3c → 3d-aux)
+    Pass 3 split mode (3a → 3b → 3c → 3d-aux)
     ✅ 3a complete (2m 57s)            — pass3a-facts.md (187-path allowlist)
     ✅ 3b complete (18m 49s)           — CLAUDE.md + 19 standards + 20 rules
     ✅ 3c complete (12m 35s)           — 13 skills + 9 guides
     ✅ 3d-aux complete (3m 18s)        — database/ + mcp-guide/
-    🎉 Pass 3 split complete: 4/4 stages successful
+    Pass 3 split complete: 4/4 stages successful
     [███████████████░░░░░] 75% (3/4)
 
 [7] Pass 4 — Memory scaffolding...
-    📦 Pass 4 staged-rules: 6 rule files moved to .claude/rules/
+    Pass 4 staged-rules: 6 rule files moved to .claude/rules/
     ✅ Pass 4 complete (5m)
-       📋 Gap-fill: all 12 expected files already present
+       Gap-fill: all 12 expected files already present
     [████████████████████] 100% (4/4)
 
 ╔═══════════════════════════════════════╗
@@ -133,7 +115,7 @@ Run on [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spri
 </details>
 
 <details>
-<summary><strong>📄 What ends up in your <code>CLAUDE.md</code> (real excerpt — Section 1 + 2)</strong></summary>
+<summary><strong>What ends up in your <code>CLAUDE.md</code> (real excerpt — Section 1 + 2)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -142,7 +124,7 @@ Run on [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spri
 > Java 11 + Spring Boot 2.6, exposing both REST and GraphQL endpoints
 > over a hexagonal MyBatis persistence layer.
 
-## 1. Role Definition
+#### 1. Role Definition
 
 As the senior developer for this repository, you are responsible for
 writing, modifying, and reviewing code. Responses must be written in English.
@@ -150,7 +132,7 @@ A Java Spring Boot REST + GraphQL API server organized around a hexagonal
 (ports & adapters) architecture, with a CQRS-lite read/write split inside
 an XML-driven MyBatis persistence layer and JWT-based authentication.
 
-## 2. Project Overview
+#### 2. Project Overview
 
 | Item | Value |
 |---|---|
@@ -171,7 +153,7 @@ Every value above — exact dependency coordinates, the `dev.db` filename, the `
 </details>
 
 <details>
-<summary><strong>🛡️ A real auto-loaded rule (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
+<summary><strong>A real auto-loaded rule (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
 
 ````markdown
 ---
@@ -179,9 +161,9 @@ paths:
   - "**/*"
 ---
 
-# Controller Rules
+#### Controller Rules
 
-## REST (`io.spring.api.*`)
+##### REST (`io.spring.api.*`)
 
 - Controllers are the SOLE response wrapper for HTTP — no aggregator/facade above them.
   Return `ResponseEntity<?>` or a body Spring serializes via `JacksonCustomizations`.
@@ -194,13 +176,13 @@ paths:
 - Let exceptions propagate to `io.spring.api.exception.CustomizeExceptionHandler`
   (`@ControllerAdvice`). Do NOT `try/catch` business exceptions inside the controller.
 
-## GraphQL (`io.spring.graphql.*`)
+##### GraphQL (`io.spring.graphql.*`)
 
 - DGS components (`@DgsComponent`) are the sole GraphQL response wrappers.
   Use `@DgsQuery` / `@DgsData` / `@DgsMutation`.
 - Resolve the current user via `io.spring.graphql.SecurityUtil.getCurrentUser()`.
 
-## Examples
+##### Examples
 
 ✅ Correct:
 ```java
@@ -233,10 +215,10 @@ The `paths: ["**/*"]` glob means Claude Code auto-loads this rule whenever you e
 </details>
 
 <details>
-<summary><strong>🧠 An auto-generated <code>decision-log.md</code> seed (real excerpt)</strong></summary>
+<summary><strong>An auto-generated <code>decision-log.md</code> seed (real excerpt)</strong></summary>
 
 ```markdown
-## 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
+#### 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
 
 - **Context:** `io.spring.core.*` exposes `*Repository` ports (e.g.,
   `io.spring.core.article.ArticleRepository`) implemented by
@@ -258,6 +240,16 @@ The `paths: ["**/*"]` glob means Claude Code auto-loads this rule whenever you e
 Pass 4 seeds `decision-log.md` with the architectural decisions extracted from `pass2-merged.json` so future sessions remember *why* the codebase looks the way it does — not just *what* it looks like. Every option ("JPA/Hibernate", "MyBatis-Plus") and every consequence is grounded in the actual `build.gradle` dependency block.
 
 </details>
+
+---
+
+## Tested on
+
+ClaudeOS-Core ships with reference benchmarks on real OSS projects. If you've used it on a public repo, please [open an issue](https://github.com/claudeos-core/claudeos-core/issues) — we'll add it to this table.
+
+| Project | Stack | Scanned → Generated | Status |
+|---|---|---|---|
+| [`spring-boot-realworld-example-app`](https://github.com/gothinkster/spring-boot-realworld-example-app) | Java 11 · Spring Boot 2.6 · MyBatis · SQLite | 187 → 75 files | ✅ all 5 validators pass |
 
 ---
 
@@ -349,7 +341,7 @@ The pipeline runs in **three stages**, with code on both sides of the LLM call:
 
 **3. Step C — Verification (deterministic, no LLM).** Five validators check the output:
 - `claude-md-validator` — 25 structural checks on `CLAUDE.md` (8 sections, H3/H4 counts, memory file uniqueness, T1 canonical heading invariant). Language-invariant: same verdict regardless of `--lang`.
-- `content-validator` — 10 content checks including path-claim verification (`STALE_PATH` catches fabricated `src/...` references) and MANIFEST drift detection.
+- `content-validator` — 10 content checks including path-claim verification (`STALE_PATH` catches invented `src/...` references) and MANIFEST drift detection.
 - `pass-json-validator` — Pass 1/2/3/4 JSON well-formedness + stack-aware section count.
 - `plan-validator` — plan ↔ disk consistency (legacy, mostly no-op since v2.1.0).
 - `sync-checker` — disk ↔ `sync-map.json` registration consistency across 7 tracked dirs.
@@ -391,17 +383,7 @@ npx claudeos-core lint
 npx claudeos-core health
 ```
 
-Two more for memory layer maintenance:
-
-```bash
-# Compact the failure-patterns log (run periodically)
-npx claudeos-core memory compact
-
-# Promote frequent failure patterns into proposed rules
-npx claudeos-core memory propose-rules
-```
-
-For each command's full options, see [docs/commands.md](docs/commands.md).
+For each command's full options, see [docs/commands.md](docs/commands.md). Memory layer commands (`memory compact`, `memory propose-rules`) are documented in the [Memory Layer](#memory-layer-optional-for-long-running-projects) section below.
 
 ---
 
@@ -443,14 +425,24 @@ For each validator's checks in detail, see [docs/verification.md](docs/verificat
 
 ## Memory Layer (optional, for long-running projects)
 
-After v2.0, ClaudeOS-Core writes a `claudeos-core/memory/` folder with four files:
+Beyond the scaffolding pipeline above, ClaudeOS-Core seeds a `claudeos-core/memory/` folder for projects where context outlives a single session. It's optional — you can ignore it if all you want is `CLAUDE.md` + rules.
 
-- `decision-log.md` — append-only "why we chose X over Y"
+Four files, all written by Pass 4:
+
+- `decision-log.md` — append-only "why we chose X over Y", seeded from `pass2-merged.json`
 - `failure-patterns.md` — recurring errors with frequency/importance scores
 - `compaction.md` — how memory is auto-compacted over time
 - `auto-rule-update.md` — patterns that should become new rules
 
-You can run `npx claudeos-core memory propose-rules` to ask Claude to look at recent failure patterns and suggest new rules to add.
+Two commands maintain this layer over time:
+
+```bash
+# Compact the failure-patterns log (run periodically)
+npx claudeos-core memory compact
+
+# Promote frequent failure patterns into proposed rules
+npx claudeos-core memory propose-rules
+```
 
 For the memory model and lifecycle, see [docs/memory-layer.md](docs/memory-layer.md).
 
@@ -481,6 +473,12 @@ A: [GitHub Issues](https://github.com/claudeos-core/claudeos-core/issues). For s
 
 ---
 
+## If this saved you time
+
+A ⭐ on GitHub keeps the project visible and helps others find it. Issues, PRs, and stack template contributions are all welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
 ## Documentation
 
 | Topic | Read this |
@@ -507,8 +505,8 @@ For Code of Conduct and security policy, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUC
 
 ## License
 
-[ISC](LICENSE) — free for any use, including commercial.
+[ISC License](LICENSE). Free for any use, including commercial. © 2025–2026 ClaudeOS-Core contributors.
 
 ---
 
-<sub>Built with care by [@claudeos-core](https://github.com/claudeos-core). If this saved you time, a ⭐ on GitHub keeps it visible.</sub>
+<sub>Maintained by the [claudeos-core](https://github.com/claudeos-core) team. Issues and PRs at <https://github.com/claudeos-core/claudeos-core>.</sub>

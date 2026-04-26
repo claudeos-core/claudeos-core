@@ -7,7 +7,11 @@
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
 
-**Tự động sinh tài liệu Claude Code từ chính mã nguồn thực tế của bạn.** Một CLI phân tích tĩnh dự án rồi chạy pipeline Claude 4-pass để sinh `.claude/rules/`, standards, skills và guides — nhờ đó Claude Code tuân theo **các quy ước của dự án bạn**, không phải các quy ước chung chung.
+**Để Claude Code tuân theo các quy ước của _dự án bạn_ ngay từ lần đầu — không phải các mặc định chung chung.**
+
+Một deterministic Node.js scanner đọc mã nguồn của bạn trước; sau đó pipeline Claude 4-pass viết toàn bộ — `CLAUDE.md` + `.claude/rules/` tự động nạp + standards + skills + L4 memory. 10 ngôn ngữ đầu ra, 5 validator hậu sinh, và một path allowlist tường minh ngăn LLM bịa ra các tệp hoặc framework không có trong code của bạn.
+
+Hoạt động trên [**12 stack**](#supported-stacks) (bao gồm monorepo) — một lệnh `npx` duy nhất, không cần cấu hình, resume-safe, idempotent.
 
 ```bash
 npx claudeos-core init
@@ -19,18 +23,28 @@ npx claudeos-core init
 
 ## Công cụ này là gì?
 
-Bạn đang dùng Claude Code. Nó thông minh, nhưng nó không biết **các quy ước của dự án bạn**:
-- Đội của bạn dùng MyBatis, nhưng Claude lại sinh code JPA.
-- Wrapper của bạn là `ApiResponse.ok()`, nhưng Claude lại viết `ResponseEntity.success()`.
-- Package của bạn là `controller/order/`, nhưng Claude lại tạo `order/controller/`.
+Bạn đang dùng Claude Code. Nó mạnh mẽ, nhưng mỗi phiên đều bắt đầu mới — không có ký ức về cách _dự án của bạn_ được tổ chức. Vì vậy nó fallback về các mặc định "tốt nói chung" mà hiếm khi khớp với những gì đội bạn thực sự làm:
 
-Vì vậy bạn mất khá nhiều thời gian để sửa từng tệp được sinh ra.
+- Đội bạn dùng **MyBatis**, nhưng Claude lại sinh JPA repository.
+- Response wrapper của bạn là `ApiResponse.ok()`, nhưng Claude lại viết `ResponseEntity.success()`.
+- Package của bạn là layer-first (`controller/order/`), nhưng Claude lại tạo domain-first (`order/controller/`).
+- Lỗi của bạn đi qua centralized middleware, nhưng Claude rải `try/catch` ở mọi endpoint.
 
-**ClaudeOS-Core khắc phục điều này.** Nó quét mã nguồn thực tế của bạn, xác định các quy ước, và viết một tập rule hoàn chỉnh vào `.claude/rules/` — thư mục mà Claude Code tự động đọc. Lần sau bạn nói *"Tạo CRUD cho orders"*, Claude sẽ tuân theo quy ước của bạn ngay từ lần đầu.
+Bạn muốn có một bộ `.claude/rules/` cho từng dự án — Claude Code tự động nạp mỗi phiên — nhưng viết tay những rule đó cho mỗi repo mới mất hàng giờ, và chúng drift theo sự tiến hóa của code.
+
+**ClaudeOS-Core viết chúng cho bạn, từ chính mã nguồn thực tế của bạn.** Một deterministic Node.js scanner đọc dự án bạn trước (stack, ORM, layout package, quy ước, đường dẫn tệp). Sau đó pipeline Claude 4-pass biến các sự kiện đã trích xuất thành một bộ tài liệu hoàn chỉnh:
+
+- **`CLAUDE.md`** — chỉ mục dự án mà Claude đọc ở mỗi phiên
+- **`.claude/rules/`** — rules tự động nạp theo category (`00.core` / `10.backend` / `20.frontend` / `30.security-db` / `40.infra` / `60.memory` / `70.domains` / `80.verification`)
+- **`claudeos-core/standard/`** — tài liệu tham chiếu ("vì sao" sau mỗi rule)
+- **`claudeos-core/skills/`** — pattern tái sử dụng (CRUD scaffolding, page template)
+- **`claudeos-core/memory/`** — decision log + failure pattern lớn lên cùng dự án
+
+Vì scanner trao cho Claude một path allowlist tường minh, LLM **không thể bịa ra các tệp hoặc framework không có trong code của bạn**. Năm validator hậu sinh (`claude-md-validator`, `content-validator`, `pass-json-validator`, `plan-validator`, `sync-checker`) xác minh đầu ra trước khi ship — language-invariant, vì vậy cùng một bộ rule áp dụng dù bạn sinh bằng tiếng Anh, tiếng Hàn hay 8 ngôn ngữ còn lại.
 
 ```
-Trước:  Bạn → Claude Code → code "tốt nói chung" → sửa thủ công
-Sau:    Bạn → Claude Code → code khớp với dự án của bạn → dùng luôn
+Trước:  Bạn → Claude Code → code "tốt nói chung" → sửa thủ công mỗi lần
+Sau:    Bạn → Claude Code → code khớp với DỰ ÁN CỦA BẠN → dùng luôn
 ```
 
 ---
@@ -119,37 +133,45 @@ Chạy trên [`spring-boot-realworld-example-app`](https://github.com/gothinkste
 </details>
 
 <details>
-<summary><strong>📄 Trích đoạn <code>CLAUDE.md</code> được sinh (đầu ra thực tế)</strong></summary>
+<summary><strong>📄 Nội dung kết thúc trong <code>CLAUDE.md</code> của bạn (trích đoạn thực tế — Section 1 + 2)</strong></summary>
 
 ```markdown
-## 4. Core Architecture
+# CLAUDE.md — spring-boot-realworld-example-app
 
-### Core Patterns
+> Reference implementation of the RealWorld backend specification on
+> Java 11 + Spring Boot 2.6, exposing both REST and GraphQL endpoints
+> over a hexagonal MyBatis persistence layer.
 
-- **Hexagonal ports & adapters**: domain ports live in `io.spring.core.{aggregate}`
-  and are implemented by `io.spring.infrastructure.repository.MyBatis{Aggregate}Repository`.
-  The domain layer has zero MyBatis imports.
-- **CQRS-lite read/write split (same DB)**: write side goes through repository ports
-  + entities; read side is a separate `readservice` package whose `@Mapper`
-  interfaces return `*Data` DTOs directly (no entity hydration).
-- **No aggregator/orchestrator layer**: multi-source orchestration happens inside
-  application services (e.g., `ArticleQueryService`); there is no `*Aggregator`
-  class in the codebase.
-- **Application-supplied UUIDs**: entity constructors assign their own UUID; PK is
-  passed via `#{user.id}` on INSERT. The global
-  `mybatis.configuration.use-generated-keys=true` flag is dead config
-  (auto-increment is unused).
-- **JWT HS512 authentication**: `io.spring.infrastructure.service.DefaultJwtService`
-  is the sole token subject in/out; `io.spring.api.security.JwtTokenFilter`
-  extracts the token at the servlet layer.
+## 1. Role Definition
+
+As the senior developer for this repository, you are responsible for
+writing, modifying, and reviewing code. Responses must be written in English.
+A Java Spring Boot REST + GraphQL API server organized around a hexagonal
+(ports & adapters) architecture, with a CQRS-lite read/write split inside
+an XML-driven MyBatis persistence layer and JWT-based authentication.
+
+## 2. Project Overview
+
+| Item | Value |
+|---|---|
+| Language | Java 11 |
+| Framework | Spring Boot 2.6.3 |
+| Build Tool | Gradle (Groovy DSL) |
+| Persistence | MyBatis 3 via `mybatis-spring-boot-starter:2.2.2` (no JPA) |
+| Database | SQLite (`org.xerial:sqlite-jdbc:3.36.0.3`) — `dev.db` (default), `:memory:` (test) |
+| Migration | Flyway — single baseline `V1__create_tables.sql` |
+| API Style | REST (`io.spring.api.*`) + GraphQL via Netflix DGS `:4.9.21` |
+| Authentication | JWT HS512 (`jjwt-api:0.11.2`) + Spring Security `PasswordEncoder` |
+| Server Port | 8080 (default) |
+| Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-Lưu ý: mọi luận điểm phía trên đều dựa trên mã nguồn thực — tên class, đường dẫn package, key cấu hình, và cờ dead-config đều do scanner trích xuất trước khi Claude viết tệp.
+Mọi giá trị bên trên — tọa độ dependency chính xác, tên tệp `dev.db`, tên migration `V1__create_tables.sql`, "no JPA" — đều được scanner trích xuất từ `build.gradle` / `application.properties` / cây mã nguồn trước khi Claude viết tệp. Không có gì là phỏng đoán.
 
 </details>
 
 <details>
-<summary><strong>🛡️ Một rule thực tế được tự động nạp (<code>.claude/rules/10.backend/03.data-access-rules.md</code>)</strong></summary>
+<summary><strong>🛡️ Một rule thật được tự động nạp (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
 
 ````markdown
 ---
@@ -157,42 +179,56 @@ paths:
   - "**/*"
 ---
 
-# Data Access Rules
+# Controller Rules
 
-## XML-only SQL
-- Every SQL statement lives in `src/main/resources/mapper/*.xml`.
-  NO `@Select` / `@Insert` / `@Update` / `@Delete` annotations on `@Mapper` methods.
-- Each `@Mapper` interface has exactly one XML file at
-  `src/main/resources/mapper/{InterfaceName}.xml`.
-- `<mapper namespace="...">` MUST be the fully qualified Java interface name.
-  The single existing exception is `TransferData.xml` (free-form `transfer.data`).
+## REST (`io.spring.api.*`)
 
-## Dynamic SQL
-- `<if>` predicates MUST guard both null and empty:
-  `<if test="X != null and X != ''">`. Empty-only is the existing HIGH-severity bug pattern.
-- Prefer `LIMIT n OFFSET m` over MySQL-style `LIMIT m, n`.
+- Controllers are the SOLE response wrapper for HTTP — no aggregator/facade above them.
+  Return `ResponseEntity<?>` or a body Spring serializes via `JacksonCustomizations`.
+- Each controller method calls exactly ONE application service method. Multi-source
+  composition lives in the application service.
+- Controllers MUST NOT import `io.spring.infrastructure.*`. No direct `@Mapper` access.
+- Validate command-param arguments with `@Valid`. Custom JSR-303 constraints live under
+  `io.spring.application.{aggregate}.*`.
+- Resolve the current user via `@AuthenticationPrincipal User`.
+- Let exceptions propagate to `io.spring.api.exception.CustomizeExceptionHandler`
+  (`@ControllerAdvice`). Do NOT `try/catch` business exceptions inside the controller.
+
+## GraphQL (`io.spring.graphql.*`)
+
+- DGS components (`@DgsComponent`) are the sole GraphQL response wrappers.
+  Use `@DgsQuery` / `@DgsData` / `@DgsMutation`.
+- Resolve the current user via `io.spring.graphql.SecurityUtil.getCurrentUser()`.
 
 ## Examples
 
 ✅ Correct:
-```xml
-<update id="update">
-  UPDATE articles
-  <set>
-    <if test="article.title != null and article.title != ''">title = #{article.title},</if>
-    updated_at = #{article.updatedAt}
-  </set>
-  WHERE id = #{article.id}
-</update>
+```java
+@PostMapping
+public ResponseEntity<?> createArticle(@AuthenticationPrincipal User user,
+                                       @Valid @RequestBody NewArticleParam param) {
+    Article article = articleCommandService.createArticle(param, user);
+    ArticleData data = articleQueryService.findById(article.getId(), user)
+        .orElseThrow(ResourceNotFoundException::new);
+    return ResponseEntity.ok(Map.of("article", data));
+}
 ```
 
 ❌ Incorrect:
-```xml
-<mapper namespace="article.mapper">          <!-- NO — namespace MUST be FQCN -->
+```java
+@PostMapping
+public ResponseEntity<?> create(@RequestBody NewArticleParam p) {
+    try {
+        articleCommandService.createArticle(p, currentUser);
+    } catch (Exception e) {                                      // NO — let CustomizeExceptionHandler handle it
+        return ResponseEntity.status(500).body(e.getMessage());  // NO — leaks raw message
+    }
+    return ResponseEntity.ok().build();
+}
 ```
 ````
 
-Glob `paths: ["**/*"]` có nghĩa là Claude Code tự động nạp rule này mỗi khi bạn chỉnh bất kỳ tệp nào trong dự án. Các ví dụ ✅/❌ được lấy thẳng từ chính các quy ước và mẫu lỗi đã có trong codebase này.
+Glob `paths: ["**/*"]` có nghĩa là Claude Code tự động nạp rule này mỗi khi bạn chỉnh bất kỳ tệp nào trong dự án. Mọi tên class, đường dẫn package, exception handler trong rule đều được lấy thẳng từ source đã scan — bao gồm cả `CustomizeExceptionHandler` và `JacksonCustomizations` thực tế của dự án.
 
 </details>
 
@@ -200,25 +236,26 @@ Glob `paths: ["**/*"]` có nghĩa là Claude Code tự động nạp rule này m
 <summary><strong>🧠 Hạt mầm <code>decision-log.md</code> tự sinh (trích đoạn thực tế)</strong></summary>
 
 ```markdown
-## 2026-04-26 — CQRS-lite read/write split inside the persistence layer
+## 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
 
-- **Context:** Writes go through `core.*Repository` port → `MyBatis*Repository`
-  adapter → `io.spring.infrastructure.mybatis.mapper.{Aggregate}Mapper`.
-  Reads bypass the domain port: application service →
-  `io.spring.infrastructure.mybatis.readservice.{Concept}ReadService` directly,
-  returning flat `*Data` DTOs from `io.spring.application.data.*`.
-- **Options considered:** Single repository surface returning hydrated entities
-  for both reads and writes.
-- **Decision:** Same database, two `@Mapper` packages — `mapper/` (write side,
-  operates on core entities) and `readservice/` (read side, returns `*Data` DTOs).
-  Read DTOs avoid entity hydration overhead.
-- **Consequences:** Reads are NOT routed through the domain port — this is
-  intentional, not a bug. Application services may inject both a `*Repository`
-  (writes) and one or more `*ReadService` interfaces (reads) at the same time.
-  Do NOT add hydrate-then-map glue in the read path.
+- **Context:** `io.spring.core.*` exposes `*Repository` ports (e.g.,
+  `io.spring.core.article.ArticleRepository`) implemented by
+  `io.spring.infrastructure.repository.MyBatis*Repository` adapters.
+  The domain layer has zero `org.springframework.*` /
+  `org.apache.ibatis.*` / `io.spring.infrastructure.*` imports.
+- **Options considered:** JPA/Hibernate, Spring Data, MyBatis-Plus
+  `BaseMapper`. None adopted.
+- **Decision:** MyBatis 3 (`mybatis-spring-boot-starter:2.2.2`) with
+  hand-written XML statements under `src/main/resources/mapper/*.xml`.
+  Hexagonal port/adapter wiring keeps the domain framework-free.
+- **Consequences:** Every SQL lives in XML — `@Select`/`@Insert`/`@Update`/`@Delete`
+  annotations are forbidden. New aggregates require both a
+  `core.{aggregate}.{Aggregate}Repository` port AND a
+  `MyBatis{Aggregate}Repository` adapter; introducing a JPA repository would
+  split the persistence model.
 ```
 
-Pass 4 gieo `decision-log.md` bằng các quyết định kiến trúc được trích từ `pass2-merged.json`, để các phiên sau ghi nhớ *vì sao* codebase trông như vậy — không chỉ *trông như thế nào*.
+Pass 4 gieo `decision-log.md` bằng các quyết định kiến trúc được trích từ `pass2-merged.json`, để các phiên sau ghi nhớ *vì sao* codebase trông như vậy — không chỉ *trông như thế nào*. Mọi tùy chọn ("JPA/Hibernate", "MyBatis-Plus") và mọi hệ quả đều bắt nguồn từ chính khối dependency `build.gradle` thực tế.
 
 </details>
 
@@ -277,13 +314,17 @@ Các category dùng chung tiền tố số giữa `rules/` và `standard/` đạ
 
 ## Dành cho ai?
 
-| Bạn là... | Công cụ này giúp bạn... |
+| Bạn là... | Pain mà công cụ này gỡ bỏ |
 |---|---|
-| **Dev solo** đang khởi tạo dự án mới với Claude Code | Bỏ qua hoàn toàn giai đoạn "dạy Claude quy ước của tôi" |
-| **Team lead** duy trì chuẩn dùng chung | Tự động hóa phần tẻ nhạt: giữ `.claude/rules/` luôn cập nhật |
-| **Đã dùng Claude Code** nhưng mệt mỏi vì sửa code được sinh | Khiến Claude tuân theo mẫu của BẠN, không phải mẫu "tốt nói chung" |
+| **Dev solo** đang khởi tạo dự án mới với Claude Code | "Dạy Claude quy ước của tôi mỗi phiên" — biến mất. `CLAUDE.md` + `.claude/rules/` 8-category được sinh trong một lần chạy. |
+| **Team lead** duy trì chuẩn dùng chung qua nhiều repo | `.claude/rules/` drift khi mọi người đổi tên package, đổi ORM, đổi response wrapper. ClaudeOS-Core đồng bộ lại deterministic — cùng đầu vào, đầu ra byte-identical, không có diff noise. |
+| **Đã dùng Claude Code** nhưng mệt mỏi vì sửa code được sinh | Sai response wrapper, sai layout package, JPA khi bạn dùng MyBatis, `try/catch` rải khắp khi dự án bạn dùng centralized middleware. Scanner trích các quy ước thật của bạn; mỗi pass Claude chạy dựa trên một path allowlist tường minh. |
+| **Onboarding một repo mới** (dự án sẵn có, gia nhập đội mới) | Chạy `init` trên repo, nhận một bản đồ kiến trúc sống: bảng stack trong CLAUDE.md, rules từng layer kèm ví dụ ✅/❌, decision log đã gieo "vì sao" sau các lựa chọn lớn (JPA vs MyBatis, REST vs GraphQL, v.v.). Đọc 5 tệp thắng đọc 5.000 source file. |
+| **Làm việc bằng tiếng Hàn / Nhật / Trung / 7 ngôn ngữ khác** | Hầu hết các bộ sinh rule Claude Code chỉ hỗ trợ tiếng Anh. ClaudeOS-Core viết toàn bộ bằng **10 ngôn ngữ** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) với **xác minh cấu trúc byte-identical** — cùng verdict `claude-md-validator` bất kể ngôn ngữ đầu ra. |
+| **Đang chạy trên monorepo** (Turborepo, pnpm/yarn workspaces, Lerna) | Domain backend + frontend được phân tích trong một lần chạy với prompt riêng biệt; `apps/*/` và `packages/*/` được walk tự động; rules theo từng stack được emit dưới `70.domains/{type}/`. |
+| **Đóng góp OSS hoặc thử nghiệm** | Đầu ra thân thiện với gitignore — `claudeos-core/` là thư mục làm việc local của bạn, chỉ `CLAUDE.md` + `.claude/` cần ship. Resume-safe khi bị gián đoạn; idempotent khi chạy lại (chỉnh sửa thủ công của bạn được giữ lại nếu không có `--force`). |
 
-**Không phù hợp nếu:** bạn muốn một bundle preset agents/skills/rules dạng one-size-fits-all chạy được ngay từ ngày đầu mà không cần bước scan (xem [docs/vi/comparison.md](docs/vi/comparison.md) để biết công cụ nào hợp với việc gì), hoặc dự án của bạn chưa khớp với một trong các [stack được hỗ trợ](#supported-stacks).
+**Không phù hợp nếu:** bạn muốn một bundle preset agents/skills/rules dạng one-size-fits-all chạy được ngay từ ngày đầu mà không cần bước scan (xem [docs/vi/comparison.md](docs/vi/comparison.md) để biết công cụ nào hợp với việc gì), dự án của bạn chưa khớp với một trong các [stack được hỗ trợ](#supported-stacks), hoặc bạn chỉ cần một `CLAUDE.md` đơn giản (built-in `claude /init` là đủ — không cần cài thêm công cụ).
 
 ---
 
@@ -296,9 +337,28 @@ Thông thường:  Bạn mô tả dự án → Claude đoán stack → Claude vi
 Công cụ này:   Code đọc stack → Code đưa sự kiện đã xác nhận cho Claude → Claude viết doc từ sự kiện
 ```
 
-Ý tưởng then chốt: **một scanner Node.js đọc mã nguồn của bạn trước** (deterministic, không AI), sau đó pipeline Claude 4-pass viết tài liệu, bị ràng buộc bởi những gì scanner tìm thấy. Claude không thể bịa ra đường dẫn hay framework không thực sự có trong code.
+Pipeline chạy theo **3 giai đoạn**, với code ở cả hai phía của lời gọi LLM:
 
-Xem kiến trúc đầy đủ tại [docs/vi/architecture.md](docs/vi/architecture.md).
+**1. Step A — Scanner (deterministic, không LLM).** Một Node.js scanner walk qua thư mục gốc dự án, đọc `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`, parse các tệp `.env*` (với redaction biến nhạy cảm cho `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), phân loại pattern kiến trúc (5 pattern A/B/C/D/E của Java, Kotlin CQRS / multi-module, Next.js App vs Pages Router, FSD, components-pattern), khám phá các domain, và xây dựng allowlist tường minh cho mọi đường dẫn source tồn tại. Đầu ra: `project-analysis.json` — single source of truth cho mọi bước sau.
+
+**2. Step B — Pipeline Claude 4-pass (bị ràng buộc bởi sự kiện của Step A).**
+- **Pass 1** đọc các tệp đại diện theo nhóm domain và trích ~50–100 quy ước mỗi domain — response wrapper, thư viện logging, error handling, quy ước đặt tên, pattern test. Chạy một lần mỗi nhóm domain (`max 4 domains, 40 files per group`) nên context không bao giờ overflow.
+- **Pass 2** gộp toàn bộ phân tích theo từng domain thành bức tranh toàn dự án và giải quyết bất đồng bằng cách chọn quy ước trội nhất.
+- **Pass 3** viết `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides — split thành các stage (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide) để prompt mỗi stage vừa với context window của LLM kể cả khi `pass2-merged.json` lớn. Sub-divide 3b/3c thành các batch ≤15 domain cho dự án ≥16 domain.
+- **Pass 4** gieo lớp L4 memory (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`) và thêm các universal scaffold rule. Pass 4 **bị cấm chỉnh sửa `CLAUDE.md`** — Section 8 của Pass 3 là authoritative.
+
+**3. Step C — Verification (deterministic, không LLM).** Năm validator kiểm tra đầu ra:
+- `claude-md-validator` — 25 kiểm tra cấu trúc trên `CLAUDE.md` (8 sections, đếm H3/H4, tính duy nhất của memory file, T1 canonical heading invariant). Language-invariant: cùng verdict bất kể `--lang`.
+- `content-validator` — 10 kiểm tra nội dung gồm xác minh path-claim (`STALE_PATH` bắt các tham chiếu `src/...` bị bịa) và phát hiện MANIFEST drift.
+- `pass-json-validator` — Pass 1/2/3/4 well-formed JSON + đếm section theo stack.
+- `plan-validator` — nhất quán plan ↔ disk (legacy, gần như no-op từ v2.1.0).
+- `sync-checker` — nhất quán đăng ký disk ↔ `sync-map.json` qua 7 thư mục được theo dõi.
+
+Ba mức severity (`fail` / `warn` / `advisory`) để warning không bao giờ deadlock CI vì hallucination LLM mà người dùng có thể tự sửa.
+
+Bất biến gắn kết tất cả: **Claude chỉ có thể trích các đường dẫn thật sự tồn tại trong code của bạn**, vì Step A trao cho nó một allowlist hữu hạn. Nếu LLM vẫn cố bịa (hiếm nhưng xảy ra với vài seed), Step C bắt được trước khi docs ship.
+
+Chi tiết per-pass, resume dựa trên marker, workaround staged-rules cho `.claude/` sensitive-path block của Claude Code, và internals của stack detection xem [docs/vi/architecture.md](docs/vi/architecture.md).
 
 ---
 

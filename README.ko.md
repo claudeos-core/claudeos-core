@@ -7,7 +7,11 @@
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
 
-**실제 소스 코드에서 Claude Code 문서를 자동 생성하세요.** 프로젝트를 정적 분석한 다음 4-pass Claude 파이프라인을 실행하여 `.claude/rules/`, standards, skills, guides를 생성하는 CLI 도구입니다 — 그 결과 Claude Code가 일반적인 컨벤션이 아닌 **여러분 프로젝트의** 컨벤션을 따릅니다.
+**Claude Code가 첫 시도부터 _여러분 프로젝트의_ 컨벤션을 따르게 하세요 — generic 기본값이 아니라.**
+
+deterministic Node.js scanner가 코드를 먼저 읽고, 4-pass Claude 파이프라인이 추출된 사실을 기반으로 전체 문서 세트를 작성합니다 — `CLAUDE.md` + 자동 로드되는 `.claude/rules/` + standards + skills + L4 memory. 10개 출력 언어, 5개 post-generation validator, LLM이 코드에 없는 파일이나 framework를 만들어 내지 못하게 막는 명시적 path allowlist.
+
+[**12 stacks**](#supported-stacks)에서 즉시 작동 (monorepo 포함) — `npx` 명령 한 번, 설정 불필요, 중단 시 resume-safe, 재실행 idempotent.
 
 ```bash
 npx claudeos-core init
@@ -19,18 +23,28 @@ npx claudeos-core init
 
 ## 이 도구가 뭔가요?
 
-여러분은 Claude Code를 사용합니다. 똑똑하지만, **여러분 프로젝트의 컨벤션은 모릅니다**:
-- 팀이 MyBatis를 쓰는데, Claude는 JPA 코드를 생성합니다.
-- 래퍼가 `ApiResponse.ok()`인데, Claude는 `ResponseEntity.success()`를 씁니다.
-- 패키지가 `controller/order/`인데, Claude는 `order/controller/`를 만듭니다.
+여러분은 Claude Code를 사용합니다. 강력하지만, 매 세션이 새로 시작됩니다 — _여러분의_ 프로젝트가 어떻게 구성됐는지 기억이 없습니다. 그래서 팀의 실제 패턴과 거의 매칭되지 않는 "generally good" 기본값으로 fallback합니다:
 
-그래서 생성된 모든 파일을 고치는 데 상당한 시간을 씁니다.
+- 팀은 **MyBatis**를 쓰는데, Claude는 JPA repository를 생성.
+- 응답 wrapper가 `ApiResponse.ok()`인데, Claude는 `ResponseEntity.success()`를 씀.
+- 패키지가 layer-first (`controller/order/`)인데, Claude는 domain-first (`order/controller/`) 생성.
+- 에러는 centralized middleware인데, Claude는 모든 endpoint에 `try/catch`를 흩뿌림.
 
-**ClaudeOS-Core가 이 문제를 해결합니다.** 실제 소스 코드를 스캔하여 컨벤션을 파악하고, Claude Code가 자동으로 읽어 들이는 디렉토리인 `.claude/rules/`에 완전한 규칙 세트를 작성합니다. 다음에 _"주문 CRUD 만들어줘"_ 라고 하면, Claude는 첫 시도부터 여러분의 컨벤션을 따릅니다.
+프로젝트마다 `.claude/rules/` 세트가 있으면 좋겠지만 — Claude Code가 매 세션 자동 로드 — 새 repo마다 hand로 작성하는 데 몇 시간 걸리고, 코드가 발전하며 drift됩니다.
+
+**ClaudeOS-Core가 실제 소스 코드에서 직접 작성합니다.** deterministic Node.js scanner가 프로젝트를 먼저 읽고 (스택, ORM, 패키지 layout, 컨벤션, 파일 경로), 4-pass Claude 파이프라인이 추출된 사실을 완전한 문서 세트로 변환합니다:
+
+- **`CLAUDE.md`** — Claude가 매 세션 가장 먼저 읽는 프로젝트 인덱스
+- **`.claude/rules/`** — 카테고리별 자동 로드 rules (`00.core` / `10.backend` / `20.frontend` / `30.security-db` / `40.infra` / `60.memory` / `70.domains` / `80.verification`)
+- **`claudeos-core/standard/`** — 참고 문서 (각 rule의 "왜")
+- **`claudeos-core/skills/`** — 재사용 가능한 패턴 (CRUD scaffolding, 페이지 템플릿)
+- **`claudeos-core/memory/`** — 프로젝트와 함께 자라는 decision log + failure pattern
+
+scanner가 Claude에게 명시적 path allowlist를 건네기 때문에, LLM은 **코드에 없는 파일이나 framework를 만들어 낼 수 없습니다**. 5개 post-generation validator (`claude-md-validator`, `content-validator`, `pass-json-validator`, `plan-validator`, `sync-checker`)가 ship 전에 출력을 검증 — language-invariant라 영어로 생성하든 한국어로 생성하든 다른 8개 언어든 같은 룰이 적용됩니다.
 
 ```
-이전:  사람 → Claude Code → "일반적으로 좋은" 코드 → 수동 수정
-이후:  사람 → Claude Code → 프로젝트에 맞는 코드 → 그대로 사용
+이전:  사람 → Claude Code → "generally good" 코드 → 매번 수동 수정
+이후:  사람 → Claude Code → 여러분 프로젝트에 맞는 코드 → 그대로 사용
 ```
 
 ---
@@ -119,37 +133,45 @@ npx claudeos-core init
 </details>
 
 <details>
-<summary><strong>📄 생성된 <code>CLAUDE.md</code> 발췌 (실제 출력)</strong></summary>
+<summary><strong>📄 생성된 <code>CLAUDE.md</code> 발췌 (실제 출력 — Section 1 + 2)</strong></summary>
 
 ```markdown
-## 4. Core Architecture
+# CLAUDE.md — spring-boot-realworld-example-app
 
-### Core Patterns
+> Reference implementation of the RealWorld backend specification on
+> Java 11 + Spring Boot 2.6, exposing both REST and GraphQL endpoints
+> over a hexagonal MyBatis persistence layer.
 
-- **Hexagonal ports & adapters**: domain ports live in `io.spring.core.{aggregate}`
-  and are implemented by `io.spring.infrastructure.repository.MyBatis{Aggregate}Repository`.
-  The domain layer has zero MyBatis imports.
-- **CQRS-lite read/write split (same DB)**: write side goes through repository ports
-  + entities; read side is a separate `readservice` package whose `@Mapper`
-  interfaces return `*Data` DTOs directly (no entity hydration).
-- **No aggregator/orchestrator layer**: multi-source orchestration happens inside
-  application services (e.g., `ArticleQueryService`); there is no `*Aggregator`
-  class in the codebase.
-- **Application-supplied UUIDs**: entity constructors assign their own UUID; PK is
-  passed via `#{user.id}` on INSERT. The global
-  `mybatis.configuration.use-generated-keys=true` flag is dead config
-  (auto-increment is unused).
-- **JWT HS512 authentication**: `io.spring.infrastructure.service.DefaultJwtService`
-  is the sole token subject in/out; `io.spring.api.security.JwtTokenFilter`
-  extracts the token at the servlet layer.
+## 1. Role Definition
+
+As the senior developer for this repository, you are responsible for
+writing, modifying, and reviewing code. Responses must be written in English.
+A Java Spring Boot REST + GraphQL API server organized around a hexagonal
+(ports & adapters) architecture, with a CQRS-lite read/write split inside
+an XML-driven MyBatis persistence layer and JWT-based authentication.
+
+## 2. Project Overview
+
+| Item | Value |
+|---|---|
+| Language | Java 11 |
+| Framework | Spring Boot 2.6.3 |
+| Build Tool | Gradle (Groovy DSL) |
+| Persistence | MyBatis 3 via `mybatis-spring-boot-starter:2.2.2` (no JPA) |
+| Database | SQLite (`org.xerial:sqlite-jdbc:3.36.0.3`) — `dev.db` (default), `:memory:` (test) |
+| Migration | Flyway — single baseline `V1__create_tables.sql` |
+| API Style | REST (`io.spring.api.*`) + GraphQL via Netflix DGS `:4.9.21` |
+| Authentication | JWT HS512 (`jjwt-api:0.11.2`) + Spring Security `PasswordEncoder` |
+| Server Port | 8080 (default) |
+| Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-참고: 위의 모든 주장은 실제 소스에 기반합니다 — 클래스명, 패키지 경로, 설정 키, dead-config 플래그까지 모두 Claude가 파일을 작성하기 전에 스캐너가 추출한 것입니다.
+위의 모든 값 — 정확한 의존성 좌표, `dev.db` 파일명, `V1__create_tables.sql` 마이그레이션명, "no JPA" — 은 Claude가 파일을 작성하기 전에 scanner가 `build.gradle` / `application.properties` / 소스 트리에서 추출한 것입니다. 어떤 것도 추측되지 않았습니다.
 
 </details>
 
 <details>
-<summary><strong>🛡️ 자동 로드되는 실제 rule 파일 (<code>.claude/rules/10.backend/03.data-access-rules.md</code>)</strong></summary>
+<summary><strong>🛡️ 자동 로드되는 실제 rule 파일 (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
 
 ````markdown
 ---
@@ -157,42 +179,56 @@ paths:
   - "**/*"
 ---
 
-# Data Access Rules
+# Controller Rules
 
-## XML-only SQL
-- Every SQL statement lives in `src/main/resources/mapper/*.xml`.
-  NO `@Select` / `@Insert` / `@Update` / `@Delete` annotations on `@Mapper` methods.
-- Each `@Mapper` interface has exactly one XML file at
-  `src/main/resources/mapper/{InterfaceName}.xml`.
-- `<mapper namespace="...">` MUST be the fully qualified Java interface name.
-  The single existing exception is `TransferData.xml` (free-form `transfer.data`).
+## REST (`io.spring.api.*`)
 
-## Dynamic SQL
-- `<if>` predicates MUST guard both null and empty:
-  `<if test="X != null and X != ''">`. Empty-only is the existing HIGH-severity bug pattern.
-- Prefer `LIMIT n OFFSET m` over MySQL-style `LIMIT m, n`.
+- Controllers are the SOLE response wrapper for HTTP — no aggregator/facade above them.
+  Return `ResponseEntity<?>` or a body Spring serializes via `JacksonCustomizations`.
+- Each controller method calls exactly ONE application service method. Multi-source
+  composition lives in the application service.
+- Controllers MUST NOT import `io.spring.infrastructure.*`. No direct `@Mapper` access.
+- Validate command-param arguments with `@Valid`. Custom JSR-303 constraints live under
+  `io.spring.application.{aggregate}.*`.
+- Resolve the current user via `@AuthenticationPrincipal User`.
+- Let exceptions propagate to `io.spring.api.exception.CustomizeExceptionHandler`
+  (`@ControllerAdvice`). Do NOT `try/catch` business exceptions inside the controller.
+
+## GraphQL (`io.spring.graphql.*`)
+
+- DGS components (`@DgsComponent`) are the sole GraphQL response wrappers.
+  Use `@DgsQuery` / `@DgsData` / `@DgsMutation`.
+- Resolve the current user via `io.spring.graphql.SecurityUtil.getCurrentUser()`.
 
 ## Examples
 
 ✅ Correct:
-```xml
-<update id="update">
-  UPDATE articles
-  <set>
-    <if test="article.title != null and article.title != ''">title = #{article.title},</if>
-    updated_at = #{article.updatedAt}
-  </set>
-  WHERE id = #{article.id}
-</update>
+```java
+@PostMapping
+public ResponseEntity<?> createArticle(@AuthenticationPrincipal User user,
+                                       @Valid @RequestBody NewArticleParam param) {
+    Article article = articleCommandService.createArticle(param, user);
+    ArticleData data = articleQueryService.findById(article.getId(), user)
+        .orElseThrow(ResourceNotFoundException::new);
+    return ResponseEntity.ok(Map.of("article", data));
+}
 ```
 
 ❌ Incorrect:
-```xml
-<mapper namespace="article.mapper">          <!-- NO — namespace MUST be FQCN -->
+```java
+@PostMapping
+public ResponseEntity<?> create(@RequestBody NewArticleParam p) {
+    try {
+        articleCommandService.createArticle(p, currentUser);
+    } catch (Exception e) {                                      // NO — let CustomizeExceptionHandler handle it
+        return ResponseEntity.status(500).body(e.getMessage());  // NO — leaks raw message
+    }
+    return ResponseEntity.ok().build();
+}
 ```
 ````
 
-`paths: ["**/*"]` glob은 프로젝트 내 어떤 파일을 편집하든 Claude Code가 이 rule을 자동으로 로드한다는 뜻입니다. ✅/❌ 예제는 이 코드베이스의 실제 컨벤션과 기존 버그 패턴에서 직접 추출됩니다.
+`paths: ["**/*"]` glob은 프로젝트 내 어떤 파일을 편집하든 Claude Code가 이 rule을 자동으로 로드한다는 뜻입니다. rule 안의 모든 클래스명, 패키지 경로, exception handler는 scan된 소스에서 직접 추출 — 프로젝트의 실제 `CustomizeExceptionHandler`와 `JacksonCustomizations`까지 포함됩니다.
 
 </details>
 
@@ -200,25 +236,26 @@ paths:
 <summary><strong>🧠 자동 생성된 <code>decision-log.md</code> 시드 (실제 출력)</strong></summary>
 
 ```markdown
-## 2026-04-26 — CQRS-lite read/write split inside the persistence layer
+## 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
 
-- **Context:** Writes go through `core.*Repository` port → `MyBatis*Repository`
-  adapter → `io.spring.infrastructure.mybatis.mapper.{Aggregate}Mapper`.
-  Reads bypass the domain port: application service →
-  `io.spring.infrastructure.mybatis.readservice.{Concept}ReadService` directly,
-  returning flat `*Data` DTOs from `io.spring.application.data.*`.
-- **Options considered:** Single repository surface returning hydrated entities
-  for both reads and writes.
-- **Decision:** Same database, two `@Mapper` packages — `mapper/` (write side,
-  operates on core entities) and `readservice/` (read side, returns `*Data` DTOs).
-  Read DTOs avoid entity hydration overhead.
-- **Consequences:** Reads are NOT routed through the domain port — this is
-  intentional, not a bug. Application services may inject both a `*Repository`
-  (writes) and one or more `*ReadService` interfaces (reads) at the same time.
-  Do NOT add hydrate-then-map glue in the read path.
+- **Context:** `io.spring.core.*` exposes `*Repository` ports (e.g.,
+  `io.spring.core.article.ArticleRepository`) implemented by
+  `io.spring.infrastructure.repository.MyBatis*Repository` adapters.
+  The domain layer has zero `org.springframework.*` /
+  `org.apache.ibatis.*` / `io.spring.infrastructure.*` imports.
+- **Options considered:** JPA/Hibernate, Spring Data, MyBatis-Plus
+  `BaseMapper`. None adopted.
+- **Decision:** MyBatis 3 (`mybatis-spring-boot-starter:2.2.2`) with
+  hand-written XML statements under `src/main/resources/mapper/*.xml`.
+  Hexagonal port/adapter wiring keeps the domain framework-free.
+- **Consequences:** Every SQL lives in XML — `@Select`/`@Insert`/`@Update`/`@Delete`
+  annotations are forbidden. New aggregates require both a
+  `core.{aggregate}.{Aggregate}Repository` port AND a
+  `MyBatis{Aggregate}Repository` adapter; introducing a JPA repository would
+  split the persistence model.
 ```
 
-Pass 4는 `pass2-merged.json`에서 추출한 아키텍처 결정 사항으로 `decision-log.md`를 시딩합니다 — 따라서 이후 세션은 코드베이스가 _이렇게 보인다_ 는 사실뿐 아니라 _왜_ 이런지도 기억합니다.
+Pass 4는 `pass2-merged.json`에서 추출한 아키텍처 결정 사항으로 `decision-log.md`를 시딩합니다 — 이후 세션이 코드베이스가 _이렇게 보인다_ 는 사실뿐 아니라 _왜_ 이런지도 기억하도록. 모든 옵션 ("JPA/Hibernate", "MyBatis-Plus")과 모든 결과는 실제 `build.gradle` dependency 블록에 기반합니다.
 
 </details>
 
@@ -277,13 +314,17 @@ your-project/
 
 ## 누구를 위한 도구인가?
 
-| 여러분이... | 이 도구가 도와주는 것... |
+| 여러분이... | 이 도구가 제거하는 pain |
 |---|---|
-| **Claude Code로 새 프로젝트를 시작하는 솔로 개발자** | "Claude에게 컨벤션을 가르치는" 단계를 통째로 건너뜀 |
-| **공유 표준을 유지하는 팀 리드** | `.claude/rules/`를 최신 상태로 유지하는 번거로움을 자동화 |
-| **Claude Code를 이미 사용 중이지만 생성된 코드 수정에 지친 사용자** | Claude가 "일반적으로 좋은" 패턴이 아닌 _여러분의_ 패턴을 따르게 함 |
+| **Claude Code로 새 프로젝트를 시작하는 솔로 개발자** | "매 세션마다 Claude에게 컨벤션 가르치기" — 사라짐. `CLAUDE.md` + 8-카테고리 `.claude/rules/`를 한 번에 생성. |
+| **여러 repo의 공유 표준을 유지하는 팀 리드** | 패키지 이름 변경, ORM 교체, response wrapper 변경 시 `.claude/rules/` drift. ClaudeOS-Core는 deterministic하게 재동기화 — 같은 입력 → byte-identical 출력, diff noise 없음. |
+| **Claude Code를 이미 사용 중이지만 생성된 코드 수정에 지친 사용자** | 잘못된 response wrapper, 잘못된 패키지 layout, MyBatis 쓰는데 JPA, 중앙 집중 middleware인데 try/catch 흩뿌림. scanner가 진짜 컨벤션을 추출하고 모든 Claude pass가 명시적 path allowlist에 대해 실행됩니다. |
+| **새 repo onboarding** (기존 프로젝트 / 팀 합류) | repo에서 `init` 실행하면 살아있는 architecture map: CLAUDE.md의 stack 표, 레이어별 rules with ✅/❌ 예제, 주요 결정 ("왜")의 decision log seed (JPA vs MyBatis, REST vs GraphQL 등). 5개 파일 읽기가 5,000개 소스 파일 읽기를 이깁니다. |
+| **한국어 / 일본어 / 중국어 / 외 7개 언어로 작업** | 대부분의 Claude Code rule generator는 영어 only. ClaudeOS-Core는 **10개 언어** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`)로 전체 세트를 작성하며 **byte-identical 구조 검증** — 출력 언어와 무관하게 같은 `claude-md-validator` verdict. |
+| **monorepo에서 작업** (Turborepo, pnpm/yarn workspaces, Lerna) | 하나의 실행에서 backend + frontend 도메인이 별도 prompt로 분석; `apps/*/`와 `packages/*/`가 자동으로 walk됨; 스택별 rules는 `70.domains/{type}/` 아래 emit. |
+| **OSS 기여 또는 실험** | 출력은 gitignore-friendly — `claudeos-core/`는 로컬 작업 dir, `CLAUDE.md` + `.claude/`만 ship 필요. 중단 시 resume-safe; 재실행 idempotent (수동 rule 편집은 `--force` 없으면 보존됨). |
 
-**적합하지 않은 경우:** one-size-fits-all preset bundle을 원하면 (스캔 단계 없이 day-one에 작동하는 agents/skills/rules 묶음 — [docs/ko/comparison.md](docs/ko/comparison.md) 참고), 또는 프로젝트가 [지원 스택](#supported-stacks) 중 하나에 맞지 않는 경우.
+**적합하지 않은 경우:** scan 단계 없이 day-one에 작동하는 one-size-fits-all preset bundle을 원하면 (어떤 게 어디 맞는지는 [docs/ko/comparison.md](docs/ko/comparison.md) 참고), 프로젝트가 [지원 스택](#supported-stacks) 중 하나에 아직 맞지 않는 경우, 또는 단일 `CLAUDE.md`만 필요한 경우 (빌트인 `claude /init`로 충분 — 다른 도구 설치할 필요 없음).
 
 ---
 
@@ -296,9 +337,28 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 뒤집습니다:
 이 도구: 코드가 스택을 읽음 → 코드가 확정된 사실을 Claude에게 전달 → Claude가 사실로부터 docs 작성
 ```
 
-핵심 아이디어: **Node.js 스캐너가 먼저 소스 코드를 읽고** (deterministic, AI 없음), 그다음 4-pass Claude 파이프라인이 스캐너가 발견한 사실의 제약 안에서 문서를 작성합니다. Claude는 코드에 실제로 없는 경로나 프레임워크를 만들어 낼 수 없습니다.
+파이프라인은 **3 단계**로 실행되며, LLM 호출의 양쪽에 코드가 있습니다:
 
-전체 아키텍처는 [docs/ko/architecture.md](docs/ko/architecture.md) 참고.
+**1. Step A — Scanner (deterministic, LLM 없음).** Node.js scanner가 프로젝트 루트를 walk하며 `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`을 읽고, `.env*` 파일을 파싱하고 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 같은 sensitive variable은 redaction), architecture pattern을 분류 (Java 5 패턴 A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs Pages Router, FSD, components-pattern), 도메인을 발견하고, 존재하는 모든 소스 파일 경로의 명시적 allowlist를 만듭니다. 출력: `project-analysis.json` — 이후 모든 단계의 단일 source of truth.
+
+**2. Step B — 4-Pass Claude 파이프라인 (Step A의 사실에 의해 제약).**
+- **Pass 1**은 도메인 그룹별 대표 파일을 읽고 도메인당 ~50–100개 컨벤션 추출 — response wrapper, logging library, error handling, naming convention, test pattern. 도메인 그룹당 한 번 실행 (`max 4 domains, 40 files per group`)이라 context가 절대 overflow 안 됨.
+- **Pass 2**는 모든 도메인별 분석을 프로젝트 전체 그림으로 병합하고, 도메인이 disagree할 때 dominant 컨벤션을 선택.
+- **Pass 3**는 `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides를 작성 — stage로 split (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide)이라 `pass2-merged.json`이 클 때도 각 stage prompt가 LLM context window에 fit. ≥16 도메인 프로젝트는 3b/3c를 ≤15 도메인 batch로 sub-divide.
+- **Pass 4**는 L4 memory layer (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`)를 시드하고 universal scaffold rules를 추가. Pass 4는 **`CLAUDE.md` 수정 금지** — Pass 3의 Section 8이 authoritative.
+
+**3. Step C — Verification (deterministic, LLM 없음).** 5개 validator가 출력을 검증:
+- `claude-md-validator` — `CLAUDE.md`에 25개 구조 검사 (8 sections, H3/H4 count, memory file uniqueness, T1 canonical heading invariant). Language-invariant: `--lang`과 무관하게 같은 verdict.
+- `content-validator` — 10개 content 검사 — path-claim 검증 (`STALE_PATH`가 fabricated `src/...` 참조 잡아냄)과 MANIFEST drift 감지.
+- `pass-json-validator` — Pass 1/2/3/4 JSON well-formedness + stack-aware section count.
+- `plan-validator` — plan ↔ disk 일관성 (legacy, v2.1.0부터 대부분 no-op).
+- `sync-checker` — 7개 추적 디렉토리에 걸쳐 disk ↔ `sync-map.json` 등록 일관성.
+
+3-tier severity (`fail` / `warn` / `advisory`)라 사용자가 수동으로 고칠 수 있는 LLM hallucination에 대해 warning이 CI를 deadlock하지 않습니다.
+
+전체를 묶는 invariant: **Claude는 코드에 실제로 존재하는 경로만 인용 가능** — Step A가 finite allowlist를 건네기 때문. LLM이 그래도 만들어 내려 하면 (드물지만 특정 seed에서 발생) Step C가 docs ship 전에 잡아냅니다.
+
+per-pass 상세, marker 기반 resume, Claude Code의 `.claude/` sensitive-path block을 위한 staged-rules 우회, stack 감지 internals는 [docs/ko/architecture.md](docs/ko/architecture.md) 참고.
 
 ---
 

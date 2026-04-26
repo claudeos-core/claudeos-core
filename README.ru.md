@@ -7,7 +7,11 @@
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
 
-**Автоматическая генерация документации Claude Code из вашего реального исходного кода.** CLI-инструмент, который статически анализирует ваш проект, а затем запускает 4-pass конвейер Claude для создания `.claude/rules/`, standards, skills и guides — так что Claude Code следует конвенциям **именно вашего** проекта, а не общим.
+**Заставьте Claude Code следовать конвенциям _именно вашего_ проекта с первой попытки — а не общим дефолтам.**
+
+Детерминированный Node.js scanner сначала читает ваш код; затем 4-pass конвейер Claude пишет полный набор — `CLAUDE.md` + автоматически загружаемые `.claude/rules/` + standards + skills + L4 memory. 10 языков вывода, 5 post-generation validator-ов и явный path allowlist, не позволяющий LLM выдумывать файлы или фреймворки, отсутствующие в вашем коде.
+
+Работает на [**12 стеках**](#supported-stacks) (включая monorepo) — одна команда `npx`, без конфигурации, resume-safe, идемпотентно.
 
 ```bash
 npx claudeos-core init
@@ -19,18 +23,28 @@ npx claudeos-core init
 
 ## Что это такое?
 
-Вы используете Claude Code. Он умный, но **не знает конвенций вашего проекта**:
-- Ваша команда использует MyBatis, а Claude генерирует код для JPA.
-- Ваша обёртка — `ApiResponse.ok()`, а Claude пишет `ResponseEntity.success()`.
-- Ваши пакеты — `controller/order/`, а Claude создаёт `order/controller/`.
+Вы используете Claude Code. Он мощный, но каждая сессия начинается с нуля — у него нет памяти о том, как устроен _ваш_ проект. Поэтому он откатывается на «в целом хорошие» дефолты, которые редко совпадают с тем, что реально делает ваша команда:
 
-Поэтому вы тратите немалую часть времени на правку каждого сгенерированного файла.
+- Ваша команда использует **MyBatis**, а Claude генерирует JPA-репозитории.
+- Ваша обёртка для ответов — `ApiResponse.ok()`, а Claude пишет `ResponseEntity.success()`.
+- Ваши пакеты — layer-first (`controller/order/`), а Claude создаёт domain-first (`order/controller/`).
+- Ваши ошибки идут через централизованный middleware, а Claude разбрасывает `try/catch` по каждому endpoint.
 
-**ClaudeOS-Core решает эту проблему.** Он сканирует ваш реальный исходный код, выясняет ваши конвенции и записывает полный набор правил в `.claude/rules/` — каталог, который Claude Code читает автоматически. В следующий раз, когда вы скажете *"Создай CRUD для заказов"*, Claude последует вашим конвенциям с первой попытки.
+Хочется иметь набор `.claude/rules/` для каждого проекта — Claude Code автоматически загружает его в каждой сессии — но писать эти rules вручную для каждого нового repo занимает часы, и они расходятся с кодом по мере его эволюции.
+
+**ClaudeOS-Core пишет их за вас, прямо из вашего реального исходного кода.** Детерминированный Node.js scanner сначала читает ваш проект (стек, ORM, layout пакетов, конвенции, пути файлов). Затем 4-pass конвейер Claude превращает извлечённые факты в полный набор документации:
+
+- **`CLAUDE.md`** — индекс проекта, который Claude читает в каждой сессии
+- **`.claude/rules/`** — автоматически загружаемые rules по категориям (`00.core` / `10.backend` / `20.frontend` / `30.security-db` / `40.infra` / `60.memory` / `70.domains` / `80.verification`)
+- **`claudeos-core/standard/`** — справочные документы («почему» за каждым rule)
+- **`claudeos-core/skills/`** — переиспользуемые паттерны (CRUD scaffolding, шаблоны страниц)
+- **`claudeos-core/memory/`** — decision log + failure patterns, растущие вместе с проектом
+
+Поскольку scanner передаёт Claude явный path allowlist, LLM **не может выдумать файлы или фреймворки, которых нет в вашем коде**. Пять post-generation validator-ов (`claude-md-validator`, `content-validator`, `pass-json-validator`, `plan-validator`, `sync-checker`) проверяют вывод до отправки — language-invariant, поэтому одни и те же правила применяются независимо от того, генерируете ли вы на английском, русском или одном из 8 других языков.
 
 ```
-До:    Вы → Claude Code → "в целом хороший" код → правка вручную
-После: Вы → Claude Code → код, соответствующий вашему проекту → используйте как есть
+До:    Вы → Claude Code → "в целом хороший" код → ручные правки каждый раз
+После: Вы → Claude Code → код, соответствующий ВАШЕМУ проекту → используйте как есть
 ```
 
 ---
@@ -119,37 +133,45 @@ npx claudeos-core init
 </details>
 
 <details>
-<summary><strong>📄 Что попадает в ваш <code>CLAUDE.md</code> (реальный фрагмент)</strong></summary>
+<summary><strong>📄 Что попадает в ваш <code>CLAUDE.md</code> (реальный фрагмент — Section 1 + 2)</strong></summary>
 
 ```markdown
-## 4. Core Architecture
+# CLAUDE.md — spring-boot-realworld-example-app
 
-### Core Patterns
+> Reference implementation of the RealWorld backend specification on
+> Java 11 + Spring Boot 2.6, exposing both REST and GraphQL endpoints
+> over a hexagonal MyBatis persistence layer.
 
-- **Hexagonal ports & adapters**: domain ports live in `io.spring.core.{aggregate}`
-  and are implemented by `io.spring.infrastructure.repository.MyBatis{Aggregate}Repository`.
-  The domain layer has zero MyBatis imports.
-- **CQRS-lite read/write split (same DB)**: write side goes through repository ports
-  + entities; read side is a separate `readservice` package whose `@Mapper`
-  interfaces return `*Data` DTOs directly (no entity hydration).
-- **No aggregator/orchestrator layer**: multi-source orchestration happens inside
-  application services (e.g., `ArticleQueryService`); there is no `*Aggregator`
-  class in the codebase.
-- **Application-supplied UUIDs**: entity constructors assign their own UUID; PK is
-  passed via `#{user.id}` on INSERT. The global
-  `mybatis.configuration.use-generated-keys=true` flag is dead config
-  (auto-increment is unused).
-- **JWT HS512 authentication**: `io.spring.infrastructure.service.DefaultJwtService`
-  is the sole token subject in/out; `io.spring.api.security.JwtTokenFilter`
-  extracts the token at the servlet layer.
+## 1. Role Definition
+
+As the senior developer for this repository, you are responsible for
+writing, modifying, and reviewing code. Responses must be written in English.
+A Java Spring Boot REST + GraphQL API server organized around a hexagonal
+(ports & adapters) architecture, with a CQRS-lite read/write split inside
+an XML-driven MyBatis persistence layer and JWT-based authentication.
+
+## 2. Project Overview
+
+| Item | Value |
+|---|---|
+| Language | Java 11 |
+| Framework | Spring Boot 2.6.3 |
+| Build Tool | Gradle (Groovy DSL) |
+| Persistence | MyBatis 3 via `mybatis-spring-boot-starter:2.2.2` (no JPA) |
+| Database | SQLite (`org.xerial:sqlite-jdbc:3.36.0.3`) — `dev.db` (default), `:memory:` (test) |
+| Migration | Flyway — single baseline `V1__create_tables.sql` |
+| API Style | REST (`io.spring.api.*`) + GraphQL via Netflix DGS `:4.9.21` |
+| Authentication | JWT HS512 (`jjwt-api:0.11.2`) + Spring Security `PasswordEncoder` |
+| Server Port | 8080 (default) |
+| Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-Примечание: каждое утверждение выше основано на реальном исходном коде — имена классов, пути пакетов, ключи конфигурации и флаг dead-config извлечены сканером ещё до того, как Claude начал писать файл.
+Каждое значение выше — точные координаты зависимостей, имя файла `dev.db`, имя миграции `V1__create_tables.sql`, «no JPA» — извлечено сканером из `build.gradle` / `application.properties` / дерева исходников ещё до того, как Claude начал писать файл. Ничего не угадано.
 
 </details>
 
 <details>
-<summary><strong>🛡️ Реальное автоматически загружаемое правило (<code>.claude/rules/10.backend/03.data-access-rules.md</code>)</strong></summary>
+<summary><strong>🛡️ Реальное автоматически загружаемое правило (<code>.claude/rules/10.backend/01.controller-rules.md</code>)</strong></summary>
 
 ````markdown
 ---
@@ -157,42 +179,56 @@ paths:
   - "**/*"
 ---
 
-# Data Access Rules
+# Controller Rules
 
-## XML-only SQL
-- Every SQL statement lives in `src/main/resources/mapper/*.xml`.
-  NO `@Select` / `@Insert` / `@Update` / `@Delete` annotations on `@Mapper` methods.
-- Each `@Mapper` interface has exactly one XML file at
-  `src/main/resources/mapper/{InterfaceName}.xml`.
-- `<mapper namespace="...">` MUST be the fully qualified Java interface name.
-  The single existing exception is `TransferData.xml` (free-form `transfer.data`).
+## REST (`io.spring.api.*`)
 
-## Dynamic SQL
-- `<if>` predicates MUST guard both null and empty:
-  `<if test="X != null and X != ''">`. Empty-only is the existing HIGH-severity bug pattern.
-- Prefer `LIMIT n OFFSET m` over MySQL-style `LIMIT m, n`.
+- Controllers are the SOLE response wrapper for HTTP — no aggregator/facade above them.
+  Return `ResponseEntity<?>` or a body Spring serializes via `JacksonCustomizations`.
+- Each controller method calls exactly ONE application service method. Multi-source
+  composition lives in the application service.
+- Controllers MUST NOT import `io.spring.infrastructure.*`. No direct `@Mapper` access.
+- Validate command-param arguments with `@Valid`. Custom JSR-303 constraints live under
+  `io.spring.application.{aggregate}.*`.
+- Resolve the current user via `@AuthenticationPrincipal User`.
+- Let exceptions propagate to `io.spring.api.exception.CustomizeExceptionHandler`
+  (`@ControllerAdvice`). Do NOT `try/catch` business exceptions inside the controller.
+
+## GraphQL (`io.spring.graphql.*`)
+
+- DGS components (`@DgsComponent`) are the sole GraphQL response wrappers.
+  Use `@DgsQuery` / `@DgsData` / `@DgsMutation`.
+- Resolve the current user via `io.spring.graphql.SecurityUtil.getCurrentUser()`.
 
 ## Examples
 
 ✅ Correct:
-```xml
-<update id="update">
-  UPDATE articles
-  <set>
-    <if test="article.title != null and article.title != ''">title = #{article.title},</if>
-    updated_at = #{article.updatedAt}
-  </set>
-  WHERE id = #{article.id}
-</update>
+```java
+@PostMapping
+public ResponseEntity<?> createArticle(@AuthenticationPrincipal User user,
+                                       @Valid @RequestBody NewArticleParam param) {
+    Article article = articleCommandService.createArticle(param, user);
+    ArticleData data = articleQueryService.findById(article.getId(), user)
+        .orElseThrow(ResourceNotFoundException::new);
+    return ResponseEntity.ok(Map.of("article", data));
+}
 ```
 
 ❌ Incorrect:
-```xml
-<mapper namespace="article.mapper">          <!-- NO — namespace MUST be FQCN -->
+```java
+@PostMapping
+public ResponseEntity<?> create(@RequestBody NewArticleParam p) {
+    try {
+        articleCommandService.createArticle(p, currentUser);
+    } catch (Exception e) {                                      // NO — let CustomizeExceptionHandler handle it
+        return ResponseEntity.status(500).body(e.getMessage());  // NO — leaks raw message
+    }
+    return ResponseEntity.ok().build();
+}
 ```
 ````
 
-Glob `paths: ["**/*"]` означает, что Claude Code автоматически загружает это правило при редактировании любого файла в проекте. Примеры ✅/❌ берутся прямо из реальных конвенций этой кодовой базы и существующих паттернов багов.
+Glob `paths: ["**/*"]` означает, что Claude Code автоматически загружает это правило при редактировании любого файла в проекте. Каждое имя класса, путь пакета и exception handler в правиле берутся прямо из просканированного кода — включая реальные `CustomizeExceptionHandler` и `JacksonCustomizations` этого проекта.
 
 </details>
 
@@ -200,25 +236,26 @@ Glob `paths: ["**/*"]` означает, что Claude Code автоматиче
 <summary><strong>🧠 Автоматически сгенерированный сид <code>decision-log.md</code> (реальный фрагмент)</strong></summary>
 
 ```markdown
-## 2026-04-26 — CQRS-lite read/write split inside the persistence layer
+## 2026-04-26 — Hexagonal ports & adapters with MyBatis-only persistence
 
-- **Context:** Writes go through `core.*Repository` port → `MyBatis*Repository`
-  adapter → `io.spring.infrastructure.mybatis.mapper.{Aggregate}Mapper`.
-  Reads bypass the domain port: application service →
-  `io.spring.infrastructure.mybatis.readservice.{Concept}ReadService` directly,
-  returning flat `*Data` DTOs from `io.spring.application.data.*`.
-- **Options considered:** Single repository surface returning hydrated entities
-  for both reads and writes.
-- **Decision:** Same database, two `@Mapper` packages — `mapper/` (write side,
-  operates on core entities) and `readservice/` (read side, returns `*Data` DTOs).
-  Read DTOs avoid entity hydration overhead.
-- **Consequences:** Reads are NOT routed through the domain port — this is
-  intentional, not a bug. Application services may inject both a `*Repository`
-  (writes) and one or more `*ReadService` interfaces (reads) at the same time.
-  Do NOT add hydrate-then-map glue in the read path.
+- **Context:** `io.spring.core.*` exposes `*Repository` ports (e.g.,
+  `io.spring.core.article.ArticleRepository`) implemented by
+  `io.spring.infrastructure.repository.MyBatis*Repository` adapters.
+  The domain layer has zero `org.springframework.*` /
+  `org.apache.ibatis.*` / `io.spring.infrastructure.*` imports.
+- **Options considered:** JPA/Hibernate, Spring Data, MyBatis-Plus
+  `BaseMapper`. None adopted.
+- **Decision:** MyBatis 3 (`mybatis-spring-boot-starter:2.2.2`) with
+  hand-written XML statements under `src/main/resources/mapper/*.xml`.
+  Hexagonal port/adapter wiring keeps the domain framework-free.
+- **Consequences:** Every SQL lives in XML — `@Select`/`@Insert`/`@Update`/`@Delete`
+  annotations are forbidden. New aggregates require both a
+  `core.{aggregate}.{Aggregate}Repository` port AND a
+  `MyBatis{Aggregate}Repository` adapter; introducing a JPA repository would
+  split the persistence model.
 ```
 
-Pass 4 заполняет `decision-log.md` архитектурными решениями, извлечёнными из `pass2-merged.json`, чтобы будущие сессии помнили *почему* кодовая база выглядит так, а не только *как* она выглядит.
+Pass 4 заполняет `decision-log.md` архитектурными решениями, извлечёнными из `pass2-merged.json`, чтобы будущие сессии помнили *почему* кодовая база выглядит так, как выглядит — не только *как* она выглядит. Каждый рассмотренный вариант («JPA/Hibernate», «MyBatis-Plus») и каждое следствие основаны на реальном блоке зависимостей `build.gradle`.
 
 </details>
 
@@ -277,13 +314,17 @@ your-project/
 
 ## Кому это подходит?
 
-| Если вы... | Это поможет вам... |
+| Если вы... | Боль, которую это снимает |
 |---|---|
-| **Соло-разработчик**, начинающий новый проект с Claude Code | Полностью пропустить фазу "учим Claude нашим конвенциям" |
-| **Тимлид**, поддерживающий общие стандарты | Автоматизировать рутину поддержания `.claude/rules/` в актуальном состоянии |
-| **Уже использующий Claude Code**, но устал править генерируемый код | Заставить Claude следовать ВАШИМ паттернам, а не "в целом хорошим" |
+| **Соло-разработчик**, начинающий новый проект с Claude Code | «Учить Claude нашим конвенциям каждую сессию» — больше нет. `CLAUDE.md` + 8-категорийные `.claude/rules/` сгенерированы за один проход. |
+| **Тимлид**, поддерживающий общие стандарты в нескольких repo | `.claude/rules/` расходятся по мере того, как люди переименовывают пакеты, меняют ORM или response wrapper. ClaudeOS-Core пере-синхронизирует детерминированно — один и тот же вход → byte-identical вывод, без diff-шума. |
+| **Уже использующий Claude Code**, но устал править генерируемый код | Неправильный response wrapper, неправильный layout пакетов, JPA вместо MyBatis, `try/catch` повсюду, когда у вас централизованный middleware. Scanner извлекает ваши реальные конвенции; каждый pass Claude работает с явным path allowlist. |
+| **Onboarding на новый repo** (существующий проект, вход в команду) | Запустите `init` на repo и получите живую architecture map: stack-таблица в CLAUDE.md, rules по слоям с примерами ✅/❌, decision log, заполненный «почему» за крупными выборами (JPA vs MyBatis, REST vs GraphQL и т. д.). Прочитать 5 файлов лучше, чем 5000 файлов исходников. |
+| **Работающий на корейском / японском / китайском / ещё 7 языках** | Большинство генераторов rules для Claude Code — только английский. ClaudeOS-Core пишет полный набор на **10 языках** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) с **byte-identical структурной валидацией** — одинаковый verdict `claude-md-validator` независимо от языка вывода. |
+| **Работающий на monorepo** (Turborepo, pnpm/yarn workspaces, Lerna) | Backend- и frontend-домены анализируются в одном запуске разными промптами; `apps/*/` и `packages/*/` обходятся автоматически; per-stack rules emit-ятся под `70.domains/{type}/`. |
+| **Контрибьютор OSS или экспериментатор** | Вывод gitignore-friendly — `claudeos-core/` это ваш локальный рабочий каталог, отправлять нужно только `CLAUDE.md` + `.claude/`. Resume-safe при прерывании; идемпотентно при повторных запусках (ваши ручные правки rules сохраняются без `--force`). |
 
-**Не подходит, если:** вы хотите универсальный preset bundle из agents/skills/rules, который работает с первого дня без шага сканирования (см. [docs/ru/comparison.md](docs/ru/comparison.md) — что под какие задачи подходит), либо ваш проект пока не вписывается в один из [поддерживаемых стеков](#supported-stacks).
+**Не подходит, если:** вы хотите универсальный preset bundle из agents/skills/rules, который работает с первого дня без шага сканирования (см. [docs/ru/comparison.md](docs/ru/comparison.md) — что под какие задачи подходит), либо ваш проект пока не вписывается в один из [поддерживаемых стеков](#supported-stacks), либо вам нужен только один `CLAUDE.md` (встроенного `claude /init` достаточно — нет необходимости устанавливать ещё один инструмент).
 
 ---
 
@@ -296,9 +337,28 @@ ClaudeOS-Core инвертирует обычный workflow Claude Code:
 Здесь:   Код читает ваш стек → Код передаёт подтверждённые факты Claude → Claude пишет docs из фактов
 ```
 
-Ключевая идея: **Node.js scanner сначала читает ваш исходный код** (детерминированно, без AI), а затем 4-pass конвейер Claude пишет документацию, ограниченную тем, что обнаружил сканер. Claude не может выдумать пути или фреймворки, которых на самом деле нет в вашем коде.
+Конвейер выполняется в **три стадии**, с кодом по обе стороны от LLM-вызова:
 
-Полное описание архитектуры см. в [docs/ru/architecture.md](docs/ru/architecture.md).
+**1. Шаг A — Scanner (детерминированно, без LLM).** Node.js scanner обходит корень проекта, читает `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`, парсит файлы `.env*` (с redaction чувствительных переменных вроде `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), классифицирует архитектурный паттерн (5 паттернов Java A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs. Pages Router, FSD, components-pattern), обнаруживает домены и строит явный allowlist всех существующих путей к исходникам. Вывод: `project-analysis.json` — единственный source of truth для всего, что следует дальше.
+
+**2. Шаг B — 4-Pass Claude конвейер (ограничен фактами шага A).**
+- **Pass 1** читает репрезентативные файлы по группам доменов и извлекает ~50–100 конвенций на домен — response wrapper, logging library, error handling, naming convention, test pattern. Запускается один раз на группу доменов (`max 4 domains, 40 files per group`), так что context никогда не переполняется.
+- **Pass 2** объединяет весь per-domain анализ в общую картину проекта и разрешает разногласия, выбирая доминирующую конвенцию.
+- **Pass 3** пишет `CLAUDE.md` + `.claude/rules/` + `claudeos-core/standard/` + skills + guides — разбит на стадии (`3a` facts → `3b-core/3b-N` rules+standards → `3c-core/3c-N` skills+guides → `3d-aux` database+mcp-guide), так что промпт каждой стадии помещается в context window LLM, даже когда `pass2-merged.json` большой. Sub-divides 3b/3c в batch-и по ≤15 доменов для проектов с ≥16 доменами.
+- **Pass 4** заполняет L4 memory layer (`decision-log.md`, `failure-patterns.md`, `compaction.md`, `auto-rule-update.md`) и добавляет универсальные scaffold rules. Pass 4 **запрещено модифицировать `CLAUDE.md`** — Section 8 Pass 3 авторитетна.
+
+**3. Шаг C — Верификация (детерминированно, без LLM).** Пять validator-ов проверяют вывод:
+- `claude-md-validator` — 25 структурных проверок `CLAUDE.md` (8 sections, H3/H4 counts, memory file uniqueness, T1 canonical heading invariant). Language-invariant: тот же verdict независимо от `--lang`.
+- `content-validator` — 10 content-проверок, включая path-claim верификацию (`STALE_PATH` ловит выдуманные ссылки `src/...`) и MANIFEST drift detection.
+- `pass-json-validator` — well-formedness JSON Pass 1/2/3/4 + stack-aware section count.
+- `plan-validator` — консистентность plan ↔ disk (legacy, в основном no-op с v2.1.0).
+- `sync-checker` — консистентность регистраций disk ↔ `sync-map.json` по 7 отслеживаемым каталогам.
+
+Три уровня severity (`fail` / `warn` / `advisory`), так что warning-и не блокируют CI на LLM-галлюцинациях, которые пользователь может починить вручную.
+
+Инвариант, связывающий всё вместе: **Claude может цитировать только пути, реально существующие в вашем коде**, потому что шаг A передаёт ему конечный allowlist. Если LLM всё-таки попытается что-то выдумать (редко, но случается на определённых seed), шаг C ловит это до отправки docs.
+
+Подробности по pass-ам, marker-based resume, обходной путь staged-rules для блока чувствительных путей `.claude/` в Claude Code и внутренности обнаружения стека — см. [docs/ru/architecture.md](docs/ru/architecture.md).
 
 ---
 

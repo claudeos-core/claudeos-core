@@ -4,6 +4,7 @@
 
 Quick navigation to recent releases:
 
+- [`2.4.1`](#241--2026-04-26) — Documentation overhaul, 10-language localization, fixture sanitization (post-release docs)
 - [`2.4.0`](#240--2026-04-25) — Session Continuity Protocol (v2.4 series feature 1 of 3)
 - [`2.3.3`](#233--2026-04-24) — Template emoji consistency + optional `totalLines` splitter axis
 - [`2.3.2`](#232--2026-04-23) — `cmdInit` decomposition + UX polish + validator co-evolution
@@ -22,6 +23,56 @@ For older entries scroll past v1.5.0 or use the GitHub blame view.
 
 ---
 
+## [2.4.1] — 2026-04-26
+
+Post-release documentation, full 10-language localization, and test-fixture sanitization. **No source code, no template, and no scanner behavior change** — Pass 1/2/3/4 outputs and validator verdicts are byte-identical to v2.4.0. Test suite remains 736 / 736 pass.
+
+### Documentation overhaul
+
+- **Main `README.md` rewrite** — 455 → 514 lines (+59) without losing brevity. Strengthened sections:
+  - **Tagline** (1 line → 3 paragraphs): WHAT (value proposition) + HOW (deterministic scanner + 4-pass + 5 validators + path allowlist) + WHERE (12 stacks, monorepos, one `npx` command, resume-safe, idempotent).
+  - **"What is this?"** — 3-bullet problem statement → 4-bullet (added centralized-middleware vs scattered `try/catch`), explicit WHY (Claude Code stateless, every session starts fresh), 5-bullet output list (`CLAUDE.md` / `.claude/rules/` / `standard/` / `skills/` / `memory/`), differentiator (`path allowlist` + 5 named validators + language-invariant).
+  - **Demo block** (4 collapsible `<details>`) — every excerpt swapped for stronger content from the actual `spring-boot-realworld-example-app` run: `CLAUDE.md` excerpt = Section 1 + 2 (Role Definition + 11-row Project Overview table) instead of Section 4; rule excerpt = `01.controller-rules.md` (REST + GraphQL + ✅/❌ Java examples) instead of `03.data-access-rules.md`; decision-log seed = "Hexagonal ports & adapters with MyBatis-only persistence" (the FIRST decision, with JPA/Hibernate/Spring Data/MyBatis-Plus considered-and-rejected list) instead of CQRS-lite.
+  - **"Who is this for?"** — 3-row table → 7-row table covering Solo dev / Team lead / Existing Claude Code user / Onboarding to a new repo / Working in 10 languages / Monorepo user / OSS contributor; "Not a fit if" expanded from 1 to 3 cases.
+  - **"How does it work?"** — 1-paragraph summary → **3-stage breakdown**: Step A (scanner — concrete file types read, sensitive-variable redaction list, architecture-pattern classification), Step B (4-pass with each pass's input/output/split rules, including Pass 4 CLAUDE.md immutability), Step C (5 validators each named with their distinct check classes + 3-tier severity).
+- **`CLAUDE.md` slim** — 367 → 162 lines (−65 % size, −58 % bytes). Replaced the 4 000-character single-paragraph v2.3.0 changelog wall with a one-line v2.4.1 summary that points to `CHANGELOG.md`. The 33-row exhaustive Tests table compressed into 7 thematic categories with "read the test file directly for details" pointer (DRY: avoid duplicating per-file fixture details that live in the test source). Architecture data-flow diagram, file-by-file reference, and Code Conventions retained at full fidelity. Added Documentation section listing localized READMEs + `docs/{lang}/` mirrors.
+- **`docs/comparison.md` and 3 other docs corrections** — `docs/architecture.md` `sync-checker` description ("Cross-references between standards and rules" → "Disk files match the `sync-map.json` registrations"); `docs/stacks.md` Vite/Angular port-extraction fabrication removed (scanner does NOT read `vite.config.server.port` nor `angular.json` for port — both are framework-default fallbacks); `docs/verification.md` "sibling project" wording neutralized to "a CLAUDE.md generated with `--lang ja`".
+- **`README.md` fabricated URL removed** — the `https://github.com/affaan-m/everything-claude-code` link in the "Not a fit" section was a guessed URL not present in the v2.3.2 HEAD; removed in favor of an internal pointer to `docs/comparison.md`.
+
+### 10-language localization
+
+- **9 localized READMEs (`README.{ko,ja,zh-CN,es,vi,hi,ru,fr,de}.md`)** — full rewrite to match the new 514-line English structure. All 10 READMEs now share identical structural metrics: **514 lines, 14 H2 sections (fence-aware), 28 code fences, 4 `<details>` blocks, 28 inline-code spans matching ±2**. Code blocks (terminal output, CLAUDE.md excerpt, rule excerpt, decision-log seed, mermaid labels) are byte-identical to English across all 10 languages. Only surrounding prose is translated.
+- **9 new `docs/{lang}/` folders** — every non-English README now has a parallel `docs/{lang}/` directory mirroring the 12 English `docs/*.md` files (architecture, stacks, verification, commands, diagrams, memory-layer, safety, manual-installation, advanced-config, comparison, troubleshooting, README index). Total new files: 9 × 12 = **108 docs/ translations** (~25 000 lines of localized prose). Internal cross-links resolve within each language folder; "English original" pointer at the top of each translated doc links back to `../{filename}.md`.
+- **Language-switcher consistency normalized** — all 10 README headers now use the same convention: 9 `· · ·`-separated language links, current-language entry omitted (matching the original English convention). Earlier mixed conventions (some agents had self-link, some had bold-unlinked, some omitted) have been unified.
+- **`docs/vi/troubleshooting.md` broken-link fix** — `[SECURITY.md](../SECURITY.md)` → `[SECURITY.md](../../SECURITY.md)`. The Vietnamese translator agent had copied the English `../SECURITY.md` literal, which resolves correctly from `docs/` but breaks from `docs/vi/`. Other 8 languages' agents got this right via `../../`.
+
+### Test fixture sanitization (real-project fingerprint purge)
+
+- **Removed `tests/fixtures/claude-md/observed-ko-bad.md` and `observed-ko-fixed.md`** (17 KB + 15 KB). These two fixtures were anonymized exports from a real internal Vite + React project: file names had been changed to placeholders (`Acme*` instead of the original component prefix), but **structural fingerprints survived the rename and remained identifiable** — multi-entry `VITE_DESKTOP_PORT 3030` / `VITE_MOBILE_PORT 3033` / `VITE_STORYBOOK_PORT 4040` env-var pattern; internal RBAC convention (`buttonAuthorities` prop + `SYS_CODE_CONSTANTS.USE_BTN_AUTH`); `Orval + axios + generated-api-client/` tooling combination; precise package-version triple (TypeScript 5.8.3 + React 19.1.0 + Vite 6.3.5 + sass 1.89 + orval ^8.5.3); desktop/mobile multi-entry split architecture; `createBrowserRouter` + `RouterProvider` desktop-vs-mobile layout pair; the host placeholder `local-dev.example.internal`. None of the per-token name redactions removed the underlying structural pattern, which is sufficient to identify the source repository.
+- **Added synthetic generic replacements** — `tests/fixtures/claude-md/valid-ko.md` (128 lines, ~4 KB) and `bad-ko.md` (148 lines, ~5 KB), modeled identically on the established `valid-ja.md` / `bad-ja.md` shape: generic `sample-project` with Express 4.19 + PostgreSQL 15 + Prisma 5 + TypeScript 5.4 + Vitest, port 3000, no real-world traceable identifiers. Korean test coverage is preserved (valid + §9 anti-pattern detection both still test in Korean), and the 9-error signature for `bad-ko.md` matches `bad-ja.md` / `bad-zh-CN.md` / `bad-es.md` / `bad-hi.md` / `bad-ru.md` exactly (1 S1 + 4 M-* + 4 F2-*).
+- **`tests/claude-md-validator.test.js` updated** to reference the new fixture names (`valid-ko.md` and `bad-ko.md`) and removed the Korean special-case branch (`code === "ko" ? "observed-ko-fixed.md" : ...`); all 10 supported languages now follow the same `valid-{code}.md` pattern.
+- **New hard rule** committed to project memory: `feedback_no-real-project-fingerprints-in-fixtures.md` — fixture sanitization requires structural-pattern removal (ports, RBAC conventions, tooling combinations, package versions, directory splits), not just name token replacement. Protects against regression.
+
+### CHANGELOG strict-English scrub
+
+- **52 substitutions of banned terminology categories** — the per-project memory hard rule defines categories (validation-process labels, project-status descriptors) that may not appear in any document; matching phrases were replaced with neutral test-suite vocabulary (`regression testing`, `regression scenario`, `Spring projects`, `Larger enterprise-style YAMLs`, `your project`, etc.). 16 anonymized project-name placeholders (12 frontend + 4 backend variants) were collapsed to two generic `Vite frontend test project` and `Spring backend test project` labels. Restores full compliance with the project memory hard rule.
+- **12 non-English narrative replacements** — Korean, Japanese, and Chinese fragments inside backticked LLM-output examples were replaced with English placeholder descriptions (e.g., `<localized gloss>`, `the localized form of "Memory (L4)" in each script`, `<localized gloss A> / <localized gloss B>` for the two header-translation drift examples). `CHANGELOG.md` is now strict English narrative end to end — the only remaining non-ASCII characters are universal technical typography (em-dashes, mathematical arrows, inequalities, emoji status markers), none of which constitutes "language content".
+- **Two grammatical cleanups** — minor leftover phrasing from the previous terminology pass was tightened (one tense / possessive correction at line 1704; one redundant compound noun simplified at line 1750).
+- **v2.4.0 entry intro test-count corrected** — `Test suite 702 / 702 pass` → `Test suite 736 / 736 pass (final)`. The 702 number was the initial Session-Continuity-Protocol-only state at the top of the v2.4.0 entry; subsequent sub-sections within the same entry already documented the bump to 736 after 15 pipeline robustness fixes. The intro now reflects the final shipped state to avoid reader confusion.
+
+### Repository hygiene
+
+- **`claudeos-core/` test artifact removed from repo root** — leftover output from running the tool against itself during functional tests (3 files in `claudeos-core/generated/` + empty `claudeos-core/memory/`). The directory is `.gitignore`d so it was never committed, but removing the on-disk copy keeps the working tree clean.
+- **No code, template, scanner, or validator changes** — `bin/`, `lib/`, `plan-installer/`, `pass-prompts/templates/`, `claude-md-validator/`, `content-validator/`, `pass-json-validator/`, `health-checker/`, `manifest-generator/`, `sync-checker/`, `plan-validator/` are all byte-identical to v2.4.0. `npm test` still passes 736 / 736.
+
+### Verified backward compatibility
+
+- **No breaking changes**. CLI surface (`init`, `lint`, `health`, `memory {compact,score,propose-rules}`, `validate`, `restore`, `refresh`) and all flags (`--lang`, `--force`, `--help`, `--version`) are unchanged. Generated CLAUDE.md / `.claude/rules/` / `claudeos-core/standard,skills,guide,database,mcp-guide,memory/` shapes unchanged.
+- **`npm pack` size dropped 41 %** — 618.8 kB → 365.4 kB tarball as a side effect of the Korean / 8-language README slim-down (was 95–130 kB stale content per locale; now 21–32 kB lean and synced).
+- **Test count unchanged**: 736 / 736 pass on Linux / macOS / Windows × Node 18 / 20.
+
+---
+
 ## [2.4.0] — 2026-04-25
 
 First feature in the v2.4 series: **Session Continuity Protocol** —
@@ -37,9 +88,12 @@ elements when a session resumes after compact or restart.
 This release ships only the protocol itself. Two further v2.4
 features (Self-Check Framework, Common Pattern Taxonomy) are
 planned but not yet implemented; they will land in subsequent
-2.4.x releases. Test suite 702 / 702 pass (up from 699, +3 new
-tests covering positive prose-form, negative H4-form rejection,
-and explicit backward-compatibility for pre-v2.4 CLAUDE.md files).
+2.4.x releases. Test suite final: **736 / 736 pass** (initial
+Session-Continuity-Protocol-only state shipped at 702/702, +3 new
+tests covering positive prose-form, negative H4-form rejection, and
+explicit backward-compatibility for pre-v2.4 CLAUDE.md files;
+the subsequent 15 pipeline robustness fixes documented below
+brought the total to 736).
 
 ### Scaffold — Session Resume block in `claude-md-scaffold.md`
 

@@ -58,7 +58,7 @@ npm uninstall -g claudeos-core
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.0"
+    "claudeos-core": "^2.4.3"
   }
 }
 ```
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# 产出 claudeos-core-2.4.0.tgz
+# 产出 claudeos-core-2.4.3.tgz
 ```
 
 **把 `.tgz` 转移到离线环境。**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **从本地文件安装:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.0.tgz
+npm install -g ./claudeos-core-2.4.3.tgz
 ```
 
 你还需要:
@@ -156,7 +156,7 @@ npm install -g ./claudeos-core-2.4.0.tgz
 无论哪种安装方式,验证全部 4 个前置条件:
 
 ```bash
-# 应打印版本(例如 2.4.0)
+# 应打印版本(例如 2.4.3)
 claudeos-core --version
 
 # 应打印 Claude Code 版本

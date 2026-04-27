@@ -58,7 +58,7 @@ npm uninstall -g claudeos-core
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.0"
+    "claudeos-core": "^2.4.3"
   }
 }
 ```
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# Производит claudeos-core-2.4.0.tgz
+# Производит claudeos-core-2.4.3.tgz
 ```
 
 **Перенесите `.tgz` в air-gapped окружение.**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **Установите из локального файла:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.0.tgz
+npm install -g ./claudeos-core-2.4.3.tgz
 ```
 
 Также понадобятся:
@@ -156,7 +156,7 @@ npm install -g ./claudeos-core-2.4.0.tgz
 После любого метода установки проверьте все четыре prerequisite:
 
 ```bash
-# Должно напечатать версию (например, 2.4.0)
+# Должно напечатать версию (например, 2.4.3)
 claudeos-core --version
 
 # Должно напечатать версию Claude Code

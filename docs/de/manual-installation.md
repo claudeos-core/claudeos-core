@@ -58,7 +58,7 @@ In die `package.json` Ihres Projekts einfügen:
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.0"
+    "claudeos-core": "^2.4.3"
   }
 }
 ```
@@ -131,7 +131,7 @@ Für Umgebungen ohne Internetzugang:
 
 ```bash
 npm pack claudeos-core
-# Erzeugt claudeos-core-2.4.0.tgz
+# Erzeugt claudeos-core-2.4.3.tgz
 ```
 
 **Übertragen Sie das `.tgz` in Ihre Air-Gapped-Umgebung.**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **Aus der lokalen Datei installieren:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.0.tgz
+npm install -g ./claudeos-core-2.4.3.tgz
 ```
 
 Sie brauchen außerdem:
@@ -156,7 +156,7 @@ Um alle transitiven Dependencies gebündelt zu bekommen, können Sie `npm instal
 Nach jeder Installationsmethode alle vier Voraussetzungen verifizieren:
 
 ```bash
-# Sollte die Version drucken (z. B. 2.4.0)
+# Sollte die Version drucken (z. B. 2.4.3)
 claudeos-core --version
 
 # Sollte Claude-Code-Version drucken

@@ -359,8 +359,8 @@ describe("detectStack — Server port (yml and placeholder)", () => {
   });
 
   it("v2.4.0: extracts port from deeply-nested server: block (>2000 char gap)", async () => {
-    // Regression guard for the 2000-char window limit. Real-world
-    // enterprise YAMLs commonly have `server:` blocks with ssl/http/
+    // Regression guard for the 2000-char window limit. Enterprise YAMLs
+    // commonly have `server:` blocks with ssl/http/
     // tomcat/compression/error children spanning thousands of chars
     // before `port:`. The pre-v2.4.0 pattern silently missed these
     // and the detector defaulted to the Spring Boot 8080 fallback.

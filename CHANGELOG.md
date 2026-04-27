@@ -4,6 +4,7 @@
 
 Quick navigation to recent releases:
 
+- [`2.4.3`](#243--2026-04-27) — Skills catalog reconciliation (MANIFEST ↔ §6 sync) + `STALE_PATH` naming-convention placeholder exemption
 - [`2.4.2`](#242--2026-04-26) — README structural tightening + 9-language re-sync (same-day after v2.4.1 docs overhaul)
 - [`2.4.1`](#241--2026-04-26) — Documentation overhaul, 10-language localization, fixture sanitization (post-release docs)
 - [`2.4.0`](#240--2026-04-25) — Session Continuity Protocol (v2.4 series feature 1 of 3)
@@ -21,6 +22,21 @@ Quick navigation to recent releases:
 - [`1.5.x`](#151--2026-04-06) — Initial public preview
 
 For older entries scroll past v1.5.0 or use the GitHub blame view.
+
+---
+
+## [2.4.3] — 2026-04-27
+
+Skills catalog reconciliation. Closes a structural gap where Pass 3c-core registers per-domain orchestrators (`{category}/02.domains.md`) and their sub-skills (`{category}/domains/{name}.md`) inconsistently — leading to `MANIFEST_DRIFT` advisories. No template, scanner, prompt, or pass-pipeline behavior change. Test suite remains 736 / 736 pass.
+
+- **NEW `manifest-generator/skills-sync.js`** — deterministic post-Pass-3 sync step (~270 lines, pure CommonJS, no new deps). Three pure functions wired into `manifest-generator/index.js` `main()` between `sync-map.json` write and `stale-report.json` initialization:
+  - `discoverPerDomainCatalogs` — walks `claudeos-core/skills/{category}/domains/`, sorts alphabetically.
+  - `patchManifestPerDomainSections` — ensures `MANIFEST.md` contains a canonical `### Per-domain notes` section per category. Idempotent: section current → no write; line stale → replace only the domain-list paragraph (sibling content preserved); section missing → append fresh.
+  - `patchClaudeMdSkillsSection` — ensures each MANIFEST-registered category-root orchestrator is mentioned in §6 Skills sub-section. Sub-skills excluded by design (the v2.3.0 `MANIFEST_DRIFT` exemption handles transitive coverage). §6 detection is multilingual via heading-number matching (`## 6.` plus first `### *Skills*` sub-heading).
+- **Design invariants** — deterministic (no LLM); idempotent (3 consecutive runs produce MD5-identical files); append-only with respect to user edits; failure-isolated (errors logged; `manifest-generator`'s primary outputs unaffected); domain ordering alphabetical (OS-independent reproducibility).
+- **`STALE_PATH` naming-convention placeholder exemption** — `content-validator`'s `hasPlaceholder` predicate (introduced v2.3.0, extended v2.4.0 with `/.../` ellipsis) gains a fourth placeholder family: naming-convention tokens (`camelCase`, `PascalCase`, `kebab-case`, `snake_case`). LLMs writing naming-convention docs routinely cite `src/.../camelCase.tsx` as a template — the convention name IS the lesson, not a path claim. Word-boundary anchored (`\b...\b`), so embedded substrings like `myCamelCaseUtil.ts` are NOT skipped.
+- **Migration** — purely additive. First run after upgrade: existing projects with an LLM-ordered domain list see ONE alphabetic-reordering write; subsequent runs no-op. Projects without `domains/` are unaffected. Projects emitting the naming-convention false positive will see those `STALE_PATH` entries disappear on the next `health` run.
+- **Files changed** — `manifest-generator/skills-sync.js` (NEW), `manifest-generator/index.js` (+2 lines: import + try/catch wrapper), `content-validator/index.js` (one regex line in `hasPlaceholder`), `package.json` / `package-lock.json` (`2.4.2` → `2.4.3`).
 
 ---
 

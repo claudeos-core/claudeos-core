@@ -344,8 +344,8 @@ async function runPass3Split(ctx) {
     //
     // Per-domain type lookup uses `domainTypeMap` from
     // `project-analysis.json`. Domains not in either set fall back to
-    // `backend` (the dominant case in real-world projects) — this
-    // happens only when the analysis JSON is malformed or absent.
+    // `backend` (the dominant project type) — this happens only when
+    // the analysis JSON is malformed or absent.
     const typeOf = (name) => {
       if (domainTypeMap.frontend.has(name)) return "frontend";
       // backend is the default when the domain is unknown to both sets.
@@ -486,7 +486,7 @@ async function runPass3Split(ctx) {
   // was removed because master plans are an internal tool backup not consumed
   // by Claude Code at runtime, and aggregating 30+ files in a single session
   // was the primary source of "Prompt is too long" failures on mid-sized
-  // projects (observed on an 18-domain production run).
+  // projects (observed on 18-domain-class projects).
   //
   // The subStage parameter is kept for forward-compat: if a future version
   // reintroduces master plans via Node-side aggregation, this helper can

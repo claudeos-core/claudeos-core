@@ -58,7 +58,7 @@ npm uninstall -g claudeos-core
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.0"
+    "claudeos-core": "^2.4.3"
   }
 }
 ```
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# claudeos-core-2.4.0.tgz उत्पन्न करता है
+# claudeos-core-2.4.3.tgz उत्पन्न करता है
 ```
 
 **`.tgz` को अपने air-gapped environment में transfer करें।**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **Local file से install करें:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.0.tgz
+npm install -g ./claudeos-core-2.4.3.tgz
 ```
 
 आपको यह भी चाहिए:
@@ -156,7 +156,7 @@ npm install -g ./claudeos-core-2.4.0.tgz
 किसी भी install method के बाद, सभी चार पूर्वापेक्षाओं को सत्यापित करें:
 
 ```bash
-# Version प्रिंट करना चाहिए (उदा., 2.4.0)
+# Version प्रिंट करना चाहिए (उदा., 2.4.3)
 claudeos-core --version
 
 # Claude Code version प्रिंट करना चाहिए

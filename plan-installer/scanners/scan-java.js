@@ -209,7 +209,7 @@ async function scanJavaDomains(stack, ROOT) {
     // v2.4.0 — Deep-sweep fallback (Pattern B/D only).
     //
     // Pre-v2.4.0: standard globs assume `{domain}/{layer}/X.java`. This
-    // misses two real-world layouts:
+    // misses two non-canonical layouts:
     //   (a) Multi-module split: `front/{domain}/{layer}/` for HTTP
     //       layer + `core/{domain}/{layer}/` for service/dao layer.
     //       Standard glob `**/{domain}/{layer}/` actually matches BOTH
@@ -234,7 +234,7 @@ async function scanJavaDomains(stack, ROOT) {
     const standardCount = svc.length + agg.length + mpr.length + dto.length + xml.length;
     if (standardCount === 0 && (p === "B" || p === "D")) {
       const deepFiles = (await glob(`src/main/java/**/${dn}/**/*.java`, { cwd: ROOT })).map(norm);
-      // v2.4.0 — extended layer recognition. Real-world enterprise codebases
+      // v2.4.0 — extended layer recognition. Enterprise codebases
       // commonly include implementation/support layers beyond the canonical
       // controller/service/mapper/dto trio. Files in `factory/`, `strategy/`,
       // `impl/`, `helper/`, etc. were previously dropped by deep-sweep

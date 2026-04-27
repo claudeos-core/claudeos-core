@@ -81,7 +81,7 @@ describe("manifest-generator", () => {
   // ─── v2.1.0: plan-manifest.json was removed ────────────────
   // Master plan generation was removed; a manifest with an empty plans array
   // is noise. This fixes the "plan-manifest.json 62B left behind" gap
-  // observed in 18-domain production runs.
+  // observed on 18-domain-class projects.
 
   it("does NOT generate plan-manifest.json (removed in v2.1.0)", () => {
     // Setup: rules directory + empty generated/ (no plan/ dir exists)

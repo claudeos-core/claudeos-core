@@ -305,15 +305,15 @@ test("batch — marker groupsCompleted includes core stages when batched", () =>
     "single-batch marker must NOT include 3b-core (backward-compat)");
 });
 
-// ─── Empirical scenario: 18-domain project (production run 2026-04-20) ──
-// Real data point from a 102-minute production run on a React 19 + Vite 6
-// admin frontend. These tests pin the observed stage structure so future
-// refactoring doesn't accidentally break projects of this exact shape.
+// ─── Scenario pin: 18-domain project ─────────────────────────────────
+// Pins the observed stage structure for an 18-domain React 19 + Vite 6
+// admin-frontend shape so future refactoring doesn't accidentally break
+// projects of this exact size.
 
-test("batch — 18-domain empirical scenario: 2 batches of 15+3 (as observed in production)", () => {
-  // Generic 18-domain fixture used to pin the split behavior observed in an
-  // actual 18-domain production run (names anonymized — behavior is
-  // count-driven, so exact names don't matter to the algorithm).
+test("batch — 18-domain scenario: 2 batches of 15+3 (pinned shape)", () => {
+  // Generic 18-domain fixture used to pin the split behavior for the
+  // 18-domain shape — behavior is count-driven, so exact names don't
+  // matter to the algorithm.
   const domains = Array.from({ length: 18 }, (_, i) => `domain-${i + 1}`);
   assert.strictEqual(domains.length, 18, "fixture must have exactly 18 domains");
 

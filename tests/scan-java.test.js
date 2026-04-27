@@ -385,7 +385,7 @@ describe("scanJavaDomains — root package", () => {
   });
 
   it("v2.4.0: deep-sweep recognizes implementation layers (factory/strategy/impl/etc.)", async () => {
-    // Real-world enterprise codebases place code under non-canonical
+    // Enterprise codebases place code under non-canonical
     // implementation layers like factory/strategy/impl/handler/manager.
     // Pre-v2.4.0 deep-sweep only recognized service|aggregator|facade|
     // usecase|orchestrator and dropped any file whose nearest layer

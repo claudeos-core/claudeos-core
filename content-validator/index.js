@@ -463,11 +463,28 @@ async function main() {
   // refuse it on most platforms — `.` and `..` are the only legal
   // dot-only directory names). Three consecutive dots in a path segment
   // are unambiguous placeholder signal.
+  //
+  // v2.4.3 — Naming-convention placeholders (`camelCase`, `PascalCase`,
+  // `kebab-case`, `snake_case`) added as placeholder markers.
+  //
+  // LLMs writing naming-convention docs frequently illustrate file naming
+  // rules using the convention name itself as the example filename, e.g.
+  // `src/admin/pages/mgmt/camelCase.tsx` (e.g. `userMgt.tsx`). The reader
+  // is expected to substitute their actual filename — the `camelCase` token
+  // is the lesson, not a path claim. The same pattern shows up for
+  // `PascalCase.tsx` (component naming), `kebab-case.tsx` (sometimes used
+  // for slugs), and `snake_case.py`/`.rb` (less common in TS but seen in
+  // multi-language standards docs). All four are unambiguous placeholders
+  // when used as a filename stem — no real production file would carry
+  // these literal names. Word-boundary anchored to avoid matching real
+  // identifiers that happen to contain these substrings (e.g. a real
+  // `myCamelCaseUtil.ts` should NOT be skipped — only standalone tokens).
   const hasPlaceholder = (p) =>
     /\{[^}]+\}/.test(p) ||       // {domain} style
     /X{3,}/.test(p) || /Xxx/.test(p) ||  // XXX+ anywhere, or Xxx token
     /\*/.test(p) ||              // glob star
-    /\/\.\.\.\//.test(p);        // /.../ ellipsis path segment (v2.4.0)
+    /\/\.\.\.\//.test(p) ||      // /.../ ellipsis path segment (v2.4.0)
+    /\b(?:camelCase|PascalCase|kebab-case|snake_case)\b/.test(p);  // v2.4.3 naming-convention tokens
 
   // File-level exclusion: some generated rule files are DESIGNED to cite
   // convention-trap paths as teaching examples — they tell the reader
@@ -625,8 +642,8 @@ async function main() {
 
     // Pull every `claudeos-core/skills/...` path that appears inside
     // a backtick span in the MANIFEST. This catches the table's
-    // "entry" column regardless of the heading language ("등록된
-    // 스킬" / "Registered Skills" / "登録済みスキル" — all match).
+    // "entry" column regardless of the heading language — match works
+    // on the path token only, not on any per-language heading text.
     const SKILL_PATH_RE = /`(claudeos-core\/skills\/[\w\-./]+\.md)`/g;
     const registered = new Set();
     let m;

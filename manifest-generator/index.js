@@ -22,6 +22,7 @@ const matter = require("gray-matter");
 const { glob } = require("glob");
 const { parseFileBlocks, parseCodeBlocks, CODE_BLOCK_PLANS } = require("../lib/plan-parser");
 const { updateStaleReport } = require("../lib/stale-report");
+const { syncSkillsCatalog } = require("./skills-sync");
 
 const ROOT = process.env.CLAUDEOS_ROOT || path.resolve(__dirname, "../..");
 const GEN = path.join(ROOT, "claudeos-core/generated");
@@ -160,6 +161,16 @@ async function main() {
   // stale output (62 B plan-manifest + 147 B plan-sync-status) was removed
   // to match the declared v2.1.0 contract "plan/ directory is no longer
   // created during init".
+
+  // ─── Skills catalog reconciliation (v2.4.3) ─────────────
+  // Deterministically reconcile MANIFEST.md ↔ CLAUDE.md §6 cross-references
+  // that LLM stages routinely drift on. Failure here is logged but not
+  // fatal — manifest-generator's primary outputs above are already on disk.
+  try {
+    syncSkillsCatalog(ROOT);
+  } catch (e) {
+    console.log(`  ⚠️  skills-sync: unexpected error (${e.message || e})`);
+  }
 
   // ─── Initialize stale-report.json (preserve existing sub-tool results) ──
   updateStaleReport(GEN, "generatedAt", new Date().toISOString(), { totalIssues: 0, status: "initial" });

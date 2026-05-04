@@ -1,12 +1,12 @@
 # Memory Layer (L4)
 
-v2.0 起,ClaudeOS-Core 在常规文档之外还会写出一个持久化的 memory layer。它面向那些希望让 Claude Code 做以下事情的长期项目:
+v2.0 起,ClaudeOS-Core 在常规文档之外还会写出一个持久化的 memory layer。它面向想让 Claude Code 做以下三件事的长期项目:
 
 1. 记住架构决策及其理由。
 2. 从反复出现的失败中学习。
 3. 自动把高频 failure pattern 提升为永久规则。
 
-如果你只是用 ClaudeOS-Core 做一次性生成,可以完全忽略这一层。memory 文件会被写出,但只要你不更新,它们就不会增长。
+只把 ClaudeOS-Core 用作一次性生成时,完全可以忽略这一层。memory 文件会写出来,但只要不更新,就不会增长。
 
 > 英文原文: [docs/memory-layer.md](../memory-layer.md)。中文译文与英文同步。
 
@@ -33,9 +33,9 @@ claudeos-core/
         └── 04.auto-rule-update.md   (rule that auto-loads auto-rule-update.md)
 ```
 
-`60.memory/` 下的 rule 文件有匹配项目文件的 `paths:` glob,memory 应在哪里加载就在哪里加载。当 Claude Code 在编辑匹配某个 glob 的文件时,对应的 memory 文件被加载到 context。
+`60.memory/` 下的 rule 文件有匹配项目文件的 `paths:` glob,memory 该在哪里加载就在哪里加载。Claude Code 编辑匹配某个 glob 的文件时,对应的 memory 文件就会加载到 context。
 
-这是**按需加载** — memory 不会始终在 context,只在相关时才加载。这让 Claude 的工作 context 保持精简。
+这是**按需加载**:memory 不会始终在 context,只在相关时才加载。这让 Claude 的工作 context 保持精简。
 
 ---
 
@@ -43,7 +43,7 @@ claudeos-core/
 
 ### `decision-log.md` — 仅追加的架构决策
 
-当你做出非显然的技术决策时,你(或被你提示的 Claude)追加一段:
+做出非显然的技术决策时,由你(或你提示的 Claude)追加一段:
 
 ```markdown
 ## 2026-04-15 — Use UTC for all stored timestamps
@@ -57,13 +57,13 @@ display layer cleanly separates concerns.
 - Browser-local time — rejected: server-side scheduling needs absolute times.
 ```
 
-这个文件**随时间增长**。它不会被自动删除。旧决策仍是有价值的上下文。
+这个文件**随时间增长**,不会自动删除。旧决策依然是有价值的上下文。
 
-自动加载的 rule(`60.memory/01.decision-log.md`)告诉 Claude Code 在回答"我们为什么这样组织 X?"这类问题之前先查阅此文件。
+自动加载的 rule(`60.memory/01.decision-log.md`)告诉 Claude Code:回答"我们为什么这样组织 X?"这类问题前先查阅此文件。
 
 ### `failure-patterns.md` — 反复出现的错误
 
-当 Claude Code 反复犯同一错误时(例如"Claude 总是生成 JPA,而我们项目用 MyBatis"),写一条:
+Claude Code 反复犯同一错误时(例如"Claude 总是生成 JPA,而项目用 MyBatis"),写一条:
 
 ```markdown
 ### Generates JPA repositories instead of MyBatis mappers
@@ -79,10 +79,10 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
 
 `frequency` / `importance` / `last seen` 字段驱动自动决策:
 
-- **压缩:** `lastSeen > 60 days` 且 `importance < 3` 的条目被删除。
-- **规则提升:** `frequency >= 3` 的条目通过 `memory propose-rules` 被作为新 `.claude/rules/` 的候选浮现。(importance 不是过滤条件 — 它只影响每条提议的 confidence 分。)
+- **压缩:** 删除 `lastSeen > 60 days` 且 `importance < 3` 的条目。
+- **规则提升:** `frequency >= 3` 的条目通过 `memory propose-rules` 浮现,作为新 `.claude/rules/` 的候选。(importance 不是过滤条件,只影响每条提议的 confidence 分。)
 
-元数据字段由 `memory` 子命令使用锚定的正则(`^[\s*-]+\*{0,2}\s*key\s*\*{0,2}\s*[:=]`)解析,所以字段行大致要像上面这样。容忍缩进或斜体变体。
+元数据字段由 `memory` 子命令用锚定正则(`^[\s*-]+\*{0,2}\s*key\s*\*{0,2}\s*[:=]`)解析,所以字段行大致要像上面这样。允许缩进或斜体变体。
 
 ### `compaction.md` — 压缩日志
 
@@ -97,11 +97,11 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
 - file-trimmed: false
 ```
 
-每次 `memory compact` 运行只覆盖 `## Last Compaction` section。你在文件其他地方加的内容会被保留。
+每次 `memory compact` 运行只覆盖 `## Last Compaction` section,你在文件其他地方加的内容会保留。
 
 ### `auto-rule-update.md` — 提议规则队列
 
-当你运行 `memory propose-rules`,Claude 读 `failure-patterns.md` 并把提议的规则内容追加到这里:
+运行 `memory propose-rules` 时,Claude 读 `failure-patterns.md`,把提议的规则内容追加到这里:
 
 ```markdown
 ## Proposed: Use MyBatis mappers, not JPA repositories
@@ -115,13 +115,13 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
     Do NOT generate JpaRepository subclasses.
 ```
 
-你审阅提议,把想要的复制到真正的 rule 文件中。**propose-rules 命令不会自动应用** — 这是有意的,因为 LLM 起草的 rule 需要人审阅。
+你审阅提议,把想要的复制到真正的 rule 文件里。**propose-rules 命令不会自动应用**,这是有意的:LLM 起草的 rule 需要人审阅。
 
 ---
 
 ## 压缩算法
 
-memory 会增长但不会膨胀。当你调用以下命令时,4 阶段压缩运行:
+memory 会增长但不会膨胀。调用下列命令时,4 阶段压缩开始运行:
 
 ```bash
 npx claudeos-core memory compact
@@ -134,17 +134,17 @@ npx claudeos-core memory compact
 | 3 | `importance < 3` 且 `lastSeen > 60 days` | 删除 |
 | 4 | 文件 > 400 行 | 修剪最旧的非保留条目 |
 
-**"被保留"的条目**在所有 stage 中存活。条目被保留的条件之一:
+**"被保留"的条目**在所有 stage 中存活。条目满足以下任一条件即被保留:
 
 - `importance >= 7`
 - `lastSeen < 30 days`
 - body 包含一个具体(非 glob)的活跃 rule 路径(例如 `.claude/rules/10.backend/orm-rules.md`)
 
-"活跃 rule 路径"检查很有意思:如果 memory 条目引用了一个真实存在的 rule 文件,该条目就锚定在那条 rule 的生命周期上。只要那条 rule 存在,memory 就保留。
+"活跃 rule 路径"这条检查挺有意思:memory 条目一旦引用了真实存在的 rule 文件,该条目就锚定在那条 rule 的生命周期上,rule 在,memory 就在。
 
-这个压缩算法是对人类遗忘曲线的有意模拟 — 频繁、最近、重要的留下;稀有、陈旧、不重要的淡出。
+这套压缩算法有意模拟人类的遗忘曲线:频繁、最近、重要的留下,稀有、陈旧、不重要的淡出。
 
-压缩代码见 `bin/commands/memory.js`(`compactFile()` 函数)。
+压缩代码见 `bin/commands/memory.js` 的 `compactFile()` 函数。
 
 ---
 
@@ -156,7 +156,7 @@ npx claudeos-core memory compact
 npx claudeos-core memory score
 ```
 
-为 `failure-patterns.md` 中的条目重新计算 importance:
+为 `failure-patterns.md` 中的条目重算 importance:
 
 ```
 importance = round(frequency × 1.5 + recency × 5), capped at 10
@@ -168,7 +168,7 @@ importance = round(frequency × 1.5 + recency × 5), capped at 10
 - `frequency = 3` 且 `lastSeen = today` 的条目 → `round(3 × 1.5 + 1.0 × 5) = round(9.5) = 10`
 - `frequency = 3` 且 `lastSeen = 90+ days ago` 的条目 → `round(3 × 1.5 + 0 × 5) = 5`
 
-**score 命令在插入前剥离 ALL 已有的 importance 行。** 这避免了多次跑 score 时的重复行回归。
+**score 命令在插入前剥离 ALL 已有的 importance 行**,以避免多次跑 score 时出现重复行回归。
 
 ---
 
@@ -193,65 +193,65 @@ npx claudeos-core memory propose-rules
    `anchored` 表示条目引用了 disk 上的真实文件路径。
 5. 把提议写入 `auto-rule-update.md` 供人工审阅。
 
-**当 importance 缺失时,evidence 值上限为 6** — 没有 importance 分时,仅靠 frequency 不足以把 sigmoid 推向高 confidence。(这是限制 sigmoid 的 input,不是限制提议数量。)
+**importance 缺失时,evidence 值上限为 6**:没有 importance 分时,仅靠 frequency 不足以把 sigmoid 推向高 confidence。(这是限制 sigmoid 的 input,不是限制提议数量。)
 
 ---
 
 ## 典型工作流
 
-对长期项目,节奏大致是:
+长期项目的节奏大致是:
 
-1. **运行一次 `init`**,与其他东西一起设置好 memory 文件。
+1. **运行一次 `init`**,把 memory 文件和其他东西一起设置好。
 
-2. **正常使用 Claude Code 几周。** 注意反复出现的错误(例如 Claude 总是用错的响应封装)。把条目追加到 `failure-patterns.md` — 手工,或请 Claude 帮忙(`60.memory/02.failure-patterns.md` 中的 rule 指示 Claude 何时追加)。
+2. **正常使用 Claude Code 几周。** 留意反复出现的错误(例如 Claude 总是用错的响应封装)。把条目追加到 `failure-patterns.md`,手工写或请 Claude 帮忙(`60.memory/02.failure-patterns.md` 里的 rule 会指示 Claude 何时追加)。
 
-3. **定期跑 `memory score`** 刷新 importance 值。这快且幂等。
+3. **定期跑 `memory score`** 刷新 importance 值,这步快且幂等。
 
-4. **当你有约 5 个以上的高分模式时**,跑 `memory propose-rules` 拿到起草规则。
+4. **攒到约 5 个以上高分模式时**,跑 `memory propose-rules` 拿到起草规则。
 
-5. **审阅提议** 在 `auto-rule-update.md` 中。对每条你想要的,把内容复制到 `.claude/rules/` 下的永久 rule 文件。
+5. **在 `auto-rule-update.md` 中审阅提议**,把想要的复制到 `.claude/rules/` 下的永久 rule 文件。
 
-6. **定期跑 `memory compact`**(每月一次或在定时 CI 中)以让 `failure-patterns.md` 保持有界。
+6. **定期跑 `memory compact`**(每月一次或放进定时 CI),让 `failure-patterns.md` 保持有界。
 
-这个节奏正是这 4 个文件的设计目的。跳过任何一步都行 — memory layer 是 opt-in,未使用的文件不会碍事。
+这套节奏正是这 4 个文件的设计目的。任一步都可以跳过,memory layer 是 opt-in,没用到的文件也不会碍事。
 
 ---
 
 ## 会话连续性
 
-CLAUDE.md 在每次 Claude Code 会话中都被自动加载。memory 文件**默认不自动加载** — 它们由 `60.memory/` rules 在其 `paths:` glob 匹配 Claude 当前编辑文件时按需加载。
+CLAUDE.md 在每次 Claude Code 会话里都自动加载。memory 文件**默认不自动加载**,而是由 `60.memory/` rules 在其 `paths:` glob 匹配 Claude 当前编辑文件时按需加载。
 
-这意味着:在新的 Claude Code 会话中,直到你开始处理相关文件之前,memory 都不可见。
+也就是说:在新的 Claude Code 会话中,memory 在你开始处理相关文件之前都不可见。
 
-在 Claude Code 的自动压缩(约 85% context)运行后,即使 memory 文件之前被加载过,Claude 也会失去对它们的感知。CLAUDE.md 的 Section 8 包含一段 **Session Resume Protocol** 行文,提醒 Claude:
+Claude Code 的自动压缩(约 85% context)运行后,即使 memory 文件之前加载过,Claude 也会失去对它们的感知。CLAUDE.md 的 Section 8 含一段 **Session Resume Protocol** 行文,提醒 Claude:
 
-- 重新扫描 `failure-patterns.md` 中相关的条目。
+- 重新扫描 `failure-patterns.md` 中的相关条目。
 - 重新读 `decision-log.md` 最近的条目。
 - 重新匹配 `60.memory/` 规则与当前打开文件。
 
-这是**行文,不是强制** — 但行文是结构化的,使 Claude 倾向于跟随。Session Resume Protocol 是 v2.3.2+ canonical scaffold 的一部分,在所有 10 种输出语言中都被保留。
+这是**行文,不是强制**,但行文有结构,会让 Claude 倾向于跟随。Session Resume Protocol 是 v2.3.2+ canonical scaffold 的一部分,在 10 种输出语言中都保留。
 
 ---
 
 ## 何时跳过 memory layer
 
-memory layer 在以下场景增加价值:
+memory layer 在以下场景能加分:
 
 - **长期项目**(几个月或更久)。
-- **团队** — `decision-log.md` 成为共享的机构记忆与入职工具。
-- **每天调用 Claude Code ≥10 次的项目** — failure pattern 累积得足够快,可被有效利用。
+- **团队场景**:`decision-log.md` 成为共享的机构记忆与入职工具。
+- **每天调用 Claude Code ≥10 次的项目**:failure pattern 累积得足够快,值得用起来。
 
-它对以下场景过度:
+对以下场景就有点过度:
 
-- 一次性脚本,你下周就丢弃。
+- 一次性脚本,下周就丢。
 - 探针或原型项目。
 - 教程或 demo。
 
-memory 文件仍由 Pass 4 写出,但如果你不更新,它们不会增长。如果你不用它,没有维护负担。
+memory 文件仍由 Pass 4 写出,但只要不更新,它们不会增长。不用它就没有维护负担。
 
-如果你明确不想让 memory rules 自动加载任何东西(出于 context 成本考虑),可以:
+出于 context 成本考虑,明确不想让 memory rules 自动加载任何东西时,有两个办法:
 
-- 删除 `60.memory/` rules — Pass 4 在 resume 时不会重建,只在 `--force` 时重建。
+- 删掉 `60.memory/` rules,Pass 4 在 resume 时不会重建,只在 `--force` 时重建。
 - 或者把每条 rule 的 `paths:` glob 改窄到匹配不到任何东西。
 
 ---

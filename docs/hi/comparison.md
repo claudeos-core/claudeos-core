@@ -1,151 +1,151 @@
-# समान Tools के साथ तुलना
+# Similar Tools के साथ तुलना
 
-यह पृष्ठ ClaudeOS-Core की तुलना अन्य Claude Code tools से करता है जो उसी सामान्य क्षेत्र में काम करते हैं (project-aware Claude Code configuration)।
+इस page पर ClaudeOS-Core की तुलना दूसरे Claude Code tools से करते हैं जो उसी area में काम करते हैं (project-aware Claude Code configuration).
 
-> अंग्रेज़ी मूल: [docs/comparison.md](../comparison.md)। हिन्दी अनुवाद अंग्रेज़ी के साथ समकालिक रखा गया है।
+> अंग्रेज़ी मूल: [docs/comparison.md](../comparison.md). हिन्दी version English के साथ sync रहता है.
 
-**यह scope तुलना है, गुणवत्ता का निर्णय नहीं।** नीचे के अधिकांश tools जो वे करते हैं उसमें उत्कृष्ट हैं। बात यह है कि आपको यह समझने में मदद करें कि क्या ClaudeOS-Core आपकी समस्या में फिट होता है, या क्या उनमें से कोई बेहतर फिट होता है।
+**यह scope की तुलना है, quality का judgement नहीं.** नीचे दिए गए ज़्यादातर tools अपने काम में बढ़िया हैं. मक़सद बस यह समझाना है कि ClaudeOS-Core आपकी problem में fit होता है या उनमें से कोई better fit है.
 
 ---
 
 ## TL;DR
 
-यदि आप **आपके कोड में वास्तव में जो है उसके आधार पर `.claude/rules/` को स्वचालित रूप से उत्पन्न करना चाहते हैं**, यह ClaudeOS-Core की विशेषता है।
+अगर आप चाहते हैं कि **`.claude/rules/` automatically generate हो, वो भी आपके actual code के basis पर**, तो ClaudeOS-Core यही करता है.
 
-यदि आप कुछ और चाहते हैं (विस्तृत preset bundles, planning workflows, agent orchestration, multi-tool config sync), तो Claude Code ecosystem में अन्य tools बेहतर फिट होने की संभावना रखते हैं।
-
----
-
-## ClaudeOS-Core अन्य tools से कैसे भिन्न है
-
-ClaudeOS-Core के परिभाषित गुण:
-
-- **आपके वास्तविक स्रोत कोड को पढ़ता है** (deterministic Node.js scanner — कोई LLM stack का अनुमान नहीं लगाता)।
-- **fact-injected prompts के साथ 4-pass Claude pipeline** (paths/conventions एक बार निकाले जाते हैं और फिर से उपयोग किए जाते हैं)।
-- **5 post-generation validators** (संरचना के लिए `claude-md-validator`, path-claim और content के लिए `content-validator`, intermediate JSON के लिए `pass-json-validator`, legacy plan files के लिए `plan-validator`, disk ↔ sync-map स्थिरता के लिए `sync-checker`)।
-- **language-invariant validation के साथ 10 आउटपुट भाषाएँ**।
-- **Per-project आउटपुट**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer — सब आपके कोड से derived, preset bundle से नहीं।
-
-इस सामान्य क्षेत्र में अन्य Claude Code tools (आप उन्हें layer कर सकते हैं या अपनी आवश्यकता के आधार पर एक अलग चुन सकते हैं):
-
-- **Claude `/init`** — Claude Code में built-in; एक LLM call में एक एकल `CLAUDE.md` लिखता है। छोटे projects पर त्वरित one-file setup के लिए सबसे अच्छा।
-- **Preset/bundle tools** — curated agents, skills, या rules वितरित करते हैं जो "अधिकांश projects" के लिए काम करते हैं। तब सबसे अच्छा जब आपकी परिपाटियाँ bundle के defaults से मेल खाती हों।
-- **Planning/workflow tools** — feature विकास के लिए संरचित methodologies (specs, phases आदि) प्रदान करते हैं। तब सबसे अच्छा जब आप Claude Code के ऊपर एक process layer चाहते हों।
-- **Hook/DX tools** — Claude Code sessions में auto-save, code-quality hooks, या developer-experience improvements जोड़ते हैं।
-- **Cross-agent rule converters** — आपके rules को Claude Code, Cursor आदि में sync रखते हैं।
-
-ये tools अधिकतर **पूरक हैं, प्रतिस्पर्धी नहीं**। ClaudeOS-Core "आपके कोड से per-project rules उत्पन्न करें" काम संभालता है; अन्य अलग कार्य संभालते हैं। अधिकांश को एक साथ उपयोग किया जा सकता है।
+कुछ और चाहिए (curated preset bundles, planning workflows, agent orchestration, multi-tool config sync) तो Claude Code ecosystem के दूसरे tools शायद better fit होंगे.
 
 ---
 
-## ClaudeOS-Core कब सही फ़िट है
+## ClaudeOS-Core दूसरे tools से अलग कैसे है
 
-✅ आप चाहते हैं कि Claude Code सामान्य के बजाय आपके project की परिपाटियों का पालन करे।
-✅ आप एक नया project शुरू कर रहे हैं (या एक टीम को onboard कर रहे हैं) और तेज़ setup चाहते हैं।
-✅ आप मैन्युअल रूप से `.claude/rules/` को maintain करते-करते थक गए हैं क्योंकि आपका codebase विकसित होता है।
-✅ आप [12 समर्थित stacks](stacks.md) में से किसी एक में काम करते हैं।
-✅ आप deterministic, repeatable आउटपुट चाहते हैं (एक ही कोड → हर बार एक ही rules)।
-✅ आपको गैर-English भाषा में आउटपुट चाहिए (10 भाषाएँ built-in)।
+ClaudeOS-Core की defining qualities:
 
-## ClaudeOS-Core कब सही फ़िट नहीं है
+- **असली source code पढ़ता है** (deterministic Node.js scanner. कोई LLM stack guess नहीं करता).
+- **Fact-injected prompts वाला 4-pass Claude pipeline** (paths/conventions एक बार निकलते हैं, फिर reuse होते हैं).
+- **5 post-generation validators**: structure के लिए `claude-md-validator`, path-claim और content के लिए `content-validator`, intermediate JSON के लिए `pass-json-validator`, legacy plan files के लिए `plan-validator`, disk ↔ sync-map consistency के लिए `sync-checker`.
+- **10 output languages, language-invariant validation के साथ.**
+- **Per-project output**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer. सब आपके code से derived, किसी preset bundle से नहीं.
 
-❌ आप एक curated preset bundle of agents/skills/rules चाहते हैं जो scan step के बिना दिन एक से काम करता है।
-❌ आपका stack समर्थित नहीं है और आप एक योगदान करने में रुचि नहीं रखते।
-❌ आप agent orchestration, planning workflows, या coding methodology चाहते हैं — उनमें विशेषज्ञता वाले टूल का उपयोग करें।
-❌ आपको बस एक एकल `CLAUDE.md` चाहिए, पूरा standards/rules/skills set नहीं — `claude /init` पर्याप्त है।
+इसी area के दूसरे Claude Code tools (इन्हें layer कर सकते हैं, या ज़रूरत के हिसाब से कोई एक चुन सकते हैं):
 
----
+- **Claude `/init`**: Claude Code में built-in. एक LLM call में single `CLAUDE.md` लिखता है. छोटे projects पर quick one-file setup के लिए best.
+- **Preset/bundle tools**: curated agents, skills, या rules ship करते हैं जो "ज़्यादातर projects" पर काम करें. तब best जब आपकी conventions bundle के defaults से match करें.
+- **Planning/workflow tools**: feature development के लिए structured methodologies (specs, phases, etc.) देते हैं. तब best जब Claude Code के ऊपर process layer चाहिए.
+- **Hook/DX tools**: Claude Code sessions में auto-save, code-quality hooks, या DX improvements जोड़ते हैं.
+- **Cross-agent rule converters**: rules को Claude Code, Cursor वग़ैरह में sync रखते हैं.
 
-## Scope में क्या narrower vs wider है
-
-ClaudeOS-Core broad-coverage bundles से **narrower** है (यह preset agents, hooks, या methodology ship नहीं करता — केवल आपके project के rules)। यह एक एकल artifact पर ध्यान केंद्रित करने वाले tools से **wider** है (यह CLAUDE.md प्लस standards, skills, guides, और memory की एक multi-directory tree उत्पन्न करता है)। आपके project के लिए कौन सी axis मायने रखती है उसके आधार पर चुनें।
+ये tools ज़्यादातर **complementary हैं, competing नहीं.** ClaudeOS-Core "code से per-project rules generate करो" वाला काम करता है. बाक़ी tools अलग jobs करते हैं. ज़्यादातर को साथ use कर सकते हैं.
 
 ---
 
-## "बस Claude /init का उपयोग क्यों न करें?"
+## ClaudeOS-Core कब सही fit है
 
-उचित प्रश्न। `claude /init` Claude Code में built-in है और एक LLM call में एक एकल `CLAUDE.md` लिखता है। यह तेज़ और zero-config है।
+✅ Claude Code generic conventions की जगह आपके project की conventions follow करे.
+✅ नया project शुरू कर रहे हैं (या team onboard कर रहे हैं) और fast setup चाहिए.
+✅ Codebase evolve होने के साथ-साथ `.claude/rules/` को manually maintain करते-करते थक गए हैं.
+✅ [12 supported stacks](stacks.md) में से किसी एक पर काम करते हैं.
+✅ Deterministic, repeatable output चाहिए (एक ही code → हर बार वही rules).
+✅ Non-English language में output चाहिए (10 languages built-in).
 
-**यह तब अच्छा काम करता है जब:**
+## ClaudeOS-Core कब सही fit नहीं है
 
-- आपका project छोटा है (≤30 फ़ाइलें)।
-- आप Claude द्वारा एक त्वरित file-tree look से आपके stack का अनुमान लगाने में ठीक हैं।
-- आपको केवल एक `CLAUDE.md` चाहिए, पूर्ण `.claude/rules/` set नहीं।
-
-**यह तब संघर्ष करता है जब:**
-
-- आपके project में एक custom convention है जिसे Claude एक त्वरित look से नहीं पहचानता (उदा., JPA के बजाय MyBatis, custom response wrapper, असामान्य package layout)।
-- आप ऐसा आउटपुट चाहते हैं जो team members के बीच reproducible हो।
-- आपका project इतना बड़ा है कि एक Claude call विश्लेषण समाप्त करने से पहले context window से टकरा जाता है।
-
-ClaudeOS-Core उन मामलों के लिए बनाया गया है जहाँ `/init` संघर्ष करता है। यदि `/init` आपके लिए काम करता है, तो आपको शायद ClaudeOS-Core की आवश्यकता नहीं।
+❌ Agents/skills/rules का curated preset bundle चाहिए जो scan step के बिना day one से काम करे.
+❌ Stack supported नहीं है और contribute करने में interest नहीं है.
+❌ Agent orchestration, planning workflows, या coding methodology चाहिए. उनमें specialized tool use करें.
+❌ बस single `CLAUDE.md` चाहिए, पूरा standards/rules/skills set नहीं. `claude /init` काफ़ी है.
 
 ---
 
-## "बस rules को मैन्युअल रूप से क्यों न लिखें?"
+## Scope में narrower vs wider क्या है
 
-यह भी उचित है। Hand-writing `.claude/rules/` सबसे सटीक विकल्प है — आप अपने project को सबसे अच्छी तरह जानते हैं।
-
-**यह तब अच्छा काम करता है जब:**
-
-- आपके पास एक project है, आप एकमात्र developer हैं, scratch से rules लिखने में महत्वपूर्ण समय लगाने में आप ठीक हैं।
-- आपकी परिपाटियाँ stable और well-documented हैं।
-
-**यह तब संघर्ष करता है जब:**
-
-- आप अक्सर नए projects शुरू करते हैं (हर एक को rule-writing समय की आवश्यकता होती है)।
-- आपकी टीम बढ़ती है और लोग भूल जाते हैं कि rules में क्या है।
-- आपकी परिपाटियाँ विकसित होती हैं, और rules उनके पीछे drift हो जाते हैं।
-
-ClaudeOS-Core आपको एक एकल run में एक उपयोगी rule set की ओर अधिकांश रास्ता देता है। बाक़ी hand-tuning है — और कई users इसे एक खाली फ़ाइल से शुरू करने की तुलना में अपने समय का बेहतर उपयोग पाते हैं।
+ClaudeOS-Core broad-coverage bundles से **narrower** है (preset agents, hooks, या methodology ship नहीं करता. सिर्फ़ project के rules). और single artifact पर focus करने वाले tools से **wider** है (CLAUDE.md plus standards, skills, guides, और memory की multi-directory tree generate करता है). project के लिए जो axis matter करती हो उसके हिसाब से चुनें.
 
 ---
 
-## "एक preset bundle का उपयोग करने की तुलना में क्या अंतर है?"
+## "बस Claude /init use क्यों न करें?"
 
-Everything Claude Code जैसे bundles आपको rules / skills / agents का एक curated set देते हैं जो "अधिकांश projects" के लिए काम करता है। जब आपका project bundle की assumptions के साथ फिट होता है तो वे तेज़ adoption के लिए बहुत अच्छे हैं।
+Fair question. `claude /init` Claude Code में built-in है और एक LLM call में single `CLAUDE.md` लिखता है. यह fast और zero-config है.
 
-**Bundles तब अच्छा काम करते हैं जब:**
+**अच्छा काम करता है जब:**
 
-- आपके project की परिपाटियाँ bundle के defaults से मेल खाती हैं (उदा., standard Spring Boot या standard Next.js)।
-- आपके पास असामान्य stack विकल्प नहीं हैं (उदा., JPA के बजाय MyBatis)।
-- आप एक starting point चाहते हैं और वहाँ से customize करने में खुश हैं।
+- Project छोटा है (≤30 files).
+- Claude एक quick file-tree look से stack guess कर ले, ये ठीक है.
+- सिर्फ़ `CLAUDE.md` चाहिए, पूरा `.claude/rules/` set नहीं.
 
-**Bundles तब संघर्ष करते हैं जब:**
+**दिक्क़त होती है जब:**
 
-- आपका stack non-default tooling का उपयोग करता है (bundle के "Spring Boot" rules JPA मानते हैं)।
-- आपके पास एक मज़बूत project-विशिष्ट convention है जिसे bundle नहीं जानता।
-- आप चाहते हैं कि rules आपके कोड के विकसित होते ही update हों।
+- Project में कोई custom convention है जो Claude quick look में नहीं पकड़ पाता (जैसे JPA की जगह MyBatis, custom response wrapper, unusual package layout).
+- Output team के बीच reproducible चाहिए.
+- Project इतना बड़ा है कि एक Claude call analysis पूरी होने से पहले context window से टकरा जाता है.
 
-ClaudeOS-Core bundles को complement कर सकता है: project-विशिष्ट rules के लिए ClaudeOS-Core का उपयोग करें; सामान्य workflow rules के लिए एक bundle layer करें।
+ClaudeOS-Core उन्हीं cases के लिए बना है जहाँ `/init` struggle करता है. अगर `/init` से काम चल रहा है, तो शायद ClaudeOS-Core की ज़रूरत नहीं.
 
 ---
 
-## समान tools के बीच चयन करना
+## "बस rules manually क्यों न लिखें?"
 
-यदि आप ClaudeOS-Core और किसी अन्य project-aware Claude Code tool के बीच चुन रहे हैं, तो खुद से पूछें:
+यह भी fair है. `.claude/rules/` hand-writing सबसे accurate option है. अपने project को आप ही सबसे बेहतर जानते हैं.
 
-1. **क्या मैं चाहता हूँ कि टूल मेरा कोड पढ़े, या क्या मैं अपने project का वर्णन करना चाहता हूँ?**
-   Code-reading → ClaudeOS-Core। Description → अधिकांश अन्य।
+**अच्छा काम करता है जब:**
 
-2. **क्या मुझे हर बार एक ही आउटपुट चाहिए?**
-   हाँ → ClaudeOS-Core (deterministic)। नहीं → उनमें से कोई भी।
+- एक project है, अकेले developer हैं, और scratch से rules लिखने में time invest करने में दिक्क़त नहीं.
+- Conventions stable और well-documented हैं.
 
-3. **क्या मुझे पूर्ण standards/rules/skills/guides चाहिए, या केवल एक CLAUDE.md?**
-   पूर्ण set → ClaudeOS-Core। केवल CLAUDE.md → Claude `/init`।
+**दिक्क़त होती है जब:**
 
-4. **क्या मेरी आउटपुट language English है, या कोई अन्य language?**
-   English-only → कई tools फ़िट होते हैं। अन्य languages → ClaudeOS-Core (10 भाषाएँ built-in)।
+- नए projects अक्सर शुरू होते हैं (हर एक में rule-writing time लगता है).
+- Team बढ़ती है और लोग भूल जाते हैं कि rules में क्या है.
+- Conventions evolve होती हैं, और rules पीछे drift हो जाते हैं.
 
-5. **क्या मुझे agent orchestration, planning workflows, या hooks चाहिए?**
-   हाँ → उपयुक्त समर्पित टूल का उपयोग करें। ClaudeOS-Core उन्हें नहीं करता।
+ClaudeOS-Core single run में useful rule set तक ज़्यादातर रास्ता तय कर देता है. बाक़ी hand-tuning है. कई users को blank file से शुरू करने से यह time का बेहतर use लगता है.
 
-यदि आपने ClaudeOS-Core और एक अन्य टूल का साथ-साथ उपयोग किया है, तो [अपने अनुभव के साथ issue खोलें](https://github.com/claudeos-core/claudeos-core/issues) — यह इस तुलना को अधिक सटीक बनाने में मदद करता है।
+---
+
+## "Preset bundle use करने से क्या फ़र्क़ है?"
+
+Everything Claude Code जैसे bundles rules / skills / agents का curated set देते हैं जो "ज़्यादातर projects" पर काम करे. जब project bundle के assumptions से fit बैठे तो fast adoption के लिए बढ़िया हैं.
+
+**Bundles अच्छा काम करते हैं जब:**
+
+- Project की conventions bundle के defaults से match हों (जैसे standard Spring Boot या standard Next.js).
+- Stack में unusual choices नहीं हैं (जैसे JPA की जगह MyBatis).
+- Starting point चाहिए और वहाँ से customize करने में ख़ुश हैं.
+
+**Bundles में दिक्क़त होती है जब:**
+
+- Stack non-default tooling use करता है (bundle के "Spring Boot" rules JPA assume करते हैं).
+- कोई strong project-specific convention है जो bundle नहीं जानता.
+- Rules code के साथ-साथ evolve हों, ये चाहिए.
+
+ClaudeOS-Core bundles को complement कर सकता है: project-specific rules के लिए ClaudeOS-Core, general workflow rules के लिए bundle layer कर लें.
+
+---
+
+## Similar tools में choose कैसे करें
+
+ClaudeOS-Core और किसी दूसरे project-aware Claude Code tool में से चुनना है, तो ख़ुद से पूछें:
+
+1. **Tool मेरा code पढ़े, या मैं अपना project describe करूँ?**
+   Code-reading → ClaudeOS-Core. Description → ज़्यादातर बाक़ी.
+
+2. **हर बार वही output चाहिए?**
+   हाँ → ClaudeOS-Core (deterministic). नहीं → कोई भी चलेगा.
+
+3. **पूरा standards/rules/skills/guides चाहिए, या सिर्फ़ CLAUDE.md?**
+   पूरा set → ClaudeOS-Core. सिर्फ़ CLAUDE.md → Claude `/init`.
+
+4. **Output language English है, या कोई और?**
+   English-only → कई tools fit होते हैं. दूसरी languages → ClaudeOS-Core (10 languages built-in).
+
+5. **Agent orchestration, planning workflows, या hooks चाहिए?**
+   हाँ → उसी काम का dedicated tool use करें. ClaudeOS-Core ये नहीं करता.
+
+ClaudeOS-Core और कोई दूसरा tool साथ-साथ use किया है, तो [अपने experience के साथ issue खोलें](https://github.com/claudeos-core/claudeos-core/issues). इससे यह comparison और accurate बनती है.
 
 ---
 
 ## यह भी देखें
 
-- [architecture.md](architecture.md) — ClaudeOS-Core को क्या deterministic बनाता है
-- [stacks.md](stacks.md) — ClaudeOS-Core जो 12 stacks समर्थित करता है
-- [verification.md](verification.md) — post-generation safety net जो अन्य tools के पास नहीं है
+- [architecture.md](architecture.md): ClaudeOS-Core को deterministic क्या बनाता है
+- [stacks.md](stacks.md): ClaudeOS-Core जो 12 stacks support करता है
+- [verification.md](verification.md): post-generation safety net जो दूसरे tools के पास नहीं

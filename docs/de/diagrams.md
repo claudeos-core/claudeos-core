@@ -1,6 +1,6 @@
 # Diagrams
 
-Visuelle Referenzen zur Architektur. Alle Diagramme sind in Mermaid — sie werden auf GitHub automatisch gerendert. Wenn Sie das in einem Nicht-Mermaid-Viewer lesen, sind die Prosa-Erklärungen bewusst eigenständig vollständig.
+Visuelle Referenzen zur Architektur. Alle Diagramme sind in Mermaid und werden auf GitHub automatisch gerendert. Wer das in einem Nicht-Mermaid-Viewer liest: die Prosa-Erklärungen sind absichtlich eigenständig vollständig.
 
 Für die Nur-Text-Variante siehe [architecture.md](architecture.md).
 
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Pass-3-Split-Modus
 
-Pass 3 wird unabhängig von der Projektgröße immer in Stages aufgeteilt — niemals als einzelne Invocation ausgeführt. So bleibt der Prompt jeder Stage innerhalb des LLM-Kontextfensters, selbst wenn `pass2-merged.json` groß ist:
+Pass 3 läuft unabhängig von der Projektgröße immer in Stages, niemals als einzelne Invocation. So bleibt der Prompt jeder Stage im LLM-Kontextfenster, selbst wenn `pass2-merged.json` groß ist:
 
 ```mermaid
 flowchart LR
@@ -55,9 +55,9 @@ flowchart LR
     H --> M["claudeos-core/database/<br/>claudeos-core/mcp-guide/"]
 ```
 
-**Schlüsseleinsicht:** Pass 3a liest die große Eingabe einmal und produziert eine kleine Faktentabelle. Stages 3b/3c/3d lesen nur die kleine Faktentabelle, niemals erneut die große Eingabe. Das vermeidet „Prompt is too long"-Fehler, die frühere Nicht-Split-Designs plagten.
+**Kerngedanke:** Pass 3a liest die große Eingabe einmal und produziert eine kleine Faktentabelle. Stages 3b/3c/3d lesen nur diese kleine Faktentabelle, nie erneut die große Eingabe. Das verhindert „Prompt is too long"-Fehler, die frühere Nicht-Split-Designs ständig plagten.
 
-Bei Projekten mit 16+ Domains werden 3b und 3c weiter in Batches von ≤15 Domains unterteilt. Jeder Batch ist eine eigene Claude-Invocation mit frischem Kontextfenster.
+Bei Projekten mit 16+ Domains werden 3b und 3c weiter in Batches von ≤15 Domains zerlegt. Jeder Batch ist eine eigene Claude-Invocation mit frischem Kontextfenster.
 
 ---
 
@@ -88,9 +88,9 @@ flowchart TD
     style P4 fill:#fce
 ```
 
-Pinke Boxen = Claude wird aufgerufen. Die Rauten-Entscheidungen sind reine Datei-System-Prüfungen — sie passieren vor jedem LLM-Aufruf.
+Pinke Boxen = Claude wird aufgerufen. Die Rauten-Entscheidungen sind reine Dateisystem-Prüfungen, sie passieren vor jedem LLM-Aufruf.
 
-Die Marker-Validierung ist nicht nur „Existiert die Datei?" — jeder Marker hat strukturelle Prüfungen (z. B. muss der Pass-4-Marker `passNum === 4` und ein nicht-leeres `memoryFiles`-Array enthalten). Fehlerhafte Marker aus abgestürzten vorherigen Läufen werden abgelehnt und der Pass läuft neu.
+Die Marker-Validierung fragt nicht nur „Existiert die Datei?". Jeder Marker hat strukturelle Prüfungen, etwa muss der Pass-4-Marker `passNum === 4` und ein nicht-leeres `memoryFiles`-Array enthalten. Kaputte Marker aus abgestürzten vorherigen Läufen werden abgelehnt und der Pass läuft erneut.
 
 ---
 
@@ -119,9 +119,9 @@ flowchart LR
     style C fill:#cfe,stroke:#393
 ```
 
-Die Drei-Stufen-Schwere bedeutet, dass CI nicht bei Warnungen oder Hinweisen scheitert — nur bei harten Fehlern (`fail`-Stufe).
+Die drei Schweregrade bedeuten: CI scheitert nicht an Warnungen oder Hinweisen, nur an harten Fehlern (`fail`-Stufe).
 
-`claude-md-validator` läuft separat, weil seine Befunde **strukturell** sind — wenn CLAUDE.md fehlerhaft ist, ist die richtige Antwort, `init` neu auszuführen, nicht still zu warnen. Die anderen Validatoren laufen als Teil von `health`, weil ihre Befunde inhaltlicher Natur sind (Pfade, Manifest-Einträge, Schema-Lücken) — die kann man prüfen, ohne alles neu zu generieren.
+`claude-md-validator` läuft separat, weil seine Befunde **strukturell** sind. Ist CLAUDE.md fehlerhaft, lautet die richtige Antwort: `init` neu ausführen, nicht still warnen. Die anderen Validatoren laufen als Teil von `health`, denn ihre Befunde sind inhaltlich (Pfade, Manifest-Einträge, Schema-Lücken). Die lassen sich prüfen, ohne alles neu zu generieren.
 
 ---
 
@@ -156,9 +156,9 @@ flowchart TD
     style C fill:#fce,stroke:#933
 ```
 
-**Pink** = Claude Code lädt sie in jeder Session automatisch (Sie laden sie nicht manuell). Alles andere wird auf Anforderung geladen oder von den automatisch geladenen Dateien referenziert.
+**Pink** = Claude Code lädt diese Dateien in jeder Session automatisch (du lädst sie nicht von Hand). Alles andere wird auf Anforderung geladen oder von den automatisch geladenen Dateien referenziert.
 
-Die Präfixe `00`/`10`/`20`/`30`/`40`/`70`/`80` erscheinen **sowohl** in `rules/` als auch `standard/` — derselbe konzeptuelle Bereich, unterschiedliche Rolle (Rules sind geladene Direktiven, Standards sind Referenzdokumente). Die numerischen Präfixe geben eine stabile Sortierreihenfolge und erlauben es dem Pass-3-Orchestrator, Kategorie-Gruppen anzusprechen (z. B. wird 60.memory von Pass 4 geschrieben, 70.domains pro Batch). Was Claude Code tatsächlich zum automatischen Laden einer Regel triggert, ist der `paths:`-Glob in ihrem YAML-Frontmatter, nicht ihre Kategorienummer.
+Die Präfixe `00`/`10`/`20`/`30`/`40`/`70`/`80` erscheinen **sowohl** in `rules/` als auch `standard/`: derselbe konzeptionelle Bereich, andere Rolle. Rules sind geladene Direktiven, Standards Referenzdokumente. Die numerischen Präfixe sorgen für stabile Sortierung und erlauben es dem Pass-3-Orchestrator, Kategorie-Gruppen gezielt anzusprechen (etwa schreibt Pass 4 nach 60.memory, 70.domains läuft pro Batch). Ob Claude Code eine Regel automatisch lädt, entscheidet aber der `paths:`-Glob in ihrem YAML-Frontmatter, nicht die Kategorienummer.
 
 `50.sync` und `60.memory` sind **rules-only** (kein dazugehöriges `standard/`-Verzeichnis). `90.optional` ist **standard-only** (stackspezifische Ergänzungen ohne Durchsetzung).
 
@@ -183,6 +183,6 @@ flowchart TD
     style H fill:#fce,stroke:#933
 ```
 
-Die Memory-Dateien werden **auf Anforderung** geladen, nicht immer. Das hält Claudes Kontext beim normalen Coden schlank. Sie werden nur eingezogen, wenn der `paths:`-Glob der Regel die aktuell von Claude bearbeitete Datei matcht.
+Die Memory-Dateien laden **bei Bedarf**, nicht immer. Das hält Claudes Kontext beim normalen Coden schlank. Sie kommen nur ins Spiel, wenn der `paths:`-Glob der Regel die aktuell von Claude bearbeitete Datei matcht.
 
-Details, was jede Memory-Datei enthält und wie der Verdichtungsalgorithmus funktioniert, finden Sie in [memory-layer.md](memory-layer.md).
+Details zu jeder Memory-Datei und zur Funktionsweise des Compaction-Algorithmus stehen in [memory-layer.md](memory-layer.md).

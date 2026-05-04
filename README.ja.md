@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-上の表の値はすべて、正確な dependency の座標も、`dev.db` というファイル名も、`V1__create_tables.sql` というマイグレーション名も、「no JPA」という事実も、Claude がファイルを書く前にスキャナが `build.gradle`、`application.properties`、ソースツリーから直接読み取った内容です。推測した値は 1 つも入っていません。
+上の表の値はすべて、正確な dependency の座標も、`dev.db` というファイル名も、`V1__create_tables.sql` というマイグレーション名も、「no JPA」という注記も、Claude がファイルを書く前にスキャナが `build.gradle`、`application.properties`、ソースツリーから直接読み取った内容です。推測した値は 1 つも入っていません。
 
 </details>
 

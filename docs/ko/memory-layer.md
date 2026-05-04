@@ -156,7 +156,7 @@ npx claudeos-core memory score
 `failure-patterns.md` 항목의 importance를 다시 계산합니다:
 
 ```
-importance = round(frequency × 1.5 + recency × 5), 10에서 cap
+importance = round(frequency × 1.5 + recency × 5), 최대 10
 ```
 
 여기서 `recency = max(0, 1 - daysSince(lastSeen) / 90)` (90일에 걸쳐 선형으로 감쇠).
@@ -184,13 +184,13 @@ npx claudeos-core memory propose-rules
 3. 각 후보에 대해 Claude에게 제안 rule 콘텐츠를 draft하도록 요청합니다.
 4. confidence를 계산합니다:
    ```
-   evidence    = 1.5 × frequency + 0.5 × importance   (importance 기본값 0; importance 누락 시 6에서 cap)
+   evidence    = 1.5 × frequency + 0.5 × importance   (importance 기본값 0; importance 누락 시 최대 6)
    confidence  = sigmoid_{k=0.35, x0=8}(evidence) × (anchored ? 1.0 : 0.6)
    ```
    여기서 `anchored`는 항목이 disk의 실제 파일 경로를 참조한다는 뜻입니다.
 5. 사람의 검토를 위해 제안을 `auto-rule-update.md`에 작성합니다.
 
-**importance가 누락되면 evidence 값이 6에서 cap됩니다.** importance 점수 없이 frequency만으로 sigmoid를 high confidence까지 밀어 올리면 안 되기 때문입니다 (sigmoid의 입력값을 cap하는 것이지 제안의 개수를 cap하는 게 아닙니다).
+**importance가 누락되면 evidence 값을 최대 6으로 제한합니다.** importance 점수 없이 frequency만으로 sigmoid를 high confidence까지 밀어 올리면 안 되기 때문입니다 (sigmoid의 입력값을 제한하는 것이지 제안의 개수를 제한하는 게 아닙니다).
 
 ---
 

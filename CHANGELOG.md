@@ -4,6 +4,7 @@
 
 Quick navigation to recent releases:
 
+- [`2.4.4`](#244--2026-05-04) — Translation polish for `docs/{lang}/` × 8 non-Korean languages + broken `#quick-start` anchor fix
 - [`2.4.3`](#243--2026-04-27) — Skills catalog reconciliation (MANIFEST ↔ §6 sync) + `STALE_PATH` naming-convention placeholder exemption
 - [`2.4.2`](#242--2026-04-26) — README structural tightening + 9-language re-sync (same-day after v2.4.1 docs overhaul)
 - [`2.4.1`](#241--2026-04-26) — Documentation overhaul, 10-language localization, fixture sanitization (post-release docs)
@@ -22,6 +23,17 @@ Quick navigation to recent releases:
 - [`1.5.x`](#151--2026-04-06) — Initial public preview
 
 For older entries scroll past v1.5.0 or use the GitHub blame view.
+
+---
+
+## [2.4.4] — 2026-05-04
+
+Documentation-only release. Translation polish across 8 non-Korean language `docs/{lang}/` directories. Test suite remains 736 / 736 pass.
+
+- **`docs/{zh-CN,ja,es,vi,hi,ru,fr,de}/` × 12 files each polished** — translation naturalness polish (calque elimination, em-dash reduction, passive → active, pronoun-overuse reduction, noun-verb redundancy, native dev-blog tone). Four rounds applied per language: initial polish → deep audit → final polish → file-by-file verification. Line counts within ±2 per file; code blocks, CLI commands, anchor links, version strings all byte-identical.
+- **Broken `#quick-start` anchor fixed in 5 languages** — `docs/{ja,zh-CN,vi,hi,ru}/{architecture,commands}.md` linked to `README.{lang}.md#quick-start`, but those READMEs use localized headings (`クイックスタート` / `快速开始` / `Bắt đầu nhanh` / `त्वरित शुरुआत` / `Быстрый старт`). 15 anchor instances corrected to native GitHub slugs.
+- **English source minor fixes** — `docs/verification.md` malformed `content-validator` table (header had 2 columns, data rows merged Check ID into description) and Section 5 heading (`Disk ↔ Master Plan` → `Disk ↔ sync-map.json`, reflecting the v2.1.0 master-plan removal).
+- **Version** — `package.json`, `package-lock.json` (top-level + `packages.""`), `CLAUDE.md`, and 10 `docs/{lang,en}/manual-installation.md` files bumped to `2.4.4`.
 
 ---
 

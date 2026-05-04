@@ -1,11 +1,11 @@
 # Supported Stacks
 
-12 stacks, todos auto-detectados desde los archivos de tu proyecto. **8 backend** + **4 frontend**.
+12 stacks, todos auto-detectados desde los archivos del proyecto. **8 backend** + **4 frontend**.
 
 Esta página describe cómo se detecta cada stack y qué extrae el scanner por stack. Úsala para:
 
 - Comprobar si tu stack está soportado.
-- Entender qué hechos pasará el scanner a Claude antes de generar los docs.
+- Entender qué hechos le pasará el scanner a Claude antes de generar los docs.
 - Ver qué esperar en `claudeos-core/generated/project-analysis.json`.
 
 Si la estructura de tu proyecto es inusual, ver [advanced-config.md](advanced-config.md) para overrides de `.claudeos-scan.json`.
@@ -16,7 +16,7 @@ Si la estructura de tu proyecto es inusual, ver [advanced-config.md](advanced-co
 
 ## Cómo funciona la detección
 
-Cuando `init` se ejecuta, el scanner abre estos archivos en la raíz del proyecto aproximadamente en este orden:
+Cuando corres `init`, el scanner abre estos archivos en la raíz del proyecto, aproximadamente en este orden:
 
 | Archivo | Lo que le dice al scanner |
 |---|---|
@@ -29,7 +29,7 @@ Cuando `init` se ejecuta, el scanner abre estos archivos en la raíz del proyect
 | `next.config.{ts,js}` | Proyecto Next.js |
 | `vite.config.{ts,js}` | Proyecto Vite |
 
-Si nada coincide, `init` se detiene con un error claro en lugar de adivinar. (Sin fallback de "pedirle al LLM que lo descubra". Mejor fallar ruidosamente que producir docs incorrectos en silencio.)
+Si nada coincide, `init` se detiene con un error claro en lugar de adivinar. (Sin fallback de "que lo descubra el LLM". Mejor fallar ruidosamente que producir docs incorrectos en silencio.)
 
 El scanner está en `plan-installer/stack-detector.js` si quieres leer la lógica real de detección.
 
@@ -39,9 +39,9 @@ El scanner está en `plan-installer/stack-detector.js` si quieres leer la lógic
 
 ### Java / Spring Boot
 
-**Detectado cuando:** `build.gradle` o `pom.xml` contiene `spring-boot-starter`. Java se identifica por separado de Kotlin a través del bloque de plugins de Gradle.
+**Detectado cuando:** `build.gradle` o `pom.xml` contiene `spring-boot-starter`. Java se identifica por separado de Kotlin con el bloque de plugins de Gradle.
 
-**Detección de patrón de arquitectura.** El scanner clasifica tu proyecto en **uno de 5 patrones**:
+**Detección de patrón de arquitectura.** El scanner clasifica el proyecto en **uno de 5 patrones**:
 
 | Patrón | Estructura ejemplo |
 |---|---|
@@ -51,11 +51,11 @@ El scanner está en `plan-installer/stack-detector.js` si quieres leer la lógic
 | **D. Domain-then-layer** | `order/sub1/controller/`, `order/sub2/service/` |
 | **E. Hexagonal / DDD** | `domain/`, `application/`, `infrastructure/`, `presentation/` |
 
-Los patrones se prueban en orden (A → B/D → E → C). El scanner también tiene dos refinamientos: (1) **detección de root-package** elige el prefijo de paquete más largo que cubre ≥80% de los archivos con capa (determinístico entre re-ejecuciones); (2) **fallback deep-sweep** para Patrón B/D — cuando los globs estándar devuelven cero archivos para un dominio registrado, el scanner re-ejecuta el glob `**/${domain}/**/*.java` y recorre la ruta de cada archivo para encontrar el directorio de capa más cercano, atrapando layouts de acoplamiento entre dominios como `core/{otherDomain}/{layer}/{domain}/`.
+Los patrones se prueban en orden (A → B/D → E → C). El scanner tiene dos refinamientos: (1) **detección de root-package**, que elige el prefijo de paquete más largo que cubre ≥80% de los archivos con capa (determinístico entre re-ejecuciones); (2) **fallback deep-sweep** para Patrón B/D: cuando los globs estándar devuelven cero archivos para un dominio registrado, el scanner re-ejecuta el glob `**/${domain}/**/*.java` y recorre la ruta de cada archivo para encontrar el directorio de capa más cercano, atrapando layouts de acoplamiento entre dominios como `core/{otherDomain}/{layer}/{domain}/`.
 
 **Hechos extraídos:**
 - Stack, versión del framework, ORM (JPA / MyBatis / jOOQ)
-- Tipo de DB (Postgres / MySQL / Oracle / MariaDB / H2 — la detección de H2 usa un regex de límite de palabra `\bh2\b` para evitar falsos positivos en `oauth2`, `cache2k`, etc.)
+- Tipo de DB (Postgres / MySQL / Oracle / MariaDB / H2; la detección de H2 usa un regex de límite de palabra `\bh2\b` para evitar falsos positivos en `oauth2`, `cache2k`, etc.)
 - Package manager (Gradle / Maven), build tool, logger (Logback / Log4j2)
 - Lista de dominios con conteo de archivos (controllers, services, mappers, dtos, MyBatis XML mappers)
 
@@ -65,17 +65,17 @@ El scanner está en `plan-installer/scanners/scan-java.js`.
 
 ### Kotlin / Spring Boot
 
-**Detectado cuando:** `build.gradle.kts` está presente y el plugin Kotlin se aplica junto con Spring Boot. Tiene una ruta de código completamente separada de Java — no reutiliza patrones Java.
+**Detectado cuando:** `build.gradle.kts` está presente y el plugin Kotlin se aplica junto con Spring Boot. Tiene ruta de código totalmente separada de Java: no reutiliza patrones Java.
 
 **Detecta específicamente:**
-- **CQRS** — paquetes command/query separados
-- **BFF** — patrón backend-for-frontend
-- **Multi-module Gradle** — `settings.gradle.kts` con `include(":module")`
-- **Dominios shared query entre módulos** — `resolveSharedQueryDomains()` redistribuye archivos del módulo shared query vía descomposición de package/class-name
+- **CQRS:** paquetes command/query separados
+- **BFF:** patrón backend-for-frontend
+- **Multi-module Gradle:** `settings.gradle.kts` con `include(":module")`
+- **Dominios shared query entre módulos:** `resolveSharedQueryDomains()` redistribuye archivos del módulo shared query con descomposición de package/class-name
 
 **ORMs soportados:** Exposed, jOOQ, JPA (Hibernate), R2DBC.
 
-**Por qué Kotlin tiene su propio scanner:** los patrones Java no encajan bien con codebases Kotlin. Los proyectos Kotlin tienden a CQRS y setups multi-módulo que la clasificación A-a-E de patrones Java no puede representar limpiamente.
+**Por qué Kotlin tiene su propio scanner:** los patrones Java no encajan bien con codebases Kotlin. Los proyectos Kotlin tienden a CQRS y setups multi-módulo que la clasificación A-a-E de patrones Java no puede representar de forma limpia.
 
 El scanner está en `plan-installer/scanners/scan-kotlin.js`.
 
@@ -87,7 +87,7 @@ El scanner está en `plan-installer/scanners/scan-kotlin.js`.
 
 **El stack detector identifica:** ORM (Prisma / TypeORM / Sequelize / Drizzle / Knex / Mongoose), tipo de DB, package manager (npm / yarn / pnpm), uso de TypeScript.
 
-**Descubrimiento de dominios:** el scanner Node.js compartido (`plan-installer/scanners/scan-node.js`) recorre `src/*/` (o `src/modules/*/` si existen módulos estilo NestJS), cuenta archivos que coinciden con `controller|router|route|handler`, `service`, `dto|schema|type`, y patrones entity/module/guard/pipe/interceptor. La misma ruta de código del scanner se usa para Express, Fastify y NestJS — el nombre del framework determina qué prompt de Pass 1 se selecciona, no qué scanner se ejecuta.
+**Descubrimiento de dominios:** el scanner Node.js compartido (`plan-installer/scanners/scan-node.js`) recorre `src/*/` (o `src/modules/*/` si hay módulos estilo NestJS), cuenta archivos que coinciden con `controller|router|route|handler`, `service`, `dto|schema|type`, y patrones entity/module/guard/pipe/interceptor. La misma ruta de código del scanner se usa para Express, Fastify y NestJS: el nombre del framework determina qué prompt de Pass 1 se selecciona, no qué scanner se ejecuta.
 
 ---
 
@@ -95,7 +95,7 @@ El scanner está en `plan-installer/scanners/scan-kotlin.js`.
 
 **Detectado cuando:** `fastify` está en dependencies.
 
-El descubrimiento de dominios usa el mismo scanner compartido `scan-node.js` descrito arriba. Pass 1 usa una plantilla de prompt específica de Fastify que pide a Claude que busque los patrones de plugin y schemas de ruta de Fastify.
+El descubrimiento de dominios usa el mismo scanner compartido `scan-node.js` descrito arriba. Pass 1 usa una plantilla de prompt específica de Fastify, que le pide a Claude buscar los patrones de plugin y schemas de ruta de Fastify.
 
 ---
 
@@ -103,7 +103,7 @@ El descubrimiento de dominios usa el mismo scanner compartido `scan-node.js` des
 
 **Detectado cuando:** `@nestjs/core` está en dependencies.
 
-El descubrimiento de dominios usa el scanner compartido `scan-node.js`. El layout estándar de NestJS `src/modules/<module>/` se detecta automáticamente (preferido sobre `src/*/` cuando ambos existen) y cada módulo se convierte en un dominio. Pass 1 usa una plantilla de prompt específica de NestJS.
+El descubrimiento de dominios usa el scanner compartido `scan-node.js`. El layout estándar de NestJS `src/modules/<module>/` se detecta automáticamente (preferido sobre `src/*/` cuando ambos existen) y cada módulo pasa a ser un dominio. Pass 1 usa una plantilla de prompt específica de NestJS.
 
 ---
 
@@ -111,7 +111,7 @@ El descubrimiento de dominios usa el scanner compartido `scan-node.js`. El layou
 
 **Detectado cuando:** la subcadena `django` (minúscula) aparece en `requirements.txt` o `pyproject.toml`. Las declaraciones estándar de package manager usan minúsculas, así que esto coincide con proyectos típicos.
 
-**Descubrimiento de dominios:** el scanner recorre `**/models.py` y trata cada directorio que contiene `models.py` como una app/dominio Django. (No parsea `INSTALLED_APPS` desde `settings.py` — la presencia en disco de `models.py` es la señal.)
+**Descubrimiento de dominios:** el scanner recorre `**/models.py` y trata cada directorio con `models.py` como una app/dominio Django. (No parsea `INSTALLED_APPS` desde `settings.py`; la presencia en disco de `models.py` es la señal.)
 
 **Estadísticas por dominio:** cuenta archivos que coinciden con `views`, `models`, `serializers`, `admin`, `forms`, `urls`, `tasks`.
 
@@ -121,7 +121,7 @@ El descubrimiento de dominios usa el scanner compartido `scan-node.js`. El layou
 
 **Detectado cuando:** `fastapi` está en dependencies.
 
-**Descubrimiento de dominios:** glob `**/{router,routes,endpoints}*.py` — cada directorio padre único se convierte en un dominio. El scanner no parsea las llamadas `APIRouter(...)`; el nombre del archivo es la señal.
+**Descubrimiento de dominios:** glob `**/{router,routes,endpoints}*.py`. Cada directorio padre único pasa a ser un dominio. El scanner no parsea las llamadas `APIRouter(...)`; la señal es el nombre del archivo.
 
 **ORMs detectados por stack-detector:** SQLAlchemy, Tortoise ORM.
 
@@ -133,7 +133,7 @@ El descubrimiento de dominios usa el scanner compartido `scan-node.js`. El layou
 
 **Descubrimiento de dominios:** usa el mismo glob `**/{router,routes,endpoints}*.py` que FastAPI. Si eso no produce nada, el scanner cae a directorios `{app,src/app}/*/`.
 
-**Fallback flat-project (v1.7.1):** Si no se encuentran candidatos a dominio, el scanner busca `{main,app}.py` en la raíz del proyecto y trata el proyecto como una "app" de un único dominio.
+**Fallback flat-project (v1.7.1):** si no encuentra candidatos a dominio, el scanner busca `{main,app}.py` en la raíz del proyecto y trata el proyecto como una "app" de un único dominio.
 
 ---
 
@@ -145,16 +145,16 @@ El descubrimiento de dominios usa el scanner compartido `scan-node.js`. El layou
 
 **Detecta convención de routing:**
 
-- **App Router** (Next.js 13+) — directorio `app/` con `page.tsx`/`layout.tsx`
-- **Pages Router** (legacy) — directorio `pages/`
-- **FSD (Feature-Sliced Design)** — `src/features/`, `src/widgets/`, `src/entities/`
+- **App Router** (Next.js 13+): directorio `app/` con `page.tsx`/`layout.tsx`
+- **Pages Router** (legacy): directorio `pages/`
+- **FSD (Feature-Sliced Design):** `src/features/`, `src/widgets/`, `src/entities/`
 
 **El scanner extrae:**
 - Modo de routing (App Router / Pages Router / FSD)
-- Conteos de RSC vs Client component (Next.js App Router — contando archivos cuyo nombre contiene `client.` como `client.tsx`, no parseando directivas `"use client"` dentro del fuente)
+- Conteos de RSC vs Client component (Next.js App Router; cuenta archivos cuyo nombre contiene `client.` como `client.tsx`, no parsea directivas `"use client"` dentro del fuente)
 - Lista de dominios desde `app/` o `pages/` (y `src/features/` etc. para FSD)
 
-State management, styling, y librerías de data-fetching no se detectan a nivel de scanner. Los prompts de Pass 1 piden a Claude que busque esos patrones en el código fuente.
+State management, styling y librerías de data-fetching no se detectan a nivel de scanner. Los prompts de Pass 1 le piden a Claude buscar esos patrones en el código fuente.
 
 ---
 
@@ -162,9 +162,9 @@ State management, styling, y librerías de data-fetching no se detectan a nivel 
 
 **Detectado cuando:** `vite.config.{ts,js}` existe, O `vite` está en dependencies.
 
-El port por defecto es `5173` (convención Vite) — aplicado como fallback de último recurso. El scanner no parsea `vite.config` para `server.port`; si tu proyecto declara un port en `.env*`, el env-parser lo recoge primero.
+El port por defecto es `5173` (convención Vite), aplicado como fallback de último recurso. El scanner no parsea `vite.config` para `server.port`; si tu proyecto declara un port en `.env*`, el env-parser lo recoge primero.
 
-El stack detector identifica Vite en sí; el framework UI subyacente — cuando no es React (el fallback por defecto) — lo identifica el LLM en Pass 1 desde el código fuente, no el scanner.
+El stack detector identifica Vite en sí. El framework UI subyacente, cuando no es React (el fallback por defecto), lo identifica el LLM en Pass 1 desde el código fuente, no el scanner.
 
 ---
 
@@ -173,10 +173,10 @@ El stack detector identifica Vite en sí; el framework UI subyacente — cuando 
 **Detectado cuando:** `angular.json` está presente, O `@angular/core` está en dependencies.
 
 **Detecta:**
-- Estructura de **Feature module** — `src/app/<feature>/`
-- **Workspaces de monorepo** — patrones genéricos `apps/*/src/app/*/` y `packages/*/src/app/*/` (funciona para layouts NX aunque `nx.json` no sea una señal de detección explícita)
+- Estructura de **Feature module:** `src/app/<feature>/`
+- **Workspaces de monorepo:** patrones genéricos `apps/*/src/app/*/` y `packages/*/src/app/*/` (funciona para layouts NX aunque `nx.json` no sea una señal de detección explícita)
 
-El port por defecto es `4200` (convención Angular) — aplicado como fallback de último recurso. El scanner lee `angular.json` solo para detección de stack, no para extracción de port; si tu proyecto declara el port en un archivo `.env*`, el env-parser lo recoge primero.
+El port por defecto es `4200` (convención Angular), aplicado como fallback de último recurso. El scanner lee `angular.json` solo para detección de stack, no para extracción de port; si tu proyecto declara el port en un archivo `.env*`, el env-parser lo recoge primero.
 
 ---
 
@@ -184,15 +184,15 @@ El port por defecto es `4200` (convención Angular) — aplicado como fallback d
 
 **Detectado cuando:** `nuxt.config.{ts,js}` existe para Nuxt, O `vue` está en dependencies para Vue plano.
 
-El scanner identifica el framework y ejecuta la extracción de dominios frontend (patrones App/Pages/FSD/components). La detección de versión Nuxt y módulos (Pinia, VueUse, etc.) se delega a Pass 1 — Claude lee el fuente e identifica lo que se usa, en lugar de que el scanner haga pattern-match sobre `package.json`.
+El scanner identifica el framework y corre la extracción de dominios frontend (patrones App/Pages/FSD/components). La detección de versión Nuxt y módulos (Pinia, VueUse, etc.) se delega a Pass 1: Claude lee el fuente e identifica lo que se usa, en lugar de que el scanner haga pattern-match sobre `package.json`.
 
 ---
 
 ## Proyectos multi-stack
 
-Un proyecto con backend y frontend (p. ej., Spring Boot en `backend/` + Next.js en `frontend/`) está completamente soportado.
+Un proyecto con backend y frontend (por ejemplo, Spring Boot en `backend/` + Next.js en `frontend/`) está totalmente soportado.
 
-Cada stack ejecuta su **propio scanner** con su **propio prompt de análisis**. La salida fusionada de Pass 2 cubre ambos stacks. Pass 3 genera archivos separados de rule y standard para cada uno, organizados en:
+Cada stack ejecuta su **propio scanner** con su **propio prompt de análisis**. La salida fusionada de Pass 2 cubre ambos stacks. Pass 3 genera archivos separados de rule y standard para cada uno, organizados así:
 
 ```
 .claude/rules/
@@ -210,13 +210,13 @@ claudeos-core/standard/
     └── frontend/
 ```
 
-El typing `70.domains/{type}/` está **siempre activo** — incluso si tu proyecto es de un solo stack, el layout usa `70.domains/backend/` (o `frontend/`). Esto mantiene la convención uniforme: cuando un proyecto de un solo stack añade luego un segundo stack, no se necesita migración.
+El typing `70.domains/{type}/` está **siempre activo**: incluso si tu proyecto es de un solo stack, el layout usa `70.domains/backend/` (o `frontend/`). Así, la convención queda uniforme: cuando un proyecto de un solo stack añade luego un segundo stack, no hace falta migrar nada.
 
 **La detección multi-stack** capta:
 - Un manifest de monorepo en la raíz del proyecto: `turbo.json`, `pnpm-workspace.yaml`, `lerna.json`
-- Un `package.json` raíz con un campo `workspaces`
+- Un `package.json` raíz con campo `workspaces`
 
-Cuando se detecta un monorepo, el scanner recorre `apps/*/package.json` y `packages/*/package.json` (más cualquier glob de workspace personalizado del manifest), fusiona las listas de dependencias, y ejecuta scanners backend y frontend según se necesiten.
+Al detectar un monorepo, el scanner recorre `apps/*/package.json` y `packages/*/package.json` (más cualquier glob de workspace personalizado del manifest), fusiona las listas de dependencias, y corre scanners backend y frontend según se necesiten.
 
 ---
 
@@ -237,22 +237,22 @@ src/
     └── reports/
 ```
 
-El scanner detecta `src/{platform}/{subapp}/` y emite cada `{platform}-{subapp}` como un dominio separado. Palabras clave de plataforma por defecto:
+El scanner detecta `src/{platform}/{subapp}/` y emite cada `{platform}-{subapp}` como dominio separado. Palabras clave de plataforma por defecto:
 
 - **Dispositivo / entorno objetivo:** `desktop`, `pc`, `web`, `mobile`, `mc`, `mo`, `sp`, `tablet`, `tab`, `pwa`, `tv`, `ctv`, `ott`, `watch`, `wear`
 - **Tier de acceso / audiencia:** `admin`, `cms`, `backoffice`, `back-office`, `portal`
 
-Añade palabras clave personalizadas vía `frontendScan.platformKeywords` en `.claudeos-scan.json` (ver [advanced-config.md](advanced-config.md)).
+Añade palabras clave personalizadas con `frontendScan.platformKeywords` en `.claudeos-scan.json` (ver [advanced-config.md](advanced-config.md)).
 
-**Regla single-SPA skip (v2.3.0):** Si solo UNA palabra clave de plataforma coincide en el árbol del proyecto (p. ej., el proyecto tiene `src/admin/api/`, `src/admin/dto/`, `src/admin/routers/` sin otras plataformas), se omite la emisión de subapp. De lo contrario, las capas arquitectónicas (`api`, `dto`, `routers`) se emitirían falsamente como dominios feature.
+**Regla single-SPA skip (v2.3.0):** si solo UNA palabra clave de plataforma coincide en el árbol del proyecto (por ejemplo, el proyecto tiene `src/admin/api/`, `src/admin/dto/`, `src/admin/routers/` sin otras plataformas), se omite la emisión de subapp. De lo contrario, las capas arquitectónicas (`api`, `dto`, `routers`) se emitirían falsamente como dominios feature.
 
-Para forzar la emisión de subapp de todas formas, define `frontendScan.forceSubappSplit: true` en `.claudeos-scan.json`. Ver [advanced-config.md](advanced-config.md).
+Para forzar la emisión de subapp igual, pon `frontendScan.forceSubappSplit: true` en `.claudeos-scan.json`. Ver [advanced-config.md](advanced-config.md).
 
 ---
 
 ## Extracción de `.env` (v2.2.0+)
 
-El scanner lee archivos `.env*` para configuración de runtime para que los docs generados reflejen tu port, host y DB URL reales.
+El scanner lee archivos `.env*` para configuración de runtime, para que los docs generados reflejen tu port, host y DB URL reales.
 
 **Orden de búsqueda** (gana la primera coincidencia):
 
@@ -269,16 +269,16 @@ El scanner lee archivos `.env*` para configuración de runtime para que los docs
 
 **Precedencia de resolución de port:**
 1. `server.port` de `application.yml` de Spring Boot
-2. Claves de port `.env` (16+ claves convencionales comprobadas, ordenadas por especificidad — específicas de Vite primero, `PORT` genérico al final)
+2. Claves de port `.env` (16+ claves convencionales comprobadas, ordenadas por especificidad: específicas de Vite primero, `PORT` genérico al final)
 3. Default del stack (FastAPI/Django=8000, Flask=5000, Vite=5173, Express/NestJS/Fastify=3000, default=8080)
 
-El parser está en `lib/env-parser.js`. Los tests están en `tests/env-parser.test.js`.
+El parser está en `lib/env-parser.js`. Los tests, en `tests/env-parser.test.js`.
 
 ---
 
 ## Lo que el scanner produce — `project-analysis.json`
 
-Después de que Step A termina, encontrarás este archivo en `claudeos-core/generated/project-analysis.json`. Claves de nivel superior (varía por stack):
+Cuando Step A termina, encontrarás este archivo en `claudeos-core/generated/project-analysis.json`. Claves de nivel superior (varía por stack):
 
 ```json
 {
@@ -303,7 +303,7 @@ Después de que Step A termina, encontrarás este archivo en `claudeos-core/gene
 }
 ```
 
-Puedes leer este archivo directamente para ver exactamente qué extrajo el scanner de tu proyecto.
+Puedes leer este archivo directamente para ver qué extrajo el scanner de tu proyecto.
 
 ---
 
@@ -323,6 +323,6 @@ Ver [CONTRIBUTING.md](../../CONTRIBUTING.md) para la guía completa e implementa
 
 ## Override del comportamiento del scanner
 
-Si tu proyecto tiene una estructura inusual o la auto-detección elige el stack equivocado, deja un archivo `.claudeos-scan.json` en la raíz de tu proyecto.
+Si tu proyecto tiene una estructura inusual o la auto-detección elige el stack equivocado, deja un archivo `.claudeos-scan.json` en la raíz del proyecto.
 
 Ver [advanced-config.md](advanced-config.md) para los campos override disponibles.

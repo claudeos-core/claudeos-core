@@ -1,10 +1,10 @@
 # Comandos CLI
 
-Cada comando, cada flag, cada exit code que ClaudeOS-Core soporta realmente.
+Cada comando, cada flag y cada exit code que ClaudeOS-Core soporta de verdad.
 
-Esta página es una referencia. Si eres nuevo, lee primero el [Quick Start del README principal](../../README.es.md#quick-start).
+Esta página es una referencia. Si recién empiezas, lee primero el [Inicio rápido del README principal](../../README.es.md#inicio-rápido).
 
-Todos los comandos se ejecutan vía `npx claudeos-core <command>` (o `claudeos-core <command>` si está instalado globalmente — ver [manual-installation.md](manual-installation.md)).
+Todos los comandos corren con `npx claudeos-core <command>` (o `claudeos-core <command>` si lo instalaste globalmente: ver [manual-installation.md](manual-installation.md)).
 
 > Original en inglés: [docs/commands.md](../commands.md). La traducción al español se mantiene sincronizada con el inglés.
 
@@ -16,12 +16,12 @@ Estos funcionan en todos los comandos:
 
 | Flag | Efecto |
 |---|---|
-| `--help` / `-h` | Muestra ayuda. Cuando se coloca después de un comando (p. ej., `memory --help`), el subcomando maneja su propia ayuda. |
+| `--help` / `-h` | Muestra ayuda. Si va después de un comando (por ejemplo, `memory --help`), el subcomando maneja su propia ayuda. |
 | `--version` / `-v` | Imprime la versión instalada. |
-| `--lang <code>` | Idioma de salida. Uno de: `en`, `ko`, `ja`, `zh-CN`, `es`, `vi`, `hi`, `ru`, `fr`, `de`. Default: `en`. Actualmente consumido solo por `init`. |
-| `--force` / `-f` | Salta el prompt de resume; borra resultados anteriores. Actualmente consumido solo por `init`. |
+| `--lang <code>` | Idioma de salida. Uno de: `en`, `ko`, `ja`, `zh-CN`, `es`, `vi`, `hi`, `ru`, `fr`, `de`. Default: `en`. Hoy solo lo consume `init`. |
+| `--force` / `-f` | Salta el prompt de resume y borra resultados anteriores. Hoy solo lo consume `init`. |
 
-Esa es la lista completa de flags CLI. **Sin `--json`, `--strict`, `--quiet`, `--verbose`, `--dry-run`, etc.** Si los has visto en docs antiguos, no son reales — `bin/cli.js` parsea solo los cuatro flags de arriba.
+Esa es la lista completa de flags CLI. **No existen `--json`, `--strict`, `--quiet`, `--verbose`, `--dry-run` ni similares.** Si los viste en docs antiguos, no son reales: `bin/cli.js` parsea solo los cuatro flags de arriba.
 
 ---
 
@@ -30,14 +30,14 @@ Esa es la lista completa de flags CLI. **Sin `--json`, `--strict`, `--quiet`, `-
 | Comando | Úsalo cuando |
 |---|---|
 | `init` | Primera vez en un proyecto. Genera todo. |
-| `lint` | Después de editar manualmente `CLAUDE.md`. Ejecuta validación estructural. |
-| `health` | Antes de commit, o en CI. Ejecuta los cuatro validators de contenido/path. |
-| `restore` | Plan guardado → disco. (Mayormente no-op desde v2.1.0; mantenido por back-compat.) |
-| `refresh` | Disco → plan guardado. (Mayormente no-op desde v2.1.0; mantenido por back-compat.) |
-| `validate` | Ejecuta el modo `--check` de plan-validator. (Mayormente no-op desde v2.1.0.) |
+| `lint` | Después de editar `CLAUDE.md` a mano. Corre validación estructural. |
+| `health` | Antes de hacer commit, o en CI. Corre los cuatro validators de contenido/path. |
+| `restore` | Plan guardado → disco. (Casi no-op desde v2.1.0; queda por back-compat.) |
+| `refresh` | Disco → plan guardado. (Casi no-op desde v2.1.0; queda por back-compat.) |
+| `validate` | Corre el modo `--check` de plan-validator. (Casi no-op desde v2.1.0.) |
 | `memory <sub>` | Mantenimiento del memory layer: `compact`, `score`, `propose-rules`. |
 
-`restore` / `refresh` / `validate` se mantienen porque son inofensivos en proyectos que no usan los archivos de plan legacy. Si `plan/` no existe (el default v2.1.0+), todos se saltan con mensajes informativos.
+`restore` / `refresh` / `validate` siguen existiendo porque son inofensivos en proyectos que no usan los archivos de plan legacy. Si `plan/` no existe (el default desde v2.1.0), los tres se saltan con mensajes informativos.
 
 ---
 
@@ -47,13 +47,13 @@ Esa es la lista completa de flags CLI. **Sin `--json`, `--strict`, `--quiet`, `-
 npx claudeos-core init [--lang <code>] [--force]
 ```
 
-El comando principal. Ejecuta la [pipeline de 4 pasadas](architecture.md) de extremo a extremo:
+El comando principal. Corre la [pipeline de 4 pasadas](architecture.md) de extremo a extremo:
 
 1. El scanner produce `project-analysis.json`.
 2. Pass 1 analiza cada grupo de dominios.
 3. Pass 2 fusiona dominios en una imagen a nivel de proyecto.
-4. Pass 3 genera CLAUDE.md, rules, standards, skills, guides.
-5. Pass 4 hace scaffold del memory layer.
+4. Pass 3 genera CLAUDE.md, rules, standards, skills y guides.
+5. Pass 4 levanta el scaffolding del memory layer.
 
 **Ejemplos:**
 
@@ -72,33 +72,33 @@ npx claudeos-core init --force
 
 `init` es **resume-safe**. Si se interrumpe (corte de red, timeout, Ctrl-C), la siguiente ejecución retoma desde el último marker de pase completado. Los markers viven en `claudeos-core/generated/`:
 
-- `pass1-<group>.json` — salida Pass 1 por dominio
-- `pass2-merged.json` — salida Pass 2
-- `pass3-complete.json` — marker Pass 3 (también rastrea qué sub-etapas de split mode se completaron)
-- `pass4-memory.json` — marker Pass 4
+- `pass1-<group>.json`: salida Pass 1 por dominio
+- `pass2-merged.json`: salida Pass 2
+- `pass3-complete.json`: marker Pass 3 (también rastrea qué sub-etapas de split mode terminaron)
+- `pass4-memory.json`: marker Pass 4
 
-Si un marker está malformado (p. ej., un crash a mitad de escritura dejó `{"error":"timeout"}`), el validator lo rechaza y el pase se re-ejecuta.
+Si un marker está malformado (por ejemplo, un crash a mitad de escritura dejó `{"error":"timeout"}`), el validator lo rechaza y el pase corre de nuevo.
 
-Para un Pass 3 parcial (split mode interrumpido entre etapas), el mecanismo de resume inspecciona el cuerpo del marker — si `mode === "split"` y `completedAt` falta, Pass 3 se re-invoca y reanuda desde la siguiente etapa no iniciada.
+Para un Pass 3 parcial (split mode interrumpido entre etapas), el mecanismo de resume inspecciona el cuerpo del marker. Si `mode === "split"` y falta `completedAt`, Pass 3 se invoca otra vez y reanuda desde la siguiente etapa no iniciada.
 
 ### Qué hace `--force`
 
 `--force` borra:
-- Cada archivo `.json` y `.md` bajo `claudeos-core/generated/` (incluyendo los cuatro pass markers)
+- Cada archivo `.json` y `.md` dentro de `claudeos-core/generated/` (incluidos los cuatro pass markers)
 - El directorio `claudeos-core/generated/.staged-rules/` sobrante si alguna ejecución previa crasheó a mitad de move
-- Todo bajo `.claude/rules/` (para que la "zero-rules detection" de Pass 3 no pueda dar falso negativo en reglas viejas)
+- Todo dentro de `.claude/rules/` (para que la "zero-rules detection" de Pass 3 no dé falso negativo por reglas viejas)
 
 `--force` **no** borra:
-- Archivos `claudeos-core/memory/` (tu decision log y failure patterns se preservan)
+- Archivos de `claudeos-core/memory/` (el decision log y los failure patterns se preservan)
 - Archivos fuera de `claudeos-core/` y `.claude/`
 
-**Las ediciones manuales a las reglas se pierden bajo `--force`.** Ese es el trade-off — `--force` existe para "quiero un slate limpio". Si quieres preservar ediciones, simplemente re-ejecuta sin `--force`.
+**Las ediciones manuales a las reglas se pierden con `--force`.** Es el trade-off: `--force` existe para "quiero un slate limpio". Si quieres conservar tus ediciones, vuelve a correr sin `--force`.
 
 ### Interactivo vs no-interactivo
 
-Sin `--lang`, `init` muestra un selector de idioma interactivo (10 opciones, flechas o entrada numérica). En entornos no-TTY (CI, entrada por pipe), el selector cae a readline, luego a un default no-interactivo si no hay entrada.
+Sin `--lang`, `init` muestra un selector de idioma interactivo (10 opciones, flechas o entrada numérica). En entornos no-TTY (CI, entrada por pipe), el selector cae a readline y luego a un default no-interactivo si no hay entrada.
 
-Sin `--force`, si se detectan markers de pase existentes, `init` muestra un prompt Continue / Fresh. Pasar `--force` salta este prompt completamente.
+Sin `--force`, si hay markers de pase existentes, `init` muestra un prompt Continue / Fresh. Pasar `--force` salta este prompt por completo.
 
 ---
 
@@ -108,11 +108,11 @@ Sin `--force`, si se detectan markers de pase existentes, `init` muestra un prom
 npx claudeos-core lint
 ```
 
-Ejecuta `claude-md-validator` contra el `CLAUDE.md` de tu proyecto. Rápido — sin llamadas LLM, solo checks estructurales.
+Corre `claude-md-validator` contra el `CLAUDE.md` de tu proyecto. Rápido: sin llamadas LLM, solo checks estructurales.
 
 **Exit codes:**
-- `0` — Pasa.
-- `1` — Falla. Al menos un issue estructural.
+- `0`: Pasa.
+- `1`: Falla. Al menos un issue estructural.
 
 **Lo que comprueba** (ver [verification.md](verification.md) para la lista completa de check IDs):
 
@@ -120,12 +120,12 @@ Ejecuta `claude-md-validator` contra el `CLAUDE.md` de tu proyecto. Rápido — 
 - Section 4 debe tener 3 o 4 sub-secciones H3.
 - Section 6 debe tener exactamente 3 sub-secciones H3.
 - Section 8 debe tener exactamente 2 sub-secciones H3 (Common Rules + L4 Memory) Y exactamente 2 sub-sub-secciones H4 (L4 Memory Files + Memory Workflow).
-- Cada heading de sección canónica debe contener su token inglés (p. ej., `Role Definition`, `Memory`) para que el grep multi-repo funcione independientemente de `--lang`.
+- Cada heading de sección canónica debe contener su token inglés (por ejemplo, `Role Definition`, `Memory`) para que el grep multi-repo funcione sin importar `--lang`.
 - Cada uno de los 4 archivos de memoria aparece en exactamente UNA fila de tabla markdown, confinada a Section 8.
 
-El validator es **language-invariant**: los mismos checks funcionan sobre un CLAUDE.md generado con `--lang ko`, `--lang ja` o cualquier otro idioma soportado.
+El validator es **language-invariant**: los mismos checks pasan sobre un CLAUDE.md generado con `--lang ko`, `--lang ja` o cualquier otro idioma soportado.
 
-Adecuado para hooks pre-commit y CI.
+Va bien para hooks pre-commit y CI.
 
 ---
 
@@ -135,7 +135,7 @@ Adecuado para hooks pre-commit y CI.
 npx claudeos-core health
 ```
 
-Orquesta **4 validators** (claude-md-validator se ejecuta separadamente vía `lint`):
+Orquesta **4 validators** (claude-md-validator corre aparte con `lint`):
 
 | Orden | Validator | Tier | Qué pasa al fallar |
 |---|---|---|---|
@@ -146,12 +146,12 @@ Orquesta **4 validators** (claude-md-validator se ejecuta separadamente vía `li
 | 5 | `pass-json-validator` | warn | Aparece pero no bloquea. |
 
 **Exit codes:**
-- `0` — Sin hallazgos a nivel `fail`. Pueden estar presentes warnings y advisories.
-- `1` — Al menos un hallazgo a nivel `fail`.
+- `0`: Sin hallazgos a nivel `fail`. Puede haber warnings y advisories.
+- `1`: Al menos un hallazgo a nivel `fail`.
 
-La severidad de 3 niveles (fail / warn / advisory) se añadió para que los hallazgos de `content-validator` (que a menudo tienen falsos positivos en layouts inusuales) no deadlockeen pipelines CI.
+La severidad de 3 niveles (fail / warn / advisory) se agregó para que los hallazgos de `content-validator` (que muchas veces son falsos positivos en layouts inusuales) no bloqueen pipelines CI.
 
-Para detalles de los checks de cada validator, ver [verification.md](verification.md).
+Para los detalles de los checks de cada validator, ver [verification.md](verification.md).
 
 ---
 
@@ -161,11 +161,11 @@ Para detalles de los checks de cada validator, ver [verification.md](verificatio
 npx claudeos-core restore
 ```
 
-Ejecuta `plan-validator` en modo `--execute`: copia contenido de archivos `claudeos-core/plan/*.md` a las ubicaciones que describen.
+Corre `plan-validator` en modo `--execute`: copia contenido de archivos `claudeos-core/plan/*.md` a las ubicaciones que describen.
 
 **Estado v2.1.0:** La generación de master plan se eliminó. `claudeos-core/plan/` ya no se auto-crea. Si `plan/` no existe, este comando registra un mensaje informativo y sale limpiamente.
 
-El comando se mantiene para usuarios que mantienen archivos de plan a mano para fines de backup/restore ad-hoc. Es inofensivo ejecutarlo en un proyecto v2.1.0+.
+El comando queda para usuarios que mantienen archivos de plan a mano para backup/restore ad-hoc. Es inofensivo correrlo en un proyecto v2.1.0+.
 
 Crea un backup `.bak` de cualquier archivo que sobrescriba.
 
@@ -177,9 +177,9 @@ Crea un backup `.bak` de cualquier archivo que sobrescriba.
 npx claudeos-core refresh
 ```
 
-El inverso de `restore`. Ejecuta `plan-validator` en modo `--refresh`: lee el estado actual de los archivos de disco y actualiza `claudeos-core/plan/*.md` para que coincidan.
+El inverso de `restore`. Corre `plan-validator` en modo `--refresh`: lee el estado actual de los archivos en disco y actualiza `claudeos-core/plan/*.md` para que coincidan.
 
-**Estado v2.1.0:** Igual que `restore` — no-op cuando `plan/` está ausente.
+**Estado v2.1.0:** Igual que `restore`: no-op cuando `plan/` está ausente.
 
 ---
 
@@ -189,9 +189,9 @@ El inverso de `restore`. Ejecuta `plan-validator` en modo `--refresh`: lee el es
 npx claudeos-core validate
 ```
 
-Ejecuta `plan-validator` en modo `--check`: reporta diferencias entre `claudeos-core/plan/*.md` y el disco, pero no modifica nada.
+Corre `plan-validator` en modo `--check`: reporta diferencias entre `claudeos-core/plan/*.md` y el disco, pero no modifica nada.
 
-**Estado v2.1.0:** No-op cuando `plan/` está ausente. La mayoría de los usuarios deberían ejecutar `health` en su lugar, que llama a `plan-validator` junto con los otros validators.
+**Estado v2.1.0:** No-op cuando `plan/` está ausente. Casi todos los usuarios deberían correr `health` en su lugar, que llama a `plan-validator` junto con los otros validators.
 
 ---
 
@@ -201,9 +201,9 @@ Ejecuta `plan-validator` en modo `--check`: reporta diferencias entre `claudeos-
 npx claudeos-core memory <subcommand>
 ```
 
-Tres subcomandos. Los subcomandos operan sobre archivos `claudeos-core/memory/` escritos por Pass 4 de `init`. Si esos archivos faltan, cada subcomando registra `not found` y se salta gracefully (herramientas best-effort).
+Tres subcomandos. Operan sobre archivos `claudeos-core/memory/` que escribe Pass 4 de `init`. Si esos archivos faltan, cada subcomando registra `not found` y se salta de forma graceful (herramientas best-effort).
 
-Para detalles del modelo de memoria, ver [memory-layer.md](memory-layer.md).
+Para los detalles del modelo de memoria, ver [memory-layer.md](memory-layer.md).
 
 ### `memory compact`
 
@@ -222,7 +222,7 @@ Aplica una compactación de 4 etapas sobre `decision-log.md` y `failure-patterns
 
 Las entradas con `importance >= 7`, `lastSeen < 30 days`, o un body que referencia una ruta de regla activa concreta (no glob) se auto-preservan.
 
-Después de la compactación, solo la sección `## Last Compaction` de `compaction.md` se reemplaza — todo lo demás (tus notas manuales) se preserva.
+Tras la compactación, solo la sección `## Last Compaction` de `compaction.md` se reemplaza. Todo lo demás (tus notas manuales) se preserva.
 
 ### `memory score`
 
@@ -230,13 +230,13 @@ Después de la compactación, solo la sección `## Last Compaction` de `compacti
 npx claudeos-core memory score
 ```
 
-Recomputa scores de importance para entradas en `failure-patterns.md`:
+Recalcula scores de importance para entradas en `failure-patterns.md`:
 
 ```
 importance = round(frequency × 1.5 + recency × 5), capped at 10
 ```
 
-Elimina cualquier línea de importance existente antes de la inserción (previene regresiones de línea duplicada). El nuevo score se escribe de vuelta en el body de la entrada.
+Elimina cualquier línea de importance existente antes de insertar (evita regresiones por línea duplicada). El nuevo score vuelve al body de la entrada.
 
 ### `memory propose-rules`
 
@@ -244,7 +244,7 @@ Elimina cualquier línea de importance existente antes de la inserción (previen
 npx claudeos-core memory propose-rules
 ```
 
-Lee `failure-patterns.md`, elige entradas con frequency ≥ 3, y pide a Claude que redacte contenido de regla `.claude/rules/` propuesto para los candidatos top.
+Lee `failure-patterns.md`, elige entradas con frequency ≥ 3 y pide a Claude que redacte contenido de regla `.claude/rules/` propuesto para los candidatos top.
 
 Confidence por candidato:
 ```
@@ -254,7 +254,7 @@ confidence  = sigmoid_{k=0.35, x0=8}(evidence) × (anchored ? 1.0 : 0.6)
 
 (`anchored` = la entrada menciona una ruta de archivo concreta que existe en disco.)
 
-La salida se **añade a `claudeos-core/memory/auto-rule-update.md`** para tu revisión. **No se auto-aplica** — tú decides qué sugerencias copiar a archivos de regla reales.
+La salida se **agrega a `claudeos-core/memory/auto-rule-update.md`** para tu revisión. **No se auto-aplica**: tú decides qué sugerencias copiar a archivos de regla reales.
 
 ---
 
@@ -262,10 +262,10 @@ La salida se **añade a `claudeos-core/memory/auto-rule-update.md`** para tu rev
 
 | Variable | Efecto |
 |---|---|
-| `CLAUDEOS_SKIP_TRANSLATION=1` | Corta el path de traducción de memory-scaffold; lanza antes de invocar `claude -p`. Usado por CI y tests dependientes de traducción para que no necesiten una instalación real de Claude CLI. Semántica estricta `=== "1"` — otros valores no la activan. |
-| `CLAUDEOS_ROOT` | Establecido automáticamente por `bin/cli.js` a la raíz del proyecto del usuario. Interno — no sobrescribir. |
+| `CLAUDEOS_SKIP_TRANSLATION=1` | Corta el path de traducción de memory-scaffold; lanza antes de invocar `claude -p`. Lo usan CI y tests dependientes de traducción para no necesitar una instalación real de Claude CLI. Semántica estricta `=== "1"`: otros valores no la activan. |
+| `CLAUDEOS_ROOT` | `bin/cli.js` la establece de forma automática a la raíz del proyecto del usuario. Interno: no la sobrescribas. |
 
-Esa es la lista completa. No hay `CLAUDE_PATH`, `DEBUG=claudeos:*`, `CLAUDEOS_NO_COLOR`, etc. — esos no existen.
+Esa es la lista completa. No hay `CLAUDE_PATH`, `DEBUG=claudeos:*`, `CLAUDEOS_NO_COLOR` ni nada similar: esos no existen.
 
 ---
 
@@ -274,36 +274,36 @@ Esa es la lista completa. No hay `CLAUDE_PATH`, `DEBUG=claudeos:*`, `CLAUDEOS_NO
 | Code | Significado |
 |---|---|
 | `0` | Éxito. |
-| `1` | Fallo de validación (hallazgo a nivel `fail`) o `InitError` (p. ej., prerequisito ausente, marker malformado, file lock). |
-| Otro | Burbuja del proceso Node subyacente o sub-tool — excepciones no atrapadas, errores de escritura, etc. |
+| `1` | Fallo de validación (hallazgo a nivel `fail`) o `InitError` (por ejemplo, prerequisito ausente, marker malformado, file lock). |
+| Otro | Burbujea del proceso Node subyacente o sub-tool: excepciones no atrapadas, errores de escritura, etc. |
 
-No hay un exit code especial para "interrumpido" — Ctrl-C simplemente termina el proceso. Re-ejecuta `init` y el mecanismo de resume toma el control.
+No hay un exit code especial para "interrumpido": Ctrl-C simplemente termina el proceso. Vuelve a correr `init` y el mecanismo de resume toma el control.
 
 ---
 
-## Lo que `npm test` ejecuta (para contribuidores)
+## Lo que corre `npm test` (para contribuidores)
 
-Si has clonado el repo y quieres ejecutar la suite de tests localmente:
+Si clonaste el repo y quieres correr la suite de tests localmente:
 
 ```bash
 npm test
 ```
 
-Esto ejecuta `node tests/*.test.js` a través de 33 archivos de test. La suite de tests usa el runner `node:test` integrado de Node (sin Jest, sin Mocha) y `node:assert/strict` de Node.
+Esto corre `node tests/*.test.js` sobre 33 archivos de test. La suite usa el runner `node:test` integrado en Node (sin Jest, sin Mocha) y `node:assert/strict`.
 
-Para un único archivo de test:
+Para un solo archivo de test:
 
 ```bash
 node tests/scan-java.test.js
 ```
 
-CI ejecuta la suite en Linux / macOS / Windows × Node 18 / 20. El workflow CI define `CLAUDEOS_SKIP_TRANSLATION=1` para que los tests dependientes de traducción no necesiten un CLI `claude`.
+CI corre la suite en Linux / macOS / Windows × Node 18 / 20. El workflow CI define `CLAUDEOS_SKIP_TRANSLATION=1` para que los tests dependientes de traducción no necesiten un CLI `claude`.
 
 ---
 
 ## Ver también
 
-- [architecture.md](architecture.md) — qué hace `init` realmente por dentro
-- [verification.md](verification.md) — qué comprueban los validators
-- [memory-layer.md](memory-layer.md) — sobre qué operan los subcomandos `memory`
-- [troubleshooting.md](troubleshooting.md) — cuando los comandos fallan
+- [architecture.md](architecture.md): qué hace `init` realmente por dentro
+- [verification.md](verification.md): qué comprueban los validators
+- [memory-layer.md](memory-layer.md): sobre qué operan los subcomandos `memory`
+- [troubleshooting.md](troubleshooting.md): cuando los comandos fallan

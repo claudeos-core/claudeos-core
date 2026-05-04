@@ -1,8 +1,8 @@
 # Расширенная конфигурация — `.claudeos-scan.json`
 
-Для нестандартных layouts проекта вы можете переопределить поведение frontend-сканера через файл `.claudeos-scan.json` в корне проекта.
+На нестандартных layouts проекта поведение frontend-сканера можно переопределить через файл `.claudeos-scan.json` в корне проекта.
 
-Это для продвинутых пользователей. Большинству проектов это не нужно — авто-detection спроектирован работать без конфигурации.
+Это для продвинутых пользователей. Большинству проектов он не нужен: авто-detection задумывался работать без конфигурации.
 
 > Английский оригинал: [docs/advanced-config.md](../advanced-config.md). Русский перевод синхронизирован с английским.
 
@@ -11,18 +11,18 @@
 ## Что `.claudeos-scan.json` делает (и не делает)
 
 **Делает:**
-- Расширяет распознавание platform/subapp frontend-сканера дополнительными ключевыми словами или skip-именами.
+- Расширяет распознавание platform/subapp у frontend-сканера дополнительными ключевыми словами или skip-именами.
 - Регулирует порог того, что считается реальным subapp.
 - Принудительно эмитит subapp в single-platform проектах.
 
 **НЕ делает:**
 - Не форсирует конкретный стек (stack detection сканера запускается первым и не конфигурируется).
-- Не добавляет кастомные default-ы выходного языка.
-- Не конфигурирует ignored-пути глобально (у frontend-сканера свой встроенный ignore-список).
-- Не конфигурирует backend-сканеры (Java, Kotlin, Python и т.д. этот файл не читают).
+- Не задаёт кастомные default-ы выходного языка.
+- Не настраивает ignored-пути глобально (у frontend-сканера свой встроенный ignore-список).
+- Не настраивает backend-сканеры (Java, Kotlin, Python и т. д. этот файл не читают).
 - Не помечает файлы как «сохранённые» (такого механизма нет).
 
-Если вы видели старые docs, описывающие поля вроде `stack`, `ignorePaths`, `preserve`, `defaultPort`, `language` или `subapps` — они не реализованы. Реальный поддерживаемый набор полей маленький и весь под `frontendScan`.
+Если в старых docs встречаются поля вроде `stack`, `ignorePaths`, `preserve`, `defaultPort`, `language` или `subapps`, они не реализованы. Реальный поддерживаемый набор полей маленький и целиком сидит под `frontendScan`.
 
 ---
 
@@ -39,7 +39,7 @@
 }
 ```
 
-Все четыре поля опциональны. Сканер читает файл через `JSON.parse`; если файл отсутствует или JSON невалидный, сканирование молча откатывается на defaults.
+Все четыре поля опциональны. Сканер читает файл через `JSON.parse`; если файла нет или JSON невалиден, сканирование молча откатывается на defaults.
 
 ---
 
@@ -47,7 +47,7 @@
 
 ### `frontendScan.platformKeywords` — дополнительные platform-ключевые слова (массив строк)
 
-Frontend-сканер определяет layouts `src/{platform}/{subapp}/`, где `{platform}` совпадает с одним из этих defaults:
+Frontend-сканер ловит layouts `src/{platform}/{subapp}/`, где `{platform}` совпадает с одним из этих defaults:
 
 ```
 desktop, pc, web,
@@ -58,7 +58,7 @@ watch, wear,
 admin, cms, backoffice, back-office, portal
 ```
 
-Используйте `platformKeywords`, чтобы расширить (не заменить) этот default-список:
+Через `platformKeywords` можно расширить (не заменить) этот default-список:
 
 ```json
 {
@@ -68,13 +68,13 @@ admin, cms, backoffice, back-office, portal
 }
 ```
 
-После этого override-а `src/kiosk/checkout/` будет распознан как пара platform-subapp и эмитен как домен `kiosk-checkout`.
+С таким override `src/kiosk/checkout/` распознается как пара platform-subapp и эмитится доменом `kiosk-checkout`.
 
-**Примечание:** аббревиатура `adm` намеренно исключена из defaults (слишком неоднозначно в изоляции). Если ваш проект использует `src/adm/` как корень admin-tier, либо переименуйте в `admin`, либо добавьте `"adm"` в `platformKeywords`.
+**Примечание:** аббревиатура `adm` намеренно исключена из defaults (в изоляции слишком неоднозначна). Если в проекте `src/adm/` — корень admin-tier, либо переименуйте в `admin`, либо добавьте `"adm"` в `platformKeywords`.
 
 ### `frontendScan.skipSubappNames` — дополнительные имена для пропуска (массив строк)
 
-Сканер пропускает известные имена инфраструктурных / структурных каталогов на уровне subapp, чтобы они не эмитились как домены:
+Сканер пропускает известные имена инфраструктурных и структурных каталогов на уровне subapp, чтобы они не эмитились доменами:
 
 ```
 assets, common, shared, utils, util,
@@ -86,7 +86,7 @@ app, pages, routes, views, screens, containers,
 modules, domains
 ```
 
-Используйте `skipSubappNames`, чтобы расширить skip-список:
+Расширить skip-список можно через `skipSubappNames`:
 
 ```json
 {
@@ -96,11 +96,11 @@ modules, domains
 }
 ```
 
-После этого override-а каталоги с такими именами будут игнорироваться при subapp-сканировании.
+С таким override каталоги с этими именами будут игнорироваться при subapp-сканировании.
 
-### `frontendScan.minSubappFiles` — минимум файлов, чтобы квалифицироваться как subapp (число, default 2)
+### `frontendScan.minSubappFiles` — минимум файлов для квалификации как subapp (число, default 2)
 
-Каталог из одного файла под platform-корнем — это обычно случайный fixture или placeholder, а не реальный subapp. Default-минимум — 2 файла. Override-ите, если структура проекта другая:
+Каталог с единственным файлом под platform-корнем — обычно случайный fixture или placeholder, а не реальный subapp. Default-минимум — 2 файла. Если структура проекта другая, переопределите:
 
 ```json
 {
@@ -110,13 +110,13 @@ modules, domains
 }
 ```
 
-Установка в `1` эмитила бы 1-файловые subapp-ы (вероятно, шумно в Pass 1 group plan).
+Поставив `1`, получите эмиссию однофайловых subapp-ов (скорее всего, лишний шум в Pass 1 group plan).
 
 ### `frontendScan.forceSubappSplit` — opt out из single-SPA skip (boolean, default false)
 
-У сканера есть **single-SPA skip rule**: когда совпадает только ОДНО уникальное platform-ключевое слово по проекту (например, у проекта есть `src/admin/api/`, `src/admin/dto/`, `src/admin/routers/`, но нет других платформ), эмиссия subapp пропускается, чтобы избежать фрагментации архитектурных слоёв.
+У сканера есть **single-SPA skip rule**: когда по проекту совпадает только ОДНО уникальное platform-ключевое слово (скажем, у проекта есть `src/admin/api/`, `src/admin/dto/`, `src/admin/routers/`, но других платформ нет), эмиссия subapp пропускается, чтобы не фрагментировать архитектурные слои.
 
-Этот default корректен для single-platform SPA, но неверен для проектов, которые намеренно используют детей одной платформы как feature-домены. Чтобы opt-out:
+Этот default корректен для single-platform SPA, но не подходит проектам, которые намеренно используют детей одной платформы как feature-домены. Чтобы opt-out:
 
 ```json
 {
@@ -126,7 +126,7 @@ modules, domains
 }
 ```
 
-Используйте только когда уверены, что дети вашего единственного platform-корня действительно независимые feature-subapp-ы.
+Включайте, только если уверены, что дети единственного platform-корня действительно независимые feature-subapp.
 
 ---
 
@@ -142,7 +142,7 @@ modules, domains
 }
 ```
 
-Проект с `src/embedded/dashboard/` теперь эмитит `embedded-dashboard` как домен.
+Проект с `src/embedded/dashboard/` теперь эмитит домен `embedded-dashboard`.
 
 ### Пропустить vendored или legacy-каталоги
 
@@ -156,7 +156,7 @@ modules, domains
 
 Каталоги с такими именами игнорируются при сканировании, даже если лежат под platform-корнем.
 
-### Single-platform проект, желающий subapp-эмиссии
+### Single-platform проект, которому нужна subapp-эмиссия
 
 ```json
 {
@@ -167,9 +167,9 @@ modules, domains
 }
 ```
 
-Обходит single-SPA skip rule. Комбинируйте с высоким `minSubappFiles`, чтобы фильтровать шум.
+Обходит single-SPA skip rule. Комбинируйте с высоким `minSubappFiles`, чтобы отфильтровать шум.
 
-### NX Angular monorepo, пропускающее legacy-приложения
+### NX Angular monorepo с пропуском legacy-приложений
 
 ```json
 {
@@ -179,23 +179,23 @@ modules, domains
 }
 ```
 
-Angular-сканер уже обрабатывает NX monorepo автоматически. Skip-список держит названные legacy-приложения вне domain-списка.
+Angular-сканер уже сам обрабатывает NX monorepo. Skip-список держит названные legacy-приложения вне domain-списка.
 
 ---
 
 ## Что живёт в этом файле, а что нет
 
-Если вы нашли старый документ, описывающий поля не из этого списка — этих полей не существует. Реальный код, читающий `.claudeos-scan.json`, находится в:
+Если попался старый документ с полями вне этого списка, таких полей нет. Реальный код, читающий `.claudeos-scan.json`, лежит в:
 
 - `plan-installer/scanners/scan-frontend.js` — `loadScanOverrides()`
 
-Это единственное место. Backend-сканеры и orchestrator этот файл не читают.
+И только там. Backend-сканеры и orchestrator этот файл не читают.
 
-Если нужна опция конфигурации, которой нет, [откройте issue](https://github.com/claudeos-core/claudeos-core/issues), описав структуру проекта и что бы вы хотели от инструмента.
+Если не хватает какой-то опции конфигурации, [откройте issue](https://github.com/claudeos-core/claudeos-core/issues): опишите структуру проекта и желаемое поведение инструмента.
 
 ---
 
 ## См. также
 
 - [stacks.md](stacks.md) — что подхватывает авто-detection по умолчанию
-- [troubleshooting.md](troubleshooting.md) — когда detection сканера срабатывает не туда
+- [troubleshooting.md](troubleshooting.md) — когда detection сканера попадает не туда

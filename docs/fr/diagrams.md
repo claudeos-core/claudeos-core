@@ -1,6 +1,6 @@
 # Diagrammes
 
-Références visuelles pour l'architecture. Tous les diagrammes sont en Mermaid — ils s'affichent automatiquement sur GitHub. Si vous lisez ceci dans un viewer non-Mermaid, les explications en prose sont délibérément complètes par elles-mêmes.
+Références visuelles pour l'architecture. Tous les diagrammes sont en Mermaid et s'affichent automatiquement sur GitHub. Si tu lis ça dans un viewer non-Mermaid, les explications en prose sont volontairement complètes en elles-mêmes.
 
 Pour la version words-only, voir [architecture.md](architecture.md).
 
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Pass 3 split mode
 
-Pass 3 se divise toujours en stages — ne s'exécute jamais comme une seule invocation, quelle que soit la taille du projet. Cela garde le prompt de chaque stage dans la context window du LLM même quand `pass2-merged.json` est gros :
+Pass 3 se découpe toujours en stages, jamais en une seule invocation, peu importe la taille du projet. Le prompt de chaque stage tient ainsi dans la context window du LLM même quand `pass2-merged.json` est gros :
 
 ```mermaid
 flowchart LR
@@ -55,9 +55,9 @@ flowchart LR
     H --> M["claudeos-core/database/<br/>claudeos-core/mcp-guide/"]
 ```
 
-**Insight clé :** Pass 3a lit le gros input une fois et produit une petite fact sheet. Les stages 3b/3c/3d ne lisent que la petite fact sheet, ne relisent jamais le gros input. Cela évite les erreurs « Prompt is too long » qui plaguaient les designs antérieurs sans split.
+**Insight clé :** Pass 3a lit le gros input une fois et produit une petite fact sheet. Les stages 3b/3c/3d ne lisent que la petite fact sheet, jamais le gros input. Ça évite les erreurs « Prompt is too long » qui plombaient les designs antérieurs sans split.
 
-Pour les projets à 16+ domaines, 3b et 3c se subdivisent encore en batches de ≤15 domaines chacun. Chaque batch est sa propre invocation Claude avec une context window fraîche.
+Pour les projets à 16+ domaines, 3b et 3c se subdivisent encore en batches de ≤15 domaines chacun. Chaque batch devient sa propre invocation Claude avec une context window fraîche.
 
 ---
 
@@ -88,9 +88,9 @@ flowchart TD
     style P4 fill:#fce
 ```
 
-Les boîtes roses = Claude est invoqué. Les diamants de décision sont des checks file-system purs — ils se passent avant tout appel LLM.
+Les boîtes roses = Claude est invoqué. Les diamants de décision sont des checks file-system purs, qui se font avant tout appel LLM.
 
-La validation du marker n'est pas juste « le fichier existe-t-il ? » — chaque marker a des checks structurels (par ex. le marker de Pass 4 doit contenir `passNum === 4` et un array `memoryFiles` non-vide). Les markers mal formés issus de runs antérieurs crashés sont rejetés et la pass se réexécute.
+La validation du marker ne se résume pas à « le fichier existe ? ». Chaque marker subit des checks structurels (le marker de Pass 4 doit contenir `passNum === 4` et un array `memoryFiles` non-vide). Les markers mal formés issus de runs antérieurs crashés sont rejetés et la pass repart.
 
 ---
 
@@ -119,9 +119,9 @@ flowchart LR
     style C fill:#cfe,stroke:#393
 ```
 
-La sévérité 3-tier signifie que la CI n'échoue pas sur les warnings ou advisories — uniquement sur les hard failures (tier `fail`).
+La sévérité 3-tier signifie que la CI n'échoue ni sur les warnings ni sur les advisories, uniquement sur les hard failures (tier `fail`).
 
-`claude-md-validator` s'exécute séparément parce que ses findings sont **structurels** — si CLAUDE.md est mal formé, la bonne réponse est de réexécuter `init`, pas de prévenir silencieusement. Les autres validators s'exécutent dans le cadre de `health` parce que leurs findings sont au niveau du contenu (paths, entrées manifest, trous de schéma) — ceux-là peuvent être examinés sans tout régénérer.
+`claude-md-validator` tourne séparément parce que ses findings sont **structurels** : si CLAUDE.md est mal formé, la bonne réponse est de relancer `init`, pas un warning silencieux. Les autres validators tournent dans `health` parce que leurs findings sont au niveau du contenu (paths, entrées manifest, trous de schéma). Ceux-là, on peut les examiner sans tout régénérer.
 
 ---
 
@@ -156,9 +156,9 @@ flowchart TD
     style C fill:#fce,stroke:#933
 ```
 
-**Rose** = auto-chargé par Claude Code à chaque session (vous ne les chargez pas manuellement). Tout le reste est chargé à la demande ou référencé depuis les fichiers auto-chargés.
+**Rose** = auto-chargé par Claude Code à chaque session (pas de chargement manuel). Tout le reste est chargé à la demande ou référencé depuis les fichiers auto-chargés.
 
-Les préfixes `00`/`10`/`20`/`30`/`40`/`70`/`80` apparaissent dans **les deux** `rules/` et `standard/` — même zone conceptuelle, rôle différent (rules sont des directives chargées, standards sont des docs de référence). Les préfixes numériques donnent un ordre de tri stable et permettent à l'orchestrateur Pass 3 d'adresser des groupes de catégories (par ex. 60.memory est écrit par Pass 4, 70.domains est écrit par batch). Ce qui déclenche réellement Claude Code à auto-charger une rule est le glob `paths:` dans son frontmatter YAML, pas son numéro de catégorie.
+Les préfixes `00`/`10`/`20`/`30`/`40`/`70`/`80` apparaissent à la fois dans `rules/` et `standard/` : même zone conceptuelle, rôle différent (les rules sont des directives chargées, les standards des docs de référence). Les préfixes numériques donnent un ordre de tri stable et permettent à l'orchestrateur Pass 3 d'adresser des groupes de catégories (60.memory est écrit par Pass 4, 70.domains est écrit par batch). Ce qui déclenche vraiment l'auto-chargement d'une rule par Claude Code, c'est le glob `paths:` dans son frontmatter YAML, pas son numéro de catégorie.
 
 `50.sync` et `60.memory` sont **rules-only** (pas de répertoire `standard/` correspondant). `90.optional` est **standard-only** (extras spécifiques au stack sans application).
 
@@ -183,6 +183,6 @@ flowchart TD
     style H fill:#fce,stroke:#933
 ```
 
-Les fichiers memory sont chargés **à la demande**, pas toujours. Cela garde le contexte de Claude léger pendant le coding normal. Ils ne sont tirés que quand le glob `paths:` de la rule matche le fichier que Claude est en train d'éditer.
+Les fichiers memory sont chargés **à la demande**, pas en permanence. Le contexte de Claude reste léger pendant le coding normal. Ils ne sont tirés que quand le glob `paths:` de la rule matche le fichier que Claude édite.
 
-Pour les détails sur ce que contient chaque fichier memory et l'algorithme de compaction, voir [memory-layer.md](memory-layer.md).
+Pour le détail du contenu de chaque fichier memory et l'algorithme de compaction, voir [memory-layer.md](memory-layer.md).

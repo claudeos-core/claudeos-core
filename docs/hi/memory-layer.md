@@ -1,20 +1,20 @@
 # Memory Layer (L4)
 
-v2.0 के बाद, ClaudeOS-Core नियमित documentation के साथ-साथ एक persistent memory layer लिखता है। यह लंबे चलने वाले projects के लिए है जहाँ आप Claude Code से ये करवाना चाहते हैं:
+v2.0 से ClaudeOS-Core regular documentation के साथ-साथ persistent memory layer भी लिखता है. यह long-running projects के लिए है, जहाँ Claude Code से ये काम करवाने हों:
 
-> अंग्रेज़ी मूल: [docs/memory-layer.md](../memory-layer.md)। हिन्दी अनुवाद अंग्रेज़ी के साथ समकालिक रखा गया है।
+> अंग्रेज़ी मूल: [docs/memory-layer.md](../memory-layer.md). हिन्दी version English के साथ sync रहता है.
 
-1. Architectural निर्णयों और उनके rationale को याद रखें।
-2. बार-बार होने वाली failures से सीखें।
-3. बार-बार होने वाले failure patterns को permanent rules में स्वतः बढ़ाएँ।
+1. Architectural decisions और उनका rationale याद रखे.
+2. बार-बार होने वाली failures से सीखे.
+3. Repeated failure patterns को automatically permanent rules में promote करे.
 
-यदि आप ClaudeOS-Core का उपयोग केवल one-shot generation के लिए करते हैं, तो आप इस layer को पूरी तरह से नज़रअंदाज़ कर सकते हैं। Memory फ़ाइलें लिखी जाती हैं लेकिन यदि आप उन्हें update नहीं करते तो वे नहीं बढ़तीं।
+ClaudeOS-Core सिर्फ़ one-shot generation के लिए use कर रहे हैं, तो इस layer को पूरा ignore कर सकते हैं. Memory files लिखी तो जाती हैं, लेकिन update न करें तो grow नहीं होतीं.
 
 ---
 
 ## क्या लिखा जाता है
 
-Pass 4 पूर्ण होने के बाद, memory layer में शामिल हैं:
+Pass 4 पूरा होने के बाद memory layer में होता है:
 
 ```
 claudeos-core/
@@ -33,17 +33,17 @@ claudeos-core/
         └── 04.auto-rule-update.md   (rule जो auto-rule-update.md को auto-load करता है)
 ```
 
-`60.memory/` rule फ़ाइलों में `paths:` globs हैं जो उन project files से मेल खाते हैं जहाँ memory को load किया जाना चाहिए। जब Claude Code एक glob से मेल खाने वाली फ़ाइल को संपादित कर रहा है, तो संबंधित memory फ़ाइल context में load हो जाती है।
+`60.memory/` rule files में `paths:` globs होते हैं जो उन project files से match करते हैं जहाँ memory load करनी है. Claude Code जब किसी glob-matching file को edit कर रहा हो, तो related memory file context में load हो जाती है.
 
-यह **on-demand loading** है — memory हमेशा context में नहीं होती, केवल जब प्रासंगिक हो। यह Claude के working context को कम रखता है।
+यह **on-demand loading** है. Memory हमेशा context में नहीं रहती, सिर्फ़ जब relevant हो. इससे Claude का working context छोटा रहता है.
 
 ---
 
-## चार memory फ़ाइलें
+## चार memory files
 
-### `decision-log.md` — append-only architectural निर्णय
+### `decision-log.md`: append-only architectural decisions
 
-जब आप एक गैर-स्पष्ट तकनीकी निर्णय लेते हैं, तो आप (या Claude, आपके द्वारा prompt किए गए) एक block append करते हैं:
+कोई non-obvious technical decision लेते हैं, तो आप (या आपके prompt पर Claude) एक block append करते हैं:
 
 ```markdown
 ## 2026-04-15 — Use UTC for all stored timestamps
@@ -57,13 +57,13 @@ display layer cleanly separates concerns.
 - Browser-local time — rejected: server-side scheduling needs absolute times.
 ```
 
-यह फ़ाइल **समय के साथ बढ़ती है**। यह auto-delete नहीं होती। पुराने निर्णय मूल्यवान context बने रहते हैं।
+यह file **time के साथ grow होती है.** Auto-delete नहीं होती. पुराने decisions valuable context बने रहते हैं.
 
-Auto-loaded rule (`60.memory/01.decision-log.md`) Claude Code को बताता है कि "हमने X को इस तरह क्यों संरचित किया?" जैसे प्रश्नों का उत्तर देने से पहले इस फ़ाइल से परामर्श करे।
+Auto-loaded rule (`60.memory/01.decision-log.md`) Claude Code को बताता है कि "X को इस तरह structure क्यों किया?" जैसे questions का जवाब देने से पहले इस file को consult करे.
 
-### `failure-patterns.md` — बार-बार होने वाली गलतियाँ
+### `failure-patterns.md`: बार-बार होने वाली mistakes
 
-जब Claude Code एक बार-बार होने वाली गलती करता है (उदा., "Claude हमारे project के MyBatis का उपयोग करने पर भी JPA उत्पन्न करता रहता है"), यहाँ एक entry जाती है:
+Claude Code कोई repeated mistake करे (जैसे "project में MyBatis है फिर भी Claude JPA generate करता रहता है"), तो यहाँ entry आती है:
 
 ```markdown
 ### Generates JPA repositories instead of MyBatis mappers
@@ -77,16 +77,16 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
 `<Domain>Repository.java extends JpaRepository`.
 ```
 
-`frequency` / `importance` / `last seen` fields स्वचालित निर्णयों को drive करते हैं:
+`frequency` / `importance` / `last seen` fields automatic decisions drive करते हैं:
 
-- **Compaction:** `lastSeen > 60 days` AND `importance < 3` के साथ entries drop हो जाती हैं।
-- **Rule promotion:** `frequency >= 3` के साथ entries `memory propose-rules` के माध्यम से नई `.claude/rules/` entries के candidates के रूप में surface होती हैं। (Importance filter नहीं है — यह केवल प्रत्येक proposal के confidence score को प्रभावित करती है।)
+- **Compaction**: `lastSeen > 60 days` AND `importance < 3` वाली entries drop हो जाती हैं.
+- **Rule promotion**: `frequency >= 3` वाली entries `memory propose-rules` के ज़रिए नई `.claude/rules/` entries के candidates के तौर पर surface होती हैं. (Importance filter नहीं है. वह सिर्फ़ हर proposal के confidence score को affect करता है.)
 
-Metadata fields को `memory` subcommands द्वारा anchored regex (`^[\s*-]+\*{0,2}\s*key\s*\*{0,2}\s*[:=]`) का उपयोग करके parse किया जाता है, इसलिए field lines मोटे तौर पर ऊपर के उदाहरण की तरह दिखनी चाहिए। Indented या italicized variations सहन की जाती हैं।
+Metadata fields को `memory` subcommands anchored regex (`^[\s*-]+\*{0,2}\s*key\s*\*{0,2}\s*[:=]`) से parse करते हैं, इसलिए field lines मोटे तौर पर ऊपर के example जैसी दिखनी चाहिए. Indented या italicized variations चलती हैं.
 
-### `compaction.md` — compaction log
+### `compaction.md`: compaction log
 
-यह फ़ाइल compaction history को track करती है:
+यह file compaction history track करती है:
 
 ```markdown
 ## Last Compaction
@@ -97,11 +97,11 @@ Metadata fields को `memory` subcommands द्वारा anchored regex (`
 - file-trimmed: false
 ```
 
-प्रत्येक `memory compact` run पर केवल `## Last Compaction` section overwrite होता है। फ़ाइल में आप जो कुछ भी और जोड़ते हैं वह संरक्षित रहता है।
+हर `memory compact` run पर सिर्फ़ `## Last Compaction` section overwrite होता है. File में जो भी और add करेंगे, वह preserve रहता है.
 
-### `auto-rule-update.md` — proposed-rule queue
+### `auto-rule-update.md`: proposed-rule queue
 
-जब आप `memory propose-rules` चलाते हैं, Claude `failure-patterns.md` पढ़ता है और proposed rule content यहाँ append करता है:
+`memory propose-rules` चलाने पर Claude `failure-patterns.md` पढ़ता है और proposed rule content यहाँ append करता है:
 
 ```markdown
 ## Proposed: Use MyBatis mappers, not JPA repositories
@@ -115,13 +115,13 @@ Metadata fields को `memory` subcommands द्वारा anchored regex (`
     Do NOT generate JpaRepository subclasses.
 ```
 
-आप proposals की समीक्षा करते हैं, जो आप चाहते हैं उन्हें वास्तविक rule files में copy करते हैं। **propose-rules command auto-apply नहीं करती** — यह जानबूझकर है, क्योंकि LLM-drafted rules को मानवीय समीक्षा की आवश्यकता है।
+Proposals review करें, जो चाहिए वो actual rule files में copy करें. **propose-rules command auto-apply नहीं करती.** यह deliberate है, क्योंकि LLM-drafted rules को human review चाहिए.
 
 ---
 
 ## Compaction algorithm
 
-Memory बढ़ती है लेकिन फूलती नहीं है। चार-stage compaction तब चलता है जब आप call करते हैं:
+Memory grow होती है, पर फूलती नहीं. Four-stage compaction तब चलता है जब call करते हैं:
 
 ```bash
 npx claudeos-core memory compact
@@ -129,22 +129,22 @@ npx claudeos-core memory compact
 
 | Stage | Trigger | Action |
 |---|---|---|
-| 1 | `lastSeen > 30 days` AND not preserved | Body 1-line "fix" + meta में संक्षिप्त |
-| 2 | Duplicate headings | Merged (frequencies summed, body = सबसे हाल का) |
+| 1 | `lastSeen > 30 days` AND not preserved | Body 1-line "fix" + meta तक संक्षिप्त |
+| 2 | Duplicate headings | Merged (frequencies summed, body = सबसे recent) |
 | 3 | `importance < 3` AND `lastSeen > 60 days` | Dropped |
-| 4 | फ़ाइल > 400 lines | Trim oldest non-preserved entries |
+| 4 | File > 400 lines | Oldest non-preserved entries trim |
 
-**"Preserved" entries** सभी stages में जीवित रहती हैं। एक entry preserved है यदि निम्न में से कोई हो:
+**"Preserved" entries** सभी stages में बच जाती हैं. Entry preserved है अगर इनमें से कोई एक हो:
 
 - `importance >= 7`
 - `lastSeen < 30 days`
-- Body में एक ठोस (non-glob) active rule path हो (उदा., `.claude/rules/10.backend/orm-rules.md`)
+- Body में concrete (non-glob) active rule path हो (जैसे `.claude/rules/10.backend/orm-rules.md`)
 
-"active rule path" check दिलचस्प है: यदि एक memory entry एक वास्तविक, वर्तमान में मौजूद rule फ़ाइल का संदर्भ देती है, तो entry उस rule के lifecycle से anchored है। जब तक rule मौजूद है, memory रहती है।
+"active rule path" check interesting है. किसी memory entry में real, currently existing rule file का reference है, तो entry उस rule के lifecycle से anchored है. जब तक rule है, memory भी रहती है.
 
-Compaction algorithm मानवीय भूलने की वक्रों की एक जानबूझकर नक़ल है — बार-बार, हाल के, महत्वपूर्ण चीज़ें रहती हैं; दुर्लभ, पुराने, महत्वहीन चीज़ें फीकी पड़ जाती हैं।
+Compaction algorithm जानबूझकर human forgetting curve की नक़ल है. Frequent, recent, important चीज़ें रहती हैं. Rare, old, unimportant चीज़ें fade हो जाती हैं.
 
-Compaction code के लिए, `bin/commands/memory.js` (`compactFile()` function) देखें।
+Compaction code के लिए `bin/commands/memory.js` (`compactFile()` function) देखें.
 
 ---
 
@@ -156,19 +156,19 @@ Compaction code के लिए, `bin/commands/memory.js` (`compactFile()` func
 npx claudeos-core memory score
 ```
 
-`failure-patterns.md` में entries के लिए importance फिर से compute करता है:
+`failure-patterns.md` की entries के लिए importance फिर से compute करता है:
 
 ```
 importance = round(frequency × 1.5 + recency × 5), capped at 10
 ```
 
-जहाँ `recency = max(0, 1 - daysSince(lastSeen) / 90)` (90 days पर linear decay)।
+जहाँ `recency = max(0, 1 - daysSince(lastSeen) / 90)` (90 days पर linear decay).
 
-प्रभाव:
-- `frequency = 3` और `lastSeen = today` के साथ एक entry → `round(3 × 1.5 + 1.0 × 5) = round(9.5) = 10`
-- `frequency = 3` और `lastSeen = 90+ days ago` के साथ एक entry → `round(3 × 1.5 + 0 × 5) = 5`
+Effect:
+- `frequency = 3` और `lastSeen = today` वाली entry → `round(3 × 1.5 + 1.0 × 5) = round(9.5) = 10`
+- `frequency = 3` और `lastSeen = 90+ days ago` वाली entry → `round(3 × 1.5 + 0 × 5) = 5`
 
-**score command insertion से पहले सभी मौजूदा importance lines को strip करती है।** यह score को कई बार फिर से चलाने पर duplicate-line regressions को रोकता है।
+**score command insertion से पहले सभी existing importance lines को strip करती है.** इससे score को बार-बार चलाने पर duplicate-line regressions नहीं होतीं.
 
 ---
 
@@ -182,82 +182,82 @@ npx claudeos-core memory propose-rules
 
 यह:
 
-1. `failure-patterns.md` पढ़ता है।
-2. `frequency >= 3` के साथ entries filter करता है।
-3. प्रत्येक candidate के लिए proposed rule content का draft तैयार करने के लिए Claude से कहता है।
+1. `failure-patterns.md` पढ़ता है.
+2. `frequency >= 3` वाली entries filter करता है.
+3. हर candidate के लिए proposed rule content draft करने को Claude से कहता है.
 4. Confidence compute करता है:
    ```
    evidence    = 1.5 × frequency + 0.5 × importance   (importance defaults to 0; capped at 6 if importance is missing)
    confidence  = sigmoid_{k=0.35, x0=8}(evidence) × (anchored ? 1.0 : 0.6)
    ```
-   जहाँ `anchored` का अर्थ है कि entry disk पर एक वास्तविक फ़ाइल path का संदर्भ देती है।
-5. Proposals को `auto-rule-update.md` में मानवीय समीक्षा के लिए लिखता है।
+   जहाँ `anchored` का मतलब है entry disk पर real file path को reference कर रही है.
+5. Proposals को human review के लिए `auto-rule-update.md` में लिखता है.
 
-**Importance missing होने पर evidence value 6 पर capped होती है** — एक importance score के बिना, frequency अकेले sigmoid को high confidence की ओर धकेलने के लिए पर्याप्त नहीं होनी चाहिए। (यह sigmoid के input को cap करता है, proposals की संख्या को नहीं।)
+**Importance missing होने पर evidence value 6 पर capped होती है.** Importance score के बिना frequency अकेले sigmoid को high confidence की तरफ़ नहीं धकेलनी चाहिए. (यह sigmoid का input cap करता है, proposals की count नहीं.)
 
 ---
 
-## विशिष्ट workflow
+## Typical workflow
 
-लंबे चलने वाले project के लिए, ताल इस तरह दिखती है:
+Long-running project में rhythm कुछ ऐसा दिखता है:
 
-1. **`init` एक बार चलाएँ** बाक़ी सब कुछ के साथ memory फ़ाइलें सेट करने के लिए।
+1. **`init` एक बार चलाएँ** ताकि बाक़ी सब के साथ memory files set हो जाएँ.
 
-2. **कुछ हफ़्तों के लिए सामान्य रूप से Claude Code का उपयोग करें।** बार-बार होने वाली गलतियों को नोटिस करें (उदा., Claude गलत response wrapper का उपयोग करता रहता है)। `failure-patterns.md` में entries append करें — या तो मैन्युअल रूप से या Claude से इसे करने के लिए कहकर (`60.memory/02.failure-patterns.md` में rule Claude को बताता है कब append करना है)।
+2. **कुछ हफ़्तों तक Claude Code normal use करें.** Repeated mistakes notice करें (जैसे Claude ग़लत response wrapper use करता रहता है). `failure-patterns.md` में entries append करें. Manually, या Claude से बोलकर (`60.memory/02.failure-patterns.md` का rule Claude को बताता है कि कब append करना है).
 
-3. **समय-समय पर `memory score` चलाएँ** importance values को refresh करने के लिए। यह तेज़ और idempotent है।
+3. **समय-समय पर `memory score` चलाएँ** ताकि importance values refresh हों. यह fast और idempotent है.
 
-4. **जब आपके पास ~5+ high-score patterns हों**, drafted rules पाने के लिए `memory propose-rules` चलाएँ।
+4. **जब ~5+ high-score patterns हो जाएँ**, drafted rules पाने के लिए `memory propose-rules` चलाएँ.
 
-5. **Proposals की समीक्षा करें** `auto-rule-update.md` में। प्रत्येक एक के लिए जो आप चाहते हैं, content को `.claude/rules/` के तहत एक permanent rule file में copy करें।
+5. **`auto-rule-update.md` में proposals review करें.** जो-जो चाहिए, उसका content `.claude/rules/` के नीचे permanent rule file में copy करें.
 
-6. **`memory compact` को समय-समय पर चलाएँ** (महीने में एक बार, या scheduled CI में) `failure-patterns.md` को सीमित रखने के लिए।
+6. **`memory compact` समय-समय पर चलाएँ** (महीने में एक बार, या scheduled CI में) ताकि `failure-patterns.md` bounded रहे.
 
-यह ताल वह है जिसके लिए चार फ़ाइलें designed की गई हैं। किसी भी step को छोड़ना ठीक है — memory layer opt-in है, और unused फ़ाइलें रास्ते में नहीं आतीं।
+चारों files इसी rhythm को ध्यान में रखकर बनी हैं. कोई भी step skip करना ठीक है. Memory layer opt-in है, और unused files रास्ते में नहीं आतीं.
 
 ---
 
 ## Session continuity
 
-CLAUDE.md प्रत्येक session पर Claude Code द्वारा auto-load होती है। Memory फ़ाइलें **default रूप से auto-load नहीं होतीं** — वे `60.memory/` rules द्वारा on demand load होती हैं जब उनका `paths:` glob उस फ़ाइल से मेल खाता है जिसे Claude वर्तमान में संपादित कर रहा है।
+CLAUDE.md हर session पर Claude Code automatically load करता है. Memory files **default में auto-load नहीं होतीं.** वे `60.memory/` rules से on demand load होती हैं जब उनका `paths:` glob उस file से match करता है जिसे Claude अभी edit कर रहा है.
 
-इसका अर्थ है: एक नए Claude Code session में, memory दिखाई नहीं देती जब तक आप एक प्रासंगिक फ़ाइल पर काम शुरू नहीं करते।
+मतलब: नए Claude Code session में memory तब तक नहीं दिखती जब तक कोई relevant file पर काम शुरू न हो.
 
-Claude Code के auto-compaction के चलने के बाद (~85% context पर), Claude memory फ़ाइलों के बारे में जागरूकता खो देता है, भले ही वे पहले load हो चुकी हों। CLAUDE.md Section 8 में एक **Session Resume Protocol** prose block शामिल है जो Claude को याद दिलाता है कि:
+Claude Code का auto-compaction चलने के बाद (~85% context पर), Claude memory files की awareness खो देता है, चाहे वे पहले load हो चुकी हों. CLAUDE.md Section 8 में **Session Resume Protocol** prose block है जो Claude को याद दिलाता है:
 
-- प्रासंगिक entries के लिए `failure-patterns.md` को फिर से scan करे।
-- `decision-log.md` की सबसे हाल की entries फिर से पढ़े।
-- वर्तमान में open फ़ाइलों के विरुद्ध `60.memory/` rules को फिर से match करे।
+- Relevant entries के लिए `failure-patterns.md` फिर से scan करे.
+- `decision-log.md` की latest entries फिर से पढ़े.
+- Currently open files से `60.memory/` rules फिर से match करे.
 
-यह **prose है, enforced नहीं** — लेकिन prose इस तरह से संरचित है कि Claude इसका पालन करता है। Session Resume Protocol v2.3.2+ canonical scaffold का हिस्सा है और सभी 10 आउटपुट भाषाओं में संरक्षित है।
+यह **prose है, enforced नहीं.** लेकिन prose ऐसे structure की गई है कि Claude इसे follow करता है. Session Resume Protocol v2.3.2+ के canonical scaffold का हिस्सा है और सभी 10 output languages में preserve रहता है.
 
 ---
 
-## Memory layer कब छोड़ें
+## Memory layer कब skip करें
 
-Memory layer इनके लिए मूल्य जोड़ती है:
+Memory layer value देती है इनके लिए:
 
-- **लंबे जीवन वाले projects** (महीनों या अधिक)।
-- **Teams** — `decision-log.md` एक shared institutional memory और onboarding tool बन जाती है।
-- **जिन projects में Claude Code को ≥10×/दिन आह्वान किया जाता है** — failure patterns उपयोगी होने के लिए तेज़ी से जमा होते हैं।
+- **Long-lived projects** (महीनों या इससे ज़्यादा).
+- **Teams**: `decision-log.md` shared institutional memory और onboarding tool बन जाती है.
+- **जिन projects में Claude Code ≥10×/day invoke होता है**: failure patterns useful होने जितना जल्दी जमा हो जाते हैं.
 
-यह इनके लिए overkill है:
+Overkill है इनके लिए:
 
-- एक-बार के scripts जिन्हें आप एक हफ़्ते में फेंक देंगे।
-- Spike या prototype projects।
-- Tutorials या demos।
+- One-off scripts जो एक हफ़्ते में फेंक दिए जाएँगे.
+- Spike या prototype projects.
+- Tutorials या demos.
 
-Memory फ़ाइलें अभी भी Pass 4 द्वारा लिखी जाती हैं, लेकिन यदि आप उन्हें update नहीं करते, तो वे नहीं बढ़तीं। यदि आप इसका उपयोग नहीं कर रहे हैं तो कोई maintenance बोझ नहीं है।
+Memory files अब भी Pass 4 लिखता है, पर update न करें तो grow नहीं होतीं. Use नहीं कर रहे तो कोई maintenance burden नहीं है.
 
-यदि आप सक्रिय रूप से नहीं चाहते कि memory rules कुछ भी auto-load करें (context cost कारणों के लिए), आप कर सकते हैं:
+Memory rules से कुछ भी auto-load नहीं चाहिए (context cost की वजह से), तो ये कर सकते हैं:
 
-- `60.memory/` rules delete करें — Pass 4 resume पर इन्हें recreate नहीं करेगा, केवल `--force` पर।
-- या प्रत्येक rule में `paths:` globs को narrow करें ताकि वे कुछ भी match न करें।
+- `60.memory/` rules delete कर दें. Pass 4 resume पर इन्हें recreate नहीं करेगा, सिर्फ़ `--force` पर.
+- या हर rule में `paths:` globs को narrow कर दें ताकि कुछ भी match न करें.
 
 ---
 
 ## यह भी देखें
 
-- [architecture.md](architecture.md) — pipeline context में Pass 4
-- [commands.md](commands.md) — `memory compact` / `memory score` / `memory propose-rules` reference
-- [verification.md](verification.md) — content-validator के `[9/9]` memory checks
+- [architecture.md](architecture.md): pipeline context में Pass 4
+- [commands.md](commands.md): `memory compact` / `memory score` / `memory propose-rules` reference
+- [verification.md](verification.md): content-validator के `[9/9]` memory checks

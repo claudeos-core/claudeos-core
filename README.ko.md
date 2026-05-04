@@ -329,7 +329,7 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 거꾸로 뒤집습니
 이 도구: 코드가 스택을 분석   → 확정된 사실을 Claude에게 전달 → Claude가 그 사실만으로 문서 작성
 ```
 
-파이프라인은 **3 단계**로 동작합니다. LLM 호출 앞뒤 모두에 코드가 자리잡고 있습니다:
+파이프라인은 **3단계**로 동작합니다. LLM 호출 앞뒤 모두에 코드가 자리잡고 있습니다:
 
 **1. Step A — Scanner (일관된 동작, LLM 없음).** Node.js scanner가 프로젝트 루트를 순회하면서 `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml`을 읽고, `.env*` 파일을 파싱합니다 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 같은 민감 변수는 자동으로 가립니다). 그런 다음 아키텍처 패턴을 분류하고 (Java 5개 패턴 A/B/C/D/E, Kotlin CQRS / 멀티모듈, Next.js App vs Pages Router, FSD, components 패턴), 도메인을 찾고, 존재하는 모든 소스 파일 경로의 명시적 allowlist를 만듭니다. 결과는 `project-analysis.json` 한 파일에 모이고, 이후 모든 단계는 이걸 단일 source of truth로 삼습니다.
 

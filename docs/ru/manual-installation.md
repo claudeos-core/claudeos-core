@@ -1,8 +1,8 @@
 # Ручная установка
 
-Если вы не можете использовать `npx` (корпоративный firewall, air-gapped окружение, заблокированный CI), вот как установить и запустить ClaudeOS-Core вручную.
+Если `npx` использовать не получается (корпоративный firewall, air-gapped окружение, заблокированный CI), вот как поставить и запустить ClaudeOS-Core вручную.
 
-Большинству пользователей достаточно `npx claudeos-core init` — эту страницу читать не нужно.
+Большинству хватит `npx claudeos-core init`, и эту страницу читать не придётся.
 
 > Английский оригинал: [docs/manual-installation.md](../manual-installation.md). Русский перевод синхронизирован с английским.
 
@@ -10,9 +10,9 @@
 
 ## Предварительные требования (независимо от способа установки)
 
-- **Node.js 18+** — проверьте через `node --version`. Если старее, обновите через [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm) или package manager вашей ОС.
-- **Claude Code** — установлен и аутентифицирован. Проверьте `claude --version`. См. [официальный гайд установки Anthropic](https://docs.anthropic.com/en/docs/claude-code).
-- **Git-репозиторий (предпочтительно)** — `init` проверяет наличие `.git/` и хотя бы одного из `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` в корне проекта.
+- **Node.js 18+** — проверьте через `node --version`. Если старее, обновите через [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm) или системный package manager.
+- **Claude Code** — установлен и залогинен. Проверьте `claude --version`. Подробности в [официальном гайде Anthropic](https://docs.anthropic.com/en/docs/claude-code).
+- **Git-репозиторий (желательно)** — `init` проверяет наличие `.git/` и хотя бы одного из `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` в корне проекта.
 
 ---
 
@@ -34,10 +34,10 @@ claudeos-core --version
 claudeos-core init
 ```
 
-**Плюсы:** Стандартно, работает на большинстве setup-ов.
-**Минусы:** Нужны npm + write-доступ к глобальному `node_modules`.
+**Плюсы:** стандартный путь, работает на большинстве setup-ов.
+**Минусы:** нужен npm и write-доступ к глобальному `node_modules`.
 
-Чтобы обновить позже:
+Чтобы обновиться позже:
 
 ```bash
 npm install -g claudeos-core@latest
@@ -53,12 +53,12 @@ npm uninstall -g claudeos-core
 
 ## Вариант 2 — Per-project devDependency
 
-Добавьте в `package.json` вашего проекта:
+Добавьте в `package.json` проекта:
 
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.3"
+    "claudeos-core": "^2.4.4"
   }
 }
 ```
@@ -87,8 +87,8 @@ npm install
 npm run claudeos:init
 ```
 
-**Плюсы:** Pinned версия per-project; CI-friendly; никакого глобального загрязнения.
-**Минусы:** Раздувает `node_modules` — хотя зависимостей минимум (только `glob` и `gray-matter`).
+**Плюсы:** pinned-версия per-project, CI-friendly, без глобального загрязнения.
+**Минусы:** раздувает `node_modules`, хотя зависимостей минимум (только `glob` и `gray-matter`).
 
 Чтобы удалить из одного проекта:
 
@@ -100,7 +100,7 @@ npm uninstall claudeos-core
 
 ## Вариант 3 — Clone & link (для контрибьюторов)
 
-Для разработки или когда хотите контрибьютить:
+Для разработки или если хотите контрибьютить:
 
 ```bash
 git clone https://github.com/claudeos-core/claudeos-core.git
@@ -109,17 +109,17 @@ npm install
 npm link
 ```
 
-Теперь `claudeos-core` глобально на вашем PATH, указывает на склонированный репозиторий.
+Теперь `claudeos-core` глобально доступен в PATH и указывает на склонированный репозиторий.
 
-Чтобы использовать локальный clone в другом проекте:
+Чтобы подключить локальный clone к другому проекту:
 
 ```bash
 cd /path/to/your/other/project
 npm link claudeos-core
 ```
 
-**Плюсы:** Редактируйте исходники инструмента и сразу тестируйте изменения.
-**Минусы:** Полезно только контрибьюторам. Link ломается, если переместить склонированный репозиторий.
+**Плюсы:** правишь исходники инструмента и сразу тестируешь изменения.
+**Минусы:** актуально только для контрибьюторов. Link ломается, если перенести склонированный репозиторий.
 
 ---
 
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# Производит claudeos-core-2.4.3.tgz
+# Производит claudeos-core-2.4.4.tgz
 ```
 
 **Перенесите `.tgz` в air-gapped окружение.**
@@ -139,37 +139,37 @@ npm pack claudeos-core
 **Установите из локального файла:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.3.tgz
+npm install -g ./claudeos-core-2.4.4.tgz
 ```
 
-Также понадобятся:
+Дополнительно потребуется:
 - Node.js 18+ уже установлен в air-gapped окружении.
-- Claude Code уже установлен и аутентифицирован.
-- npm-пакеты `glob` и `gray-matter` пропакованы в офлайн npm-кеше (или vendored через отдельный `npm pack`).
+- Claude Code уже установлен и залогинен.
+- npm-пакеты `glob` и `gray-matter` лежат в офлайн npm-кеше (или vendored отдельным `npm pack`).
 
-Чтобы все транзитивные зависимости попали в bundle, можно запустить `npm install --omit=dev` внутри распакованной копии tarball-а перед переносом.
+Чтобы все транзитивные зависимости попали в bundle, можно запустить `npm install --omit=dev` внутри распакованной копии tarball перед переносом.
 
 ---
 
 ## Проверка установки
 
-После любого метода установки проверьте все четыре prerequisite:
+После любого метода установки прогоните все четыре prerequisite:
 
 ```bash
-# Должно напечатать версию (например, 2.4.3)
+# Должно напечатать версию (например, 2.4.4)
 claudeos-core --version
 
 # Должно напечатать версию Claude Code
 claude --version
 
-# Должно напечатать версию Node (должна быть 18+)
+# Должно напечатать версию Node (нужно 18+)
 node --version
 
 # Должен напечатать help-текст
 claudeos-core --help
 ```
 
-Если все четыре работают, вы готовы запускать `claudeos-core init` в проекте.
+Если все четыре отрабатывают, можно запускать `claudeos-core init` в проекте.
 
 ---
 
@@ -183,13 +183,13 @@ npm uninstall -g claudeos-core
 npm uninstall claudeos-core
 ```
 
-Чтобы также удалить сгенерированный контент из проекта:
+Чтобы заодно убрать сгенерированный контент из проекта:
 
 ```bash
 rm -rf claudeos-core/ .claude/rules/ CLAUDE.md
 ```
 
-ClaudeOS-Core пишет только в `claudeos-core/`, `.claude/rules/` и `CLAUDE.md`. Удалить эти три достаточно, чтобы полностью убрать сгенерированный контент из проекта.
+ClaudeOS-Core пишет только в `claudeos-core/`, `.claude/rules/` и `CLAUDE.md`. Этих трёх удалений хватит, чтобы полностью вычистить сгенерированный контент.
 
 ---
 
@@ -205,9 +205,9 @@ ClaudeOS-Core пишет только в `claudeos-core/`, `.claude/rules/` и `
 - run: npx claudeos-core health
 ```
 
-Этого достаточно для большинства CI-кейсов — `npx` качает пакет по требованию и кеширует его.
+Этого хватает большинству CI-кейсов: `npx` качает пакет по требованию и кеширует его.
 
-Если ваш CI air-gapped или нужна pinned-версия, используйте Вариант 2 (per-project devDependency) и:
+Если CI air-gapped или нужна pinned-версия, берите Вариант 2 (per-project devDependency) плюс:
 
 ```yaml
 - uses: actions/setup-node@v5
@@ -219,9 +219,9 @@ ClaudeOS-Core пишет только в `claudeos-core/`, `.claude/rules/` и `
 - run: npm run claudeos:health
 ```
 
-Для других CI-систем (GitLab, CircleCI, Jenkins и т.д.) паттерн тот же: установить Node, установить Claude Code, аутентифицироваться, запустить `npx claudeos-core <command>`.
+Для других CI (GitLab, CircleCI, Jenkins и т. д.) шаблон тот же: установить Node, установить Claude Code, залогиниться, запустить `npx claudeos-core <command>`.
 
-**`health` — рекомендуемая CI-проверка** — она быстрая (без LLM-вызовов) и покрывает четыре runtime-validator. Для структурной валидации запускайте также `claudeos-core lint`.
+**`health` — рекомендуемая CI-проверка**: быстрая (без LLM-вызовов) и покрывает четыре runtime-validator. Для структурной валидации запускайте ещё и `claudeos-core lint`.
 
 ---
 
@@ -229,11 +229,11 @@ ClaudeOS-Core пишет только в `claudeos-core/`, `.claude/rules/` и `
 
 ### «Command not found: claudeos-core»
 
-Либо не установлено глобально, либо ваш PATH не включает npm global bin.
+Либо нет глобальной установки, либо PATH не включает npm global bin.
 
 ```bash
 npm config get prefix
-# Убедитесь, что bin/-каталог под этим prefix-ом в вашем PATH
+# Проверьте, что bin/-каталог под этим prefix-ом есть в PATH
 ```
 
 Или используйте `npx`:
@@ -244,11 +244,11 @@ npx claudeos-core <command>
 
 ### «Cannot find module 'glob'»
 
-Вы запускаете ClaudeOS-Core из каталога, который не корень проекта. Либо `cd` в проект, либо используйте `npx` (работает откуда угодно).
+Вы запускаете ClaudeOS-Core не из корня проекта. Либо `cd` в корень, либо запускайте через `npx` (работает откуда угодно).
 
 ### «Node.js version not supported»
 
-У вас Node 16 или старше. Обновите до Node 18+:
+Node 16 или старше. Обновитесь до Node 18+:
 
 ```bash
 # nvm
@@ -257,18 +257,18 @@ nvm install 20 && nvm use 20
 # fnm
 fnm install 20 && fnm use 20
 
-# package manager ОС — варьируется
+# системный package manager — зависит от ОС
 ```
 
 ### «Claude Code not found»
 
-ClaudeOS-Core использует вашу локальную установку Claude Code. Установите Claude Code сначала ([официальный гайд](https://docs.anthropic.com/en/docs/claude-code)), затем проверьте через `claude --version`.
+ClaudeOS-Core опирается на вашу локальную установку Claude Code. Сначала поставьте Claude Code ([официальный гайд](https://docs.anthropic.com/en/docs/claude-code)), затем проверьте через `claude --version`.
 
-Если `claude` установлен, но не на PATH, исправьте PATH — переменной окружения override-а нет.
+Если `claude` установлен, но не в PATH, поправьте PATH: переменной окружения для override нет.
 
 ---
 
 ## См. также
 
-- [commands.md](commands.md) — что запускать, когда установлено
+- [commands.md](commands.md) — что запускать после установки
 - [troubleshooting.md](troubleshooting.md) — runtime-ошибки во время `init`

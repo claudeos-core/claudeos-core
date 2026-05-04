@@ -1,18 +1,18 @@
 # Installation manuelle
 
-Si vous ne pouvez pas utiliser `npx` (firewall d'entreprise, environnement air-gapped, CI verrouillée), voici comment installer et lancer ClaudeOS-Core manuellement.
+Si `npx` ne passe pas (firewall d'entreprise, environnement air-gapped, CI verrouillée), voici comment installer et lancer ClaudeOS-Core à la main.
 
-Pour la plupart des utilisateurs, `npx claudeos-core init` suffit — vous n'avez pas besoin de lire cette page.
+Dans la majorité des cas, `npx claudeos-core init` suffit. Inutile de lire cette page.
 
 > Original anglais : [docs/manual-installation.md](../manual-installation.md). La traduction française est maintenue synchronisée avec l'anglais.
 
 ---
 
-## Prérequis (quelle que soit la méthode d'installation)
+## Prérequis (quelle que soit la méthode)
 
-- **Node.js 18+** — vérifiez avec `node --version`. Si plus ancien, mettez à jour via [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm), ou le package manager de votre OS.
-- **Claude Code** — installé et authentifié. Vérifiez avec `claude --version`. Voir le [guide d'installation officiel d'Anthropic](https://docs.anthropic.com/en/docs/claude-code).
-- **Git repo (préféré)** — `init` vérifie la présence de `.git/` et d'au moins un de `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` à la racine du projet.
+- **Node.js 18+** : vérifiez avec `node --version`. Plus ancien ? Mettez à jour via [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm), ou le package manager de l'OS.
+- **Claude Code** : installé et authentifié. Vérifiez avec `claude --version`. Voir le [guide d'installation officiel d'Anthropic](https://docs.anthropic.com/en/docs/claude-code).
+- **Git repo (préféré)** : `init` vérifie la présence de `.git/` et d'au moins un fichier parmi `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` à la racine du projet.
 
 ---
 
@@ -28,16 +28,16 @@ Vérifier :
 claudeos-core --version
 ```
 
-Puis utilisez sans `npx` :
+Puis utilisable sans `npx` :
 
 ```bash
 claudeos-core init
 ```
 
-**Pros :** Standard, fonctionne sur la plupart des setups.
-**Cons :** Nécessite npm + accès en écriture au `node_modules` global.
+**Pros :** standard, fonctionne sur la majorité des setups.
+**Cons :** demande npm + accès en écriture au `node_modules` global.
 
-Pour mettre à jour plus tard :
+Pour mettre à jour ensuite :
 
 ```bash
 npm install -g claudeos-core@latest
@@ -53,12 +53,12 @@ npm uninstall -g claudeos-core
 
 ## Option 2 — devDependency par projet
 
-Ajoutez au `package.json` de votre projet :
+Ajoutez au `package.json` du projet :
 
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.3"
+    "claudeos-core": "^2.4.4"
   }
 }
 ```
@@ -69,7 +69,7 @@ Installez :
 npm install
 ```
 
-Utilisez via npm scripts :
+Utilisation via npm scripts :
 
 ```json
 {
@@ -87,8 +87,8 @@ Puis :
 npm run claudeos:init
 ```
 
-**Pros :** Version pinnée par projet ; CI-friendly ; pas de pollution globale.
-**Cons :** Bloat le `node_modules` — bien que les dépendances soient minimales (juste `glob` et `gray-matter`).
+**Pros :** version pinnée par projet, CI-friendly, pas de pollution globale.
+**Cons :** alourdit le `node_modules`. Cela dit, les dépendances sont minimales (`glob` et `gray-matter`).
 
 Pour désinstaller d'un projet :
 
@@ -100,7 +100,7 @@ npm uninstall claudeos-core
 
 ## Option 3 — Clone & link (pour les contributeurs)
 
-Pour le développement ou quand vous voulez contribuer :
+Pour le développement ou pour contribuer :
 
 ```bash
 git clone https://github.com/claudeos-core/claudeos-core.git
@@ -109,7 +109,7 @@ npm install
 npm link
 ```
 
-Maintenant `claudeos-core` est sur votre PATH globalement, pointant vers le repo cloné.
+`claudeos-core` est maintenant sur le PATH global, pointant vers le repo cloné.
 
 Pour utiliser un clone local dans un autre projet :
 
@@ -118,8 +118,8 @@ cd /path/to/your/other/project
 npm link claudeos-core
 ```
 
-**Pros :** Éditer le source de l'outil et tester immédiatement les changements.
-**Cons :** Utile uniquement aux contributeurs. Le link casse si vous bougez le repo cloné.
+**Pros :** éditer le source de l'outil et tester les changements dans la foulée.
+**Cons :** utile uniquement aux contributeurs. Le link casse si on déplace le repo cloné.
 
 ---
 
@@ -131,45 +131,45 @@ Pour les environnements sans accès internet :
 
 ```bash
 npm pack claudeos-core
-# Produces claudeos-core-2.4.3.tgz
+# Produces claudeos-core-2.4.4.tgz
 ```
 
-**Transférez le `.tgz` vers votre environnement air-gapped.**
+**Transférez le `.tgz` vers l'environnement air-gapped.**
 
 **Installez depuis le fichier local :**
 
 ```bash
-npm install -g ./claudeos-core-2.4.3.tgz
+npm install -g ./claudeos-core-2.4.4.tgz
 ```
 
-Vous aurez aussi besoin de :
+Il faut aussi :
 - Node.js 18+ déjà installé dans l'environnement air-gapped.
 - Claude Code déjà installé et authentifié.
-- Les packages npm `glob` et `gray-matter` bundlés dans le cache npm offline (ou vendorés en `npm pack`-ant séparément).
+- Les packages npm `glob` et `gray-matter` bundlés dans le cache npm offline (ou vendorés via un `npm pack` séparé).
 
-Pour avoir toutes les dépendances transitives bundlées, vous pouvez lancer `npm install --omit=dev` à l'intérieur d'une copie unpacked du tarball avant le transfert.
+Pour bundler toutes les dépendances transitives, lancez `npm install --omit=dev` dans une copie unpacked du tarball avant le transfert.
 
 ---
 
 ## Vérifier l'installation
 
-Après n'importe quelle méthode d'install, vérifiez les quatre prérequis :
+Quelle que soit la méthode d'install, vérifiez les quatre prérequis :
 
 ```bash
-# Devrait afficher la version (par ex. 2.4.3)
+# Affiche la version (par ex. 2.4.4)
 claudeos-core --version
 
-# Devrait afficher la version Claude Code
+# Affiche la version Claude Code
 claude --version
 
-# Devrait afficher la version Node (doit être 18+)
+# Affiche la version Node (doit être 18+)
 node --version
 
-# Devrait afficher le texte d'aide
+# Affiche le texte d'aide
 claudeos-core --help
 ```
 
-Si les quatre marchent, vous êtes prêt à lancer `claudeos-core init` dans un projet.
+Les quatre passent ? Vous pouvez lancer `claudeos-core init` dans un projet.
 
 ---
 
@@ -189,7 +189,7 @@ Pour aussi supprimer le contenu généré d'un projet :
 rm -rf claudeos-core/ .claude/rules/ CLAUDE.md
 ```
 
-ClaudeOS-Core n'écrit que dans `claudeos-core/`, `.claude/rules/` et `CLAUDE.md`. Supprimer ces trois suffit à enlever complètement le contenu généré d'un projet.
+ClaudeOS-Core n'écrit que dans `claudeos-core/`, `.claude/rules/` et `CLAUDE.md`. Supprimer ces trois suffit à retirer complètement le contenu généré d'un projet.
 
 ---
 
@@ -205,9 +205,9 @@ Pour GitHub Actions, le workflow officiel utilise `npx` :
 - run: npx claudeos-core health
 ```
 
-C'est suffisant pour la plupart des cas d'usage CI — `npx` télécharge le package à la demande et le cache.
+Suffisant pour la plupart des cas d'usage CI : `npx` télécharge le package à la demande puis le cache.
 
-Si votre CI est air-gapped ou que vous voulez une version pinnée, utilisez l'Option 2 (devDependency par projet) et :
+CI air-gapped ou version pinnée souhaitée ? Passez à l'Option 2 (devDependency par projet) :
 
 ```yaml
 - uses: actions/setup-node@v5
@@ -219,9 +219,9 @@ Si votre CI est air-gapped ou que vous voulez une version pinnée, utilisez l'Op
 - run: npm run claudeos:health
 ```
 
-Pour d'autres systèmes CI (GitLab, CircleCI, Jenkins, etc.), le pattern est le même : installer Node, installer Claude Code, authentifier, lancer `npx claudeos-core <command>`.
+Sur d'autres systèmes CI (GitLab, CircleCI, Jenkins, etc.), le pattern reste identique : installer Node, installer Claude Code, s'authentifier, lancer `npx claudeos-core <command>`.
 
-**`health` est le check CI recommandé** — il est rapide (pas d'appels LLM) et couvre les quatre validators d'exécution. Pour la validation structurelle, lancez aussi `claudeos-core lint`.
+**`health` est le check CI recommandé** : rapide (pas d'appels LLM) et couvrant les quatre validators d'exécution. Pour la validation structurelle, ajoutez `claudeos-core lint`.
 
 ---
 
@@ -229,14 +229,14 @@ Pour d'autres systèmes CI (GitLab, CircleCI, Jenkins, etc.), le pattern est le 
 
 ### « Command not found: claudeos-core »
 
-Soit ce n'est pas installé globalement, soit votre PATH n'inclut pas le bin global de npm.
+Soit pas d'install globale, soit le PATH n'inclut pas le bin global de npm.
 
 ```bash
 npm config get prefix
-# Assurez-vous que le répertoire bin/ sous ce path est dans votre PATH
+# Vérifiez que le répertoire bin/ sous ce path est dans le PATH
 ```
 
-Ou utilisez `npx` à la place :
+Ou passez par `npx` :
 
 ```bash
 npx claudeos-core <command>
@@ -244,11 +244,11 @@ npx claudeos-core <command>
 
 ### « Cannot find module 'glob' »
 
-Vous lancez ClaudeOS-Core depuis un répertoire qui n'est pas une racine de projet. Soit `cd` dans votre projet, soit utilisez `npx` (qui marche depuis n'importe où).
+ClaudeOS-Core est lancé depuis un répertoire qui n'est pas une racine de projet. Soit `cd` dans le projet, soit `npx` (qui marche de partout).
 
 ### « Node.js version not supported »
 
-Vous avez Node 16 ou plus ancien. Mettez à jour vers Node 18+ :
+Vous avez Node 16 ou plus ancien. Passez à Node 18+ :
 
 ```bash
 # nvm
@@ -262,13 +262,13 @@ fnm install 20 && fnm use 20
 
 ### « Claude Code not found »
 
-ClaudeOS-Core utilise votre installation locale Claude Code. Installez d'abord Claude Code ([guide officiel](https://docs.anthropic.com/en/docs/claude-code)), puis vérifiez avec `claude --version`.
+ClaudeOS-Core utilise l'install locale de Claude Code. Installez d'abord Claude Code ([guide officiel](https://docs.anthropic.com/en/docs/claude-code)), puis vérifiez avec `claude --version`.
 
-Si `claude` est installé mais pas sur votre PATH, corrigez votre PATH — il n'y a pas de variable d'env d'override.
+`claude` installé mais pas sur le PATH ? Corrigez le PATH : pas de variable d'env d'override.
 
 ---
 
 ## Voir aussi
 
-- [commands.md](commands.md) — une fois installé, ce qu'il faut lancer
-- [troubleshooting.md](troubleshooting.md) — erreurs runtime pendant `init`
+- [commands.md](commands.md) : une fois installé, ce qu'il faut lancer
+- [troubleshooting.md](troubleshooting.md) : erreurs runtime pendant `init`

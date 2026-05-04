@@ -1,14 +1,14 @@
 # Diagrams
 
-Architecture के दृश्य संदर्भ। सभी diagrams Mermaid हैं — वे GitHub पर स्वचालित रूप से render होते हैं। यदि आप इसे non-Mermaid viewer में पढ़ रहे हैं, prose व्याख्याएँ जानबूझकर अपने आप में पूर्ण हैं।
+Architecture का visual reference. सभी diagrams Mermaid में हैं और GitHub पर automatically render हो जाते हैं। Non-Mermaid viewer में पढ़ रहे हैं तो भी prose explanations जानबूझकर self-contained रखी हैं।
 
-> अंग्रेज़ी मूल: [docs/diagrams.md](../diagrams.md)। हिन्दी अनुवाद अंग्रेज़ी के साथ समकालिक रखा गया है।
+> English original: [docs/diagrams.md](../diagrams.md). हिन्दी translation English के साथ sync में रखा है।
 
-केवल-शब्द संस्करण के लिए, [architecture.md](architecture.md) देखें।
+सिर्फ़ words वाला version चाहिए तो [architecture.md](architecture.md) देखिए।
 
 ---
 
-## `init` कैसे काम करता है (उच्च स्तर)
+## `init` कैसे काम करता है (high level)
 
 ```mermaid
 flowchart TD
@@ -29,13 +29,13 @@ flowchart TD
     style D fill:#fce,stroke:#933
 ```
 
-**हरा** = code (deterministic)। **गुलाबी** = Claude (LLM)। दोनों एक ही काम पर overlap नहीं करते।
+**हरा** = code (deterministic). **गुलाबी** = Claude (LLM). दोनों एक ही काम पर overlap नहीं करते।
 
 ---
 
 ## Pass 3 split mode
 
-Pass 3 हमेशा stages में split होता है — project के आकार की परवाह किए बिना कभी एकल आह्वान के रूप में नहीं चलता। यह प्रत्येक stage के prompt को LLM के context window के भीतर रखता है, यहाँ तक कि जब `pass2-merged.json` बड़ा हो:
+Pass 3 हमेशा stages में split होता है, project size चाहे जो भी हो, single invocation की तरह कभी नहीं चलता। यह हर stage का prompt LLM के context window के अंदर रखता है, चाहे `pass2-merged.json` बड़ा ही क्यों न हो:
 
 ```mermaid
 flowchart LR
@@ -55,13 +55,13 @@ flowchart LR
     H --> M["claudeos-core/database/<br/>claudeos-core/mcp-guide/"]
 ```
 
-**मुख्य अंतर्दृष्टि:** Pass 3a बड़े input को एक बार पढ़ता है और एक छोटी fact sheet उत्पन्न करता है। Stages 3b/3c/3d केवल छोटी fact sheet पढ़ते हैं, बड़े input को कभी फिर से नहीं पढ़ते। यह "Prompt is too long" errors से बचाता है जो पहले के non-split designs को परेशान करती थीं।
+**मुख्य insight:** Pass 3a बड़े input को एक बार पढ़ता है और एक छोटी fact sheet generate करता है। Stages 3b/3c/3d बस वही छोटी fact sheet पढ़ते हैं, बड़ा input दोबारा कभी नहीं। यह "Prompt is too long" errors से बचाता है, जो पहले के non-split designs में परेशानी देती थीं।
 
-16+ domains वाले projects के लिए, 3b और 3c और batches में sub-divide होते हैं, प्रत्येक ≤15 domains का। प्रत्येक batch एक ताज़ा context window के साथ अपना Claude आह्वान है।
+16+ domains वाले projects में 3b और 3c और batches में sub-divide हो जाते हैं, हर batch ≤15 domains का। हर batch अपना अलग Claude invocation है, fresh context window के साथ।
 
 ---
 
-## Interruption से Resume
+## Interruption से resume
 
 ```mermaid
 flowchart TD
@@ -88,9 +88,9 @@ flowchart TD
     style P4 fill:#fce
 ```
 
-गुलाबी boxes = Claude आह्वान होता है। Diamond decisions शुद्ध file-system checks हैं — वे किसी भी LLM call से पहले होते हैं।
+गुलाबी boxes = Claude invocation. Diamond decisions pure file-system checks हैं, ये किसी भी LLM call से पहले होते हैं।
 
-Marker validation केवल "क्या फ़ाइल मौजूद है?" नहीं है — प्रत्येक marker में संरचनात्मक checks हैं (उदा., Pass 4 के marker में `passNum === 4` और एक non-empty `memoryFiles` array होनी चाहिए)। Crashed पिछले runs से malformed markers reject किए जाते हैं और pass फिर से चलता है।
+Marker validation सिर्फ़ "file exist करती है?" नहीं है। हर marker में structural checks हैं (जैसे Pass 4 के marker में `passNum === 4` होना चाहिए और एक non-empty `memoryFiles` array). पिछले crashed runs से malformed markers reject हो जाते हैं और pass दोबारा चलता है।
 
 ---
 
@@ -119,13 +119,13 @@ flowchart LR
     style C fill:#cfe,stroke:#393
 ```
 
-Three-tier severity का अर्थ है CI warnings या advisories पर fail नहीं होता — केवल hard failures पर (`fail` tier)।
+Three-tier severity का मतलब: CI warnings या advisories पर fail नहीं होता, सिर्फ़ hard failures पर (`fail` tier).
 
-`claude-md-validator` अलग से चलता है क्योंकि इसकी findings **संरचनात्मक** हैं — यदि CLAUDE.md malformed है, तो सही उत्तर `init` को फिर से चलाना है, चुपचाप warn करना नहीं। अन्य validators `health` के हिस्से के रूप में चलते हैं क्योंकि उनकी findings content-स्तर हैं (paths, manifest entries, schema gaps) — उन्हें सब कुछ फिर से उत्पन्न किए बिना समीक्षा की जा सकती है।
+`claude-md-validator` अलग चलता है क्योंकि इसकी findings **structural** हैं। CLAUDE.md malformed है तो सही जवाब `init` को re-run करना है, चुपचाप warn करना नहीं। बाक़ी validators `health` के हिस्से की तरह चलते हैं क्योंकि उनकी findings content-level हैं (paths, manifest entries, schema gaps), जिन्हें सब कुछ regenerate किए बिना review किया जा सकता है।
 
 ---
 
-## `init` के बाद File system
+## `init` के बाद file system
 
 ```mermaid
 flowchart TD
@@ -156,15 +156,15 @@ flowchart TD
     style C fill:#fce,stroke:#933
 ```
 
-**गुलाबी** = प्रत्येक session पर Claude Code द्वारा auto-loaded (आप उन्हें मैन्युअल रूप से load नहीं करते)। बाक़ी सब कुछ on demand load होता है या auto-loaded फ़ाइलों से referenced।
+**गुलाबी** = हर session पर Claude Code automatically auto-load करता है (manually load नहीं करना पड़ता). बाक़ी सब on demand load होता है, या auto-loaded files से referenced रहता है।
 
-`00`/`10`/`20`/`30`/`40`/`70`/`80` prefixes `rules/` और `standard/` **दोनों** में दिखाई देते हैं — एक ही वैचारिक क्षेत्र, अलग भूमिका (rules loaded directives हैं, standards reference docs हैं)। संख्यात्मक prefixes एक स्थिर sort order देते हैं और Pass 3 orchestrator को category groups को संबोधित करने देते हैं (उदा., 60.memory Pass 4 द्वारा लिखा जाता है, 70.domains प्रति batch लिखा जाता है)। Claude Code को rule auto-load करने के लिए वास्तव में क्या trigger करता है यह उसके YAML frontmatter में `paths:` glob है, न कि उसकी category number।
+`00`/`10`/`20`/`30`/`40`/`70`/`80` prefixes `rules/` और `standard/` **दोनों** में दिखते हैं. वही conceptual area, अलग role (rules loaded directives हैं, standards reference docs). Numeric prefixes stable sort order देते हैं और Pass 3 orchestrator को category groups address करने देते हैं (जैसे 60.memory Pass 4 लिखता है, 70.domains per batch लिखा जाता है). Rule को actually auto-load कौन trigger करता है, वो इसके YAML frontmatter में `paths:` glob है, category number नहीं।
 
-`50.sync` और `60.memory` **rules-only** हैं (कोई मेल खाने वाली `standard/` directory नहीं)। `90.optional` **standard-only** है (बिना enforcement के stack-specific extras)।
+`50.sync` और `60.memory` **rules-only** हैं (matching `standard/` directory नहीं है). `90.optional` **standard-only** है (enforcement के बिना stack-specific extras).
 
 ---
 
-## Memory layer का Claude Code sessions के साथ इंटरैक्शन
+## Memory layer का Claude Code sessions के साथ interaction
 
 ```mermaid
 flowchart TD
@@ -183,6 +183,6 @@ flowchart TD
     style H fill:#fce,stroke:#933
 ```
 
-Memory फ़ाइलें **on demand** load होती हैं, हमेशा नहीं। यह सामान्य coding के दौरान Claude के context को कम रखता है। उन्हें केवल तब खींचा जाता है जब rule का `paths:` glob उस फ़ाइल से मेल खाता है जिसे Claude वर्तमान में संपादित कर रहा है।
+Memory files **on demand** load होती हैं, हमेशा नहीं। इससे normal coding के दौरान Claude का context कम रहता है। ये सिर्फ़ तब खींची जाती हैं जब rule का `paths:` glob उस file से match होता है जिसे Claude अभी edit कर रहा है।
 
-प्रत्येक memory फ़ाइल में क्या है और compaction algorithm के विवरण के लिए, [memory-layer.md](memory-layer.md) देखें।
+हर memory file में क्या है और compaction algorithm के details के लिए [memory-layer.md](memory-layer.md) देखिए।

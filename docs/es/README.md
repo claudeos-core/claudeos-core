@@ -1,8 +1,8 @@
 # Documentación (Español)
 
-Bienvenido. Esta carpeta es para cuando necesitas profundidad que el [README principal](../../README.es.md) no cubre.
+Bienvenido. Esta carpeta cubre todo lo que el [README principal](../../README.es.md) deja fuera por brevedad.
 
-Si solo estás probando, el README principal es suficiente — vuelve aquí cuando quieras saber *cómo* funciona algo, no solo *que* funciona.
+Si solo estás probando, el README principal alcanza. Vuelve aquí cuando quieras saber *cómo* funciona algo, no solo *qué* hace.
 
 > Original en inglés: [docs/README.md](../README.md). La traducción al español se mantiene sincronizada con el inglés.
 
@@ -10,19 +10,19 @@ Si solo estás probando, el README principal es suficiente — vuelve aquí cuan
 
 ## Soy nuevo — ¿por dónde empiezo?
 
-Léelos en orden. Cada uno asume que has leído el anterior.
+Léelos en orden. Cada uno asume que ya leíste el anterior.
 
-1. **[Architecture](architecture.md)** — Cómo `init` funciona realmente por dentro. La pipeline de 4 pasadas, por qué se divide en pases, qué hace el scanner antes de que cualquier LLM se involucre. Empieza aquí para el modelo conceptual.
+1. **[Architecture](architecture.md)** — Cómo funciona `init` por dentro. La pipeline de 4 pasadas, por qué se divide en pases, qué hace el scanner antes de que entre cualquier LLM. Empieza aquí para el modelo conceptual.
 
-2. **[Diagrams](diagrams.md)** — La misma arquitectura explicada con imágenes Mermaid. Hojea junto con el documento de arquitectura.
+2. **[Diagrams](diagrams.md)** — La misma arquitectura con imágenes Mermaid. Léelo junto al documento de arquitectura.
 
 3. **[Stacks](stacks.md)** — Los 12 stacks soportados (8 backend + 4 frontend), cómo se detecta cada uno, qué hechos extrae el scanner por stack.
 
-4. **[Verification](verification.md)** — Los 5 validators que se ejecutan después de que Claude genera los docs. Qué comprueban, por qué existen y cómo leer su salida.
+4. **[Verification](verification.md)** — Los 5 validators que corren después de que Claude genera los docs. Qué comprueban, por qué existen y cómo leer su salida.
 
-5. **[Commands](commands.md)** — Cada comando CLI y lo que hace. Úsalo como referencia una vez que conozcas los conceptos básicos.
+5. **[Commands](commands.md)** — Cada comando CLI y qué hace. Úsalo como referencia cuando ya conozcas los conceptos básicos.
 
-Después del paso 5 tendrás el modelo mental. Todo lo demás en esta carpeta es para situaciones específicas.
+Después del paso 5 ya tienes el modelo mental. Todo lo demás en esta carpeta es para situaciones específicas.
 
 ---
 
@@ -31,10 +31,10 @@ Después del paso 5 tendrás el modelo mental. Todo lo demás en esta carpeta es
 | Pregunta | Lee |
 |---|---|
 | "¿Cómo instalo sin `npx`?" | [Manual Installation](manual-installation.md) |
-| "¿Está soportada la estructura de mi proyecto?" | [Stacks](stacks.md), [Advanced Config](advanced-config.md) |
-| "¿Re-ejecutar destruirá mis ediciones?" | [Safety](safety.md) |
-| "Algo se rompió — ¿cómo me recupero?" | [Troubleshooting](troubleshooting.md) |
-| "¿Por qué usar esto en vez de la herramienta X?" | [Comparison](comparison.md) |
+| "¿La estructura de mi proyecto está soportada?" | [Stacks](stacks.md), [Advanced Config](advanced-config.md) |
+| "¿Re-ejecutar borra mis ediciones?" | [Safety](safety.md) |
+| "Algo se rompió, ¿cómo recupero?" | [Troubleshooting](troubleshooting.md) |
+| "¿Por qué usar esto y no la herramienta X?" | [Comparison](comparison.md) |
 | "¿Para qué sirve el memory layer?" | [Memory Layer](memory-layer.md) |
 | "¿Cómo personalizo el scanner?" | [Advanced Config](advanced-config.md) |
 
@@ -60,16 +60,16 @@ Después del paso 5 tendrás el modelo mental. Todo lo demás en esta carpeta es
 
 ## Cómo leer esta carpeta
 
-Cada documento está escrito para ser **legible por sí solo** — no necesitas leerlos en orden a menos que estés siguiendo el camino para nuevos usuarios de arriba. Hay enlaces cruzados donde un concepto depende de otro.
+Cada documento está pensado para **leerse por sí solo**. No hace falta leerlos en orden, salvo que estés siguiendo el camino para nuevos usuarios de arriba. Hay enlaces cruzados donde un concepto depende de otro.
 
 Convenciones usadas en estos docs:
 
-- **Los bloques de código** muestran lo que escribirías de verdad o lo que los archivos contienen. No están abreviados a menos que se indique explícitamente.
+- **Los bloques de código** muestran lo que escribirías de verdad o el contenido real de los archivos. No vienen abreviados, salvo que se indique explícitamente.
 - **`✅` / `❌`** significan "sí" / "no" en tablas, nunca nada más matizado.
 - **Las rutas de archivo** como `claudeos-core/standard/00.core/01.project-overview.md` son absolutas desde la raíz del proyecto.
-- **Marcadores de versión** como *(v2.4.0)* en una característica significan "añadido en esta versión" — versiones anteriores no la tienen.
+- **Marcadores de versión** como *(v2.4.0)* en una característica significan "añadido en esta versión". Las anteriores no la tienen.
 
-Si un documento dice que algo es cierto y encuentras evidencia de que no lo es, es un bug de documentación — por favor [abre un issue](https://github.com/claudeos-core/claudeos-core/issues).
+Si un documento afirma algo y encuentras evidencia de lo contrario, es un bug de documentación. Por favor [abre un issue](https://github.com/claudeos-core/claudeos-core/issues).
 
 ---
 
@@ -77,9 +77,9 @@ Si un documento dice que algo es cierto y encuentras evidencia de que no lo es, 
 
 PRs bienvenidos en cualquier doc. Los docs siguen estas convenciones:
 
-- **Inglés llano sobre jerga.** La mayoría de los lectores usan ClaudeOS-Core por primera vez.
-- **Ejemplos sobre abstracciones.** Mostrar código real, rutas, salida de comandos.
+- **Lenguaje llano sobre jerga.** La mayoría de los lectores usan ClaudeOS-Core por primera vez.
+- **Ejemplos sobre abstracciones.** Código real, rutas, salida de comandos.
 - **Honestos sobre los límites.** Si algo no funciona o tiene matices, dilo.
-- **Verificados contra el código fuente.** Nada de documentar características que no existen.
+- **Verificados contra el código fuente.** Nada de documentar features que no existen.
 
 Ver [CONTRIBUTING.md](../../CONTRIBUTING.md) para el flujo de contribución.

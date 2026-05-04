@@ -1,18 +1,18 @@
 # Cài đặt thủ công
 
-Nếu bạn không thể dùng `npx` (firewall doanh nghiệp, môi trường air-gapped, CI bị khóa chặt), đây là cách cài và chạy ClaudeOS-Core thủ công.
+Nếu không dùng được `npx` (firewall doanh nghiệp, môi trường air-gapped, CI bị khóa chặt), đây là cách cài và chạy ClaudeOS-Core thủ công.
 
-Với hầu hết người dùng, `npx claudeos-core init` là đủ — bạn không cần đọc trang này.
+Với phần lớn người dùng, `npx claudeos-core init` là đủ, không cần đọc trang này.
 
-> Bản gốc tiếng Anh: [docs/manual-installation.md](../manual-installation.md). Bản dịch tiếng Việt được đồng bộ với bản tiếng Anh.
+> Bản gốc tiếng Anh: [docs/manual-installation.md](../manual-installation.md). Bản dịch tiếng Việt đồng bộ với bản tiếng Anh.
 
 ---
 
 ## Yêu cầu trước (bất kể cách cài)
 
-- **Node.js 18+** — kiểm tra với `node --version`. Nếu cũ hơn, nâng cấp qua [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm), hoặc package manager OS của bạn.
-- **Claude Code** — đã cài và xác thực. Kiểm tra với `claude --version`. Xem [hướng dẫn cài chính thức của Anthropic](https://docs.anthropic.com/en/docs/claude-code).
-- **Git repo (ưu tiên)** — `init` kiểm tra `.git/` và ít nhất một trong `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` ở thư mục gốc dự án.
+- **Node.js 18+**: kiểm tra với `node --version`. Nếu cũ hơn, nâng cấp qua [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm), hoặc package manager của OS.
+- **Claude Code**: đã cài và xác thực. Kiểm tra với `claude --version`. Xem [hướng dẫn cài chính thức của Anthropic](https://docs.anthropic.com/en/docs/claude-code).
+- **Git repo (ưu tiên)**: `init` kiểm tra `.git/` và ít nhất một trong `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` ở thư mục gốc dự án.
 
 ---
 
@@ -58,7 +58,7 @@ Thêm vào `package.json` của dự án:
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.3"
+    "claudeos-core": "^2.4.4"
   }
 }
 ```
@@ -87,8 +87,8 @@ Sau đó:
 npm run claudeos:init
 ```
 
-**Ưu:** Phiên bản pin theo dự án; thân thiện CI; không gây ô nhiễm global.
-**Nhược:** Phình `node_modules` — dù dependency là tối thiểu (chỉ `glob` và `gray-matter`).
+**Ưu:** Phiên bản pin theo dự án, thân thiện CI, không làm bẩn global.
+**Nhược:** Phình `node_modules` chút ít, dù dependency tối thiểu (chỉ `glob` và `gray-matter`).
 
 Gỡ cài khỏi một dự án:
 
@@ -100,7 +100,7 @@ npm uninstall claudeos-core
 
 ## Cách 3 — Clone & link (cho người đóng góp)
 
-Cho phát triển hoặc khi bạn muốn đóng góp:
+Khi muốn phát triển hoặc đóng góp:
 
 ```bash
 git clone https://github.com/claudeos-core/claudeos-core.git
@@ -109,7 +109,7 @@ npm install
 npm link
 ```
 
-Giờ `claudeos-core` đã có trên PATH global, trỏ tới repo đã clone.
+Giờ `claudeos-core` đã có trên PATH global, trỏ tới repo vừa clone.
 
 Để dùng bản clone local trong dự án khác:
 
@@ -119,7 +119,7 @@ npm link claudeos-core
 ```
 
 **Ưu:** Sửa source công cụ và test ngay thay đổi.
-**Nhược:** Chỉ hữu ích cho người đóng góp. Link sẽ vỡ nếu bạn move repo đã clone.
+**Nhược:** Chỉ hữu ích cho người đóng góp. Link sẽ vỡ nếu di chuyển repo đã clone.
 
 ---
 
@@ -131,7 +131,7 @@ Cho môi trường không có internet:
 
 ```bash
 npm pack claudeos-core
-# Tạo claudeos-core-2.4.3.tgz
+# Tạo claudeos-core-2.4.4.tgz
 ```
 
 **Chuyển `.tgz` sang môi trường air-gapped.**
@@ -139,24 +139,24 @@ npm pack claudeos-core
 **Cài từ tệp local:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.3.tgz
+npm install -g ./claudeos-core-2.4.4.tgz
 ```
 
-Bạn cũng cần:
+Cần thêm:
 - Node.js 18+ đã cài sẵn trong môi trường air-gapped.
 - Claude Code đã cài và xác thực.
-- Các package npm `glob` và `gray-matter` đóng gói trong cache npm offline (hoặc vendored bằng cách `npm pack` chúng riêng).
+- Hai package npm `glob` và `gray-matter` đóng gói trong cache npm offline (hoặc vendored bằng cách `npm pack` riêng từng package).
 
-Để có tất cả transitive dependency, bạn có thể chạy `npm install --omit=dev` bên trong bản unpack của tarball trước khi chuyển.
+Để có đủ transitive dependency, hãy chạy `npm install --omit=dev` bên trong bản unpack của tarball trước khi chuyển.
 
 ---
 
 ## Xác minh cài đặt
 
-Sau bất kỳ cách cài nào, kiểm tra cả bốn yêu cầu:
+Sau bất kỳ cách cài nào, kiểm tra cả 4 yêu cầu:
 
 ```bash
-# Phải in version (ví dụ 2.4.3)
+# Phải in version (ví dụ 2.4.4)
 claudeos-core --version
 
 # Phải in version Claude Code
@@ -169,7 +169,7 @@ node --version
 claudeos-core --help
 ```
 
-Nếu cả bốn đều chạy, bạn đã sẵn sàng chạy `claudeos-core init` trong dự án.
+Nếu cả 4 đều chạy, đã sẵn sàng chạy `claudeos-core init` trong dự án.
 
 ---
 
@@ -183,13 +183,13 @@ npm uninstall -g claudeos-core
 npm uninstall claudeos-core
 ```
 
-Để cũng gỡ nội dung sinh ra khỏi dự án:
+Để gỡ luôn nội dung sinh ra khỏi dự án:
 
 ```bash
 rm -rf claudeos-core/ .claude/rules/ CLAUDE.md
 ```
 
-ClaudeOS-Core chỉ ghi vào `claudeos-core/`, `.claude/rules/`, và `CLAUDE.md`. Gỡ ba thứ đó là đủ để loại bỏ hoàn toàn nội dung sinh ra khỏi dự án.
+ClaudeOS-Core chỉ ghi vào `claudeos-core/`, `.claude/rules/`, và `CLAUDE.md`. Xóa 3 thứ đó là đủ để gỡ sạch nội dung sinh ra.
 
 ---
 
@@ -205,9 +205,9 @@ Cho GitHub Actions, workflow chính thức dùng `npx`:
 - run: npx claudeos-core health
 ```
 
-Đủ cho hầu hết trường hợp CI — `npx` tải package theo nhu cầu và cache lại.
+Đủ cho phần lớn trường hợp CI, `npx` tải package theo nhu cầu rồi cache lại.
 
-Nếu CI của bạn air-gapped hoặc bạn muốn phiên bản pin, dùng Cách 2 (devDependency theo dự án) và:
+Nếu CI air-gapped hoặc muốn pin phiên bản, dùng Cách 2 (devDependency theo dự án) và:
 
 ```yaml
 - uses: actions/setup-node@v5
@@ -219,9 +219,9 @@ Nếu CI của bạn air-gapped hoặc bạn muốn phiên bản pin, dùng Các
 - run: npm run claudeos:health
 ```
 
-Cho các hệ CI khác (GitLab, CircleCI, Jenkins, v.v.), pattern là như nhau: cài Node, cài Claude Code, xác thực, chạy `npx claudeos-core <command>`.
+Với các hệ CI khác (GitLab, CircleCI, Jenkins, v.v.), pattern y hệt: cài Node, cài Claude Code, xác thực, chạy `npx claudeos-core <command>`.
 
-**`health` là kiểm tra CI khuyến nghị** — nhanh (không gọi LLM) và phủ bốn validator runtime. Cho validation cấu trúc, chạy thêm `claudeos-core lint`.
+**`health` là kiểm tra CI khuyến nghị**: nhanh (không gọi LLM) và phủ 4 validator runtime. Để validation cấu trúc, chạy thêm `claudeos-core lint`.
 
 ---
 
@@ -229,14 +229,14 @@ Cho các hệ CI khác (GitLab, CircleCI, Jenkins, v.v.), pattern là như nhau:
 
 ### "Command not found: claudeos-core"
 
-Hoặc nó chưa được cài global, hoặc PATH của bạn không bao gồm bin global của npm.
+Hoặc package chưa cài global, hoặc PATH chưa có bin global của npm.
 
 ```bash
 npm config get prefix
-# Đảm bảo thư mục bin/ dưới prefix này có trong PATH
+# Đảm bảo thư mục bin/ dưới prefix này nằm trong PATH
 ```
 
-Hoặc dùng `npx` thay thế:
+Hoặc dùng `npx`:
 
 ```bash
 npx claudeos-core <command>
@@ -244,11 +244,11 @@ npx claudeos-core <command>
 
 ### "Cannot find module 'glob'"
 
-Bạn đang chạy ClaudeOS-Core từ thư mục không phải gốc dự án. Hoặc `cd` vào dự án, hoặc dùng `npx` (chạy được từ bất cứ đâu).
+Đang chạy ClaudeOS-Core từ thư mục không phải gốc dự án. `cd` vào dự án, hoặc dùng `npx` (chạy được từ bất cứ đâu).
 
 ### "Node.js version not supported"
 
-Bạn có Node 16 hoặc cũ hơn. Nâng cấp lên Node 18+:
+Đang dùng Node 16 hoặc cũ hơn. Nâng lên Node 18+:
 
 ```bash
 # nvm
@@ -262,13 +262,13 @@ fnm install 20 && fnm use 20
 
 ### "Claude Code not found"
 
-ClaudeOS-Core dùng cài đặt Claude Code local. Cài Claude Code trước ([hướng dẫn chính thức](https://docs.anthropic.com/en/docs/claude-code)), rồi kiểm tra với `claude --version`.
+ClaudeOS-Core dùng bản Claude Code đã cài local. Cài Claude Code trước ([hướng dẫn chính thức](https://docs.anthropic.com/en/docs/claude-code)), rồi kiểm tra với `claude --version`.
 
-Nếu `claude` đã cài nhưng không có trên PATH, sửa PATH — không có biến môi trường override.
+Nếu `claude` đã cài mà không có trên PATH, sửa PATH, không có biến môi trường override.
 
 ---
 
 ## Xem thêm
 
-- [commands.md](commands.md) — sau khi cài, chạy gì
-- [troubleshooting.md](troubleshooting.md) — lỗi runtime trong `init`
+- [commands.md](commands.md): sau khi cài thì chạy gì
+- [troubleshooting.md](troubleshooting.md): lỗi runtime trong `init`

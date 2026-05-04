@@ -1,10 +1,10 @@
 # Cấu hình nâng cao — `.claudeos-scan.json`
 
-Cho các layout dự án bất thường, bạn có thể override hành vi của scanner frontend qua tệp `.claudeos-scan.json` ở thư mục gốc dự án.
+Với các layout dự án bất thường, ta override hành vi của scanner frontend qua tệp `.claudeos-scan.json` ở thư mục gốc dự án.
 
-Đây là cho người dùng nâng cao. Hầu hết dự án không cần — auto-detection được thiết kế để hoạt động không cần cấu hình.
+Trang này dành cho người dùng nâng cao. Phần lớn dự án không cần, auto-detection thiết kế để chạy không cần cấu hình.
 
-> Bản gốc tiếng Anh: [docs/advanced-config.md](../advanced-config.md). Bản dịch tiếng Việt được đồng bộ với bản tiếng Anh.
+> Bản gốc tiếng Anh: [docs/advanced-config.md](../advanced-config.md). Bản dịch tiếng Việt đồng bộ với bản tiếng Anh.
 
 ---
 
@@ -12,17 +12,17 @@ Cho các layout dự án bất thường, bạn có thể override hành vi củ
 
 **Có:**
 - Mở rộng nhận diện platform/subapp của scanner frontend với từ khóa hoặc tên skip bổ sung.
-- Điều chỉnh ngưỡng cho cái gì được tính là subapp thật.
+- Điều chỉnh ngưỡng cho cái gì tính là subapp thật.
 - Buộc phát subapp trong các dự án single-platform.
 
 **KHÔNG:**
-- Buộc một stack cụ thể (phát hiện stack của scanner chạy trước và không cấu hình được).
+- Ép một stack cụ thể (phát hiện stack của scanner chạy trước và không cấu hình được).
 - Thêm mặc định ngôn ngữ output tùy chỉnh.
-- Cấu hình đường dẫn bị bỏ qua trên toàn cục (scanner frontend có list ignore built-in riêng).
+- Cấu hình đường dẫn bỏ qua toàn cục (scanner frontend có list ignore built-in riêng).
 - Cấu hình các scanner backend (Java, Kotlin, Python, v.v. không đọc tệp này).
 - Đánh dấu tệp là "preserved" (cơ chế đó không tồn tại).
 
-Nếu bạn từng thấy tài liệu cũ mô tả các trường như `stack`, `ignorePaths`, `preserve`, `defaultPort`, `language`, hoặc `subapps` — chúng không được implement. Tập trường thực sự được hỗ trợ thì nhỏ và nằm hoàn toàn dưới `frontendScan`.
+Nếu thấy tài liệu cũ mô tả các trường như `stack`, `ignorePaths`, `preserve`, `defaultPort`, `language`, hoặc `subapps`: chúng chưa được implement. Tập trường thật sự hỗ trợ thì nhỏ và nằm gọn dưới `frontendScan`.
 
 ---
 
@@ -39,7 +39,7 @@ Nếu bạn từng thấy tài liệu cũ mô tả các trường như `stack`, 
 }
 ```
 
-Cả bốn trường đều tùy chọn. Scanner đọc tệp qua `JSON.parse`; nếu tệp thiếu hoặc JSON không hợp lệ, scanning lặng lẽ fallback về mặc định.
+Cả 4 trường đều tùy chọn. Scanner đọc tệp qua `JSON.parse`. Nếu tệp thiếu hoặc JSON không hợp lệ, scanning lặng lẽ rơi về mặc định.
 
 ---
 
@@ -47,7 +47,7 @@ Cả bốn trường đều tùy chọn. Scanner đọc tệp qua `JSON.parse`; 
 
 ### `frontendScan.platformKeywords` — từ khóa platform bổ sung (mảng string)
 
-Scanner frontend phát hiện layout `src/{platform}/{subapp}/` nơi `{platform}` khớp một trong các mặc định:
+Scanner frontend phát hiện layout `src/{platform}/{subapp}/` khi `{platform}` khớp một trong các mặc định:
 
 ```
 desktop, pc, web,
@@ -70,9 +70,9 @@ Dùng `platformKeywords` để mở rộng (không thay thế) list mặc địn
 
 Sau override này, `src/kiosk/checkout/` sẽ được nhận là cặp platform-subapp và phát ra domain `kiosk-checkout`.
 
-**Lưu ý:** viết tắt `adm` được loại trừ có chủ ý khỏi mặc định (quá mơ hồ khi đứng một mình). Nếu dự án dùng `src/adm/` làm root tier admin, hoặc đổi tên thành `admin` hoặc thêm `"adm"` vào `platformKeywords`.
+**Lưu ý:** viết tắt `adm` cố ý loại khỏi mặc định (quá mơ hồ khi đứng một mình). Nếu dự án dùng `src/adm/` làm root tier admin, hãy đổi tên thành `admin` hoặc thêm `"adm"` vào `platformKeywords`.
 
-### `frontendScan.skipSubappNames` — tên bổ sung để skip (mảng string)
+### `frontendScan.skipSubappNames` — tên bổ sung cần skip (mảng string)
 
 Scanner skip các tên thư mục hạ tầng / cấu trúc đã biết ở mức subapp để chúng không bị phát thành domain:
 
@@ -96,11 +96,11 @@ Dùng `skipSubappNames` để mở rộng list skip:
 }
 ```
 
-Sau override này, các thư mục khớp tên đó sẽ bị bỏ qua khi scanning subapp.
+Sau override này, các thư mục trùng tên sẽ bỏ qua khi scanning subapp.
 
 ### `frontendScan.minSubappFiles` — số tệp tối thiểu để là subapp (số, mặc định 2)
 
-Một thư mục đơn-tệp dưới root platform thường là fixture vô tình hoặc placeholder, không phải subapp thật. Tối thiểu mặc định là 2 tệp. Override nếu cấu trúc dự án khác:
+Thư mục có 1 tệp dưới root platform thường là fixture vô tình hoặc placeholder, không phải subapp thật. Tối thiểu mặc định là 2 tệp. Override nếu cấu trúc dự án khác:
 
 ```json
 {
@@ -110,13 +110,13 @@ Một thư mục đơn-tệp dưới root platform thường là fixture vô tì
 }
 ```
 
-Đặt giá trị này thành `1` sẽ phát các subapp 1-tệp (có thể gây nhiễu trong group plan của Pass 1).
+Đặt giá trị này thành `1` sẽ phát các subapp 1 tệp (dễ gây nhiễu trong group plan của Pass 1).
 
 ### `frontendScan.forceSubappSplit` — opt out khỏi single-SPA skip (boolean, mặc định false)
 
-Scanner có **quy tắc skip single-SPA**: khi chỉ MỘT từ khóa platform khớp trong toàn dự án (ví dụ dự án có `src/admin/api/`, `src/admin/dto/`, `src/admin/routers/` mà không có platform khác), việc phát subapp bị bỏ qua để ngăn fragment hóa layer kiến trúc.
+Scanner có **quy tắc skip single-SPA**: khi chỉ MỘT từ khóa platform khớp trong toàn dự án (ví dụ dự án có `src/admin/api/`, `src/admin/dto/`, `src/admin/routers/` mà không có platform khác), scanner bỏ qua khâu phát subapp để tránh phân mảnh layer kiến trúc.
 
-Mặc định này đúng cho các SPA single-platform nhưng sai cho dự án cố ý dùng con của một platform duy nhất làm domain feature. Để opt out:
+Mặc định này đúng cho các SPA single-platform nhưng sai cho dự án chủ ý dùng con của một platform duy nhất làm domain feature. Để opt out:
 
 ```json
 {
@@ -126,7 +126,7 @@ Mặc định này đúng cho các SPA single-platform nhưng sai cho dự án c
 }
 ```
 
-Chỉ dùng cái này khi bạn chắc chắn các con của platform root duy nhất thực sự là subapp feature độc lập.
+Chỉ dùng tùy chọn này khi chắc chắn các con của platform root duy nhất thật sự là subapp feature độc lập.
 
 ---
 
@@ -142,7 +142,7 @@ Chỉ dùng cái này khi bạn chắc chắn các con của platform root duy n
 }
 ```
 
-Một dự án có `src/embedded/dashboard/` giờ sẽ phát `embedded-dashboard` thành domain.
+Dự án có `src/embedded/dashboard/` giờ sẽ phát `embedded-dashboard` thành domain.
 
 ### Skip thư mục vendored hoặc legacy
 
@@ -154,7 +154,7 @@ Một dự án có `src/embedded/dashboard/` giờ sẽ phát `embedded-dashboar
 }
 ```
 
-Các thư mục với tên này bị bỏ qua khi scanning, ngay cả khi chúng nằm dưới root platform.
+Các thư mục có tên này bỏ qua khi scanning, kể cả khi nằm dưới root platform.
 
 ### Dự án single-platform muốn phát subapp dù sao
 
@@ -167,7 +167,7 @@ Các thư mục với tên này bị bỏ qua khi scanning, ngay cả khi chúng
 }
 ```
 
-Bỏ qua quy tắc skip single-SPA. Kết hợp với `minSubappFiles` cao để lọc nhiễu.
+Bỏ qua quy tắc skip single-SPA. Kết hợp `minSubappFiles` cao để lọc nhiễu.
 
 ### Monorepo NX Angular skip các app legacy
 
@@ -179,23 +179,23 @@ Bỏ qua quy tắc skip single-SPA. Kết hợp với `minSubappFiles` cao để
 }
 ```
 
-Scanner Angular đã xử lý monorepo NX tự động. List skip giữ các app legacy có tên ra khỏi danh sách domain.
+Scanner Angular đã xử lý monorepo NX tự động. List skip giữ các app legacy ra khỏi danh sách domain.
 
 ---
 
-## Cái gì có trong tệp này vs. cái gì không có
+## Tệp này có gì và không có gì
 
-Nếu bạn tìm thấy một tài liệu cũ mô tả các trường không có trong list này, các trường đó không tồn tại. Code thực sự đọc `.claudeos-scan.json` ở:
+Nếu thấy tài liệu cũ nào mô tả các trường không có trong list này, các trường đó không tồn tại. Code đọc `.claudeos-scan.json` thật sự nằm ở:
 
 - `plan-installer/scanners/scan-frontend.js` — `loadScanOverrides()`
 
 Đó là chỗ duy nhất. Scanner backend và orchestrator không đọc tệp này.
 
-Nếu bạn cần một tùy chọn cấu hình không tồn tại, [mở issue](https://github.com/claudeos-core/claudeos-core/issues) mô tả cấu trúc dự án và bạn muốn công cụ làm gì.
+Nếu cần một tùy chọn cấu hình chưa có, [mở issue](https://github.com/claudeos-core/claudeos-core/issues) mô tả cấu trúc dự án và muốn công cụ làm gì.
 
 ---
 
 ## Xem thêm
 
-- [stacks.md](stacks.md) — auto-detection nhặt gì mặc định
-- [troubleshooting.md](troubleshooting.md) — khi phát hiện scanner sai
+- [stacks.md](stacks.md): auto-detection nhặt gì mặc định
+- [troubleshooting.md](troubleshooting.md): khi phát hiện scanner sai

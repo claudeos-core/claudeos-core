@@ -58,16 +58,16 @@ Validates the **content** of generated files (not the structure of CLAUDE.md). L
 
 | Check | What it enforces |
 |---|---|
-| `[1/9]` CLAUDE.md exists, ≥100 chars, contains required section keywords (10-language aware) |
-| `[2/9]` `.claude/rules/**/*.md` files have YAML frontmatter with `paths:` key, no empty files |
-| `[3/9]` `claudeos-core/standard/**/*.md` files are ≥200 chars and contain ✅/❌ examples + a markdown table (Kotlin standards also check for ` ```kotlin ` blocks) |
-| `[4/9]` `claudeos-core/skills/**/*.md` files are non-empty; orchestrator + MANIFEST present |
-| `[5/9]` `claudeos-core/guide/` has all 9 expected files, each non-empty (BOM-aware emptiness check) |
-| `[6/9]` `claudeos-core/plan/` files non-empty (informational since v2.1.2 — `plan/` is no longer auto-created) |
-| `[7/9]` `claudeos-core/database/` files exist (warning if missing) |
-| `[8/9]` `claudeos-core/mcp-guide/` files exist (warning if missing) |
-| `[9/9]` `claudeos-core/memory/` 4 files exist + structural validation (decision-log ISO date, failure-pattern required fields, compaction `## Last Compaction` marker) |
-| `[10/10]` Path-claim verification + MANIFEST drift (3 sub-classes — see below) |
+| `[1/9]` | CLAUDE.md exists, ≥100 chars, contains required section keywords (10-language aware) |
+| `[2/9]` | `.claude/rules/**/*.md` files have YAML frontmatter with `paths:` key, no empty files |
+| `[3/9]` | `claudeos-core/standard/**/*.md` files are ≥200 chars and contain ✅/❌ examples + a markdown table (Kotlin standards also check for ` ```kotlin ` blocks) |
+| `[4/9]` | `claudeos-core/skills/**/*.md` files are non-empty; orchestrator + MANIFEST present |
+| `[5/9]` | `claudeos-core/guide/` has all 9 expected files, each non-empty (BOM-aware emptiness check) |
+| `[6/9]` | `claudeos-core/plan/` files non-empty (informational since v2.1.2 — `plan/` is no longer auto-created) |
+| `[7/9]` | `claudeos-core/database/` files exist (warning if missing) |
+| `[8/9]` | `claudeos-core/mcp-guide/` files exist (warning if missing) |
+| `[9/9]` | `claudeos-core/memory/` 4 files exist + structural validation (decision-log ISO date, failure-pattern required fields, compaction `## Last Compaction` marker) |
+| `[10/10]` | Path-claim verification + MANIFEST drift (3 sub-classes — see below) |
 
 **Check `[10/10]` sub-classes:**
 
@@ -117,7 +117,7 @@ It's kept in the validator suite for users who hand-maintain plan files for ad-h
 
 **Severity:** runs at **fail** tier when actual drift is detected. No-ops when `plan/` is absent.
 
-### 5. `sync-checker` — Disk ↔ Master Plan consistency
+### 5. `sync-checker` — Disk ↔ `sync-map.json` consistency
 
 Verifies that the files registered in `sync-map.json` (written by `manifest-generator`) match the files actually on disk. Bidirectional check across the 7 tracked directories. Lives in `sync-checker/`.
 

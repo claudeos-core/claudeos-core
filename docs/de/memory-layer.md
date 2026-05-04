@@ -1,12 +1,12 @@
 # Memory Layer (L4)
 
-Seit v2.0 schreibt ClaudeOS-Core neben der regulären Dokumentation eine persistente Memory-Schicht. Sie ist für lang laufende Projekte, in denen Claude Code:
+Seit v2.0 schreibt ClaudeOS-Core neben der regulären Dokumentation eine persistente Memory-Schicht. Sie ist für lang laufende Projekte gedacht, in denen Claude Code:
 
 1. Architekturentscheidungen und ihre Begründung erinnern soll.
 2. Aus wiederkehrenden Fehlern lernen soll.
 3. Häufige Failure-Patterns automatisch zu permanenten Regeln befördern soll.
 
-Wenn Sie ClaudeOS-Core nur für eine einmalige Generierung nutzen, können Sie diese Schicht komplett ignorieren. Die Memory-Dateien werden geschrieben, wachsen aber nicht, wenn Sie sie nicht aktualisieren.
+Wenn Sie ClaudeOS-Core nur für eine einmalige Generierung nutzen, können Sie diese Schicht komplett ignorieren. Die Memory-Dateien entstehen trotzdem, wachsen aber nicht, solange Sie sie nicht aktualisieren.
 
 > Englisches Original: [docs/memory-layer.md](../memory-layer.md). Die deutsche Übersetzung wird mit der englischen Version synchron gehalten.
 
@@ -33,9 +33,9 @@ claudeos-core/
         └── 04.auto-rule-update.md   (rule that auto-loads auto-rule-update.md)
 ```
 
-Die `60.memory/`-Rule-Dateien haben `paths:`-Globs, die die Projektdateien matchen, in denen das Memory geladen werden soll. Wenn Claude Code eine Datei bearbeitet, die einen Glob matcht, wird die zugehörige Memory-Datei in den Kontext geladen.
+Die `60.memory/`-Rule-Dateien haben `paths:`-Globs. Diese matchen die Projektdateien, in denen das Memory geladen werden soll. Bearbeitet Claude Code eine Datei, die einen Glob matcht, lädt es die zugehörige Memory-Datei in den Kontext.
 
-Das ist **On-Demand-Laden** — Memory ist nicht immer im Kontext, nur wenn relevant. Das hält Claudes Arbeitskontext schlank.
+Das ist **On-Demand-Laden**: Memory ist nicht immer im Kontext, nur wenn relevant. Das hält Claudes Arbeitskontext schlank.
 
 ---
 
@@ -63,7 +63,7 @@ Die automatisch geladene Regel (`60.memory/01.decision-log.md`) weist Claude Cod
 
 ### `failure-patterns.md` — wiederkehrende Fehler
 
-Wenn Claude Code einen wiederkehrenden Fehler macht (z. B. „Claude erzeugt immer wieder JPA, obwohl unser Projekt MyBatis nutzt"), kommt ein Eintrag hierher:
+Macht Claude Code einen wiederkehrenden Fehler (z. B. „Claude erzeugt immer wieder JPA, obwohl unser Projekt MyBatis nutzt"), kommt ein Eintrag hierher:
 
 ```markdown
 ### Generates JPA repositories instead of MyBatis mappers
@@ -79,10 +79,10 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
 
 Die Felder `frequency` / `importance` / `last seen` treiben automatisierte Entscheidungen:
 
-- **Verdichtung:** Einträge mit `lastSeen > 60 days` UND `importance < 3` werden verworfen.
-- **Regel-Beförderung:** Einträge mit `frequency >= 3` werden via `memory propose-rules` als Kandidaten für neue `.claude/rules/`-Einträge ausgewiesen. (Importance ist kein Filter — sie beeinflusst nur den Confidence-Score jedes Vorschlags.)
+- **Verdichtung:** Einträge mit `lastSeen > 60 days` UND `importance < 3` fliegen raus.
+- **Regel-Beförderung:** Einträge mit `frequency >= 3` werden via `memory propose-rules` als Kandidaten für neue `.claude/rules/`-Einträge ausgewiesen. Importance ist kein Filter, sondern beeinflusst nur den Confidence-Score jedes Vorschlags.
 
-Die Metadatenfelder werden von den `memory`-Sub-Befehlen mit verankerter Regex (`^[\s*-]+\*{0,2}\s*key\s*\*{0,2}\s*[:=]`) geparst, sodass die Feld-Zeilen ungefähr wie das obige Beispiel aussehen müssen. Eingerückte oder kursive Variationen werden toleriert.
+Die Metadatenfelder werden von den `memory`-Sub-Befehlen mit verankerter Regex (`^[\s*-]+\*{0,2}\s*key\s*\*{0,2}\s*[:=]`) geparst. Die Feld-Zeilen müssen also ungefähr so aussehen wie im obigen Beispiel. Eingerückte oder kursive Varianten sind okay.
 
 ### `compaction.md` — Verdichtungsprotokoll
 
@@ -101,7 +101,7 @@ Bei jedem `memory compact`-Lauf wird nur die `## Last Compaction`-Section übers
 
 ### `auto-rule-update.md` — Vorschlagsregel-Warteschlange
 
-Wenn Sie `memory propose-rules` ausführen, liest Claude `failure-patterns.md` und hängt vorgeschlagenen Regel-Inhalt hier an:
+Führen Sie `memory propose-rules` aus, liest Claude `failure-patterns.md` und hängt vorgeschlagenen Regel-Inhalt hier an:
 
 ```markdown
 ## Proposed: Use MyBatis mappers, not JPA repositories
@@ -115,13 +115,13 @@ Wenn Sie `memory propose-rules` ausführen, liest Claude `failure-patterns.md` u
     Do NOT generate JpaRepository subclasses.
 ```
 
-Sie prüfen die Vorschläge und kopieren die gewünschten in echte Rule-Dateien. **Der propose-rules-Befehl übernimmt nicht automatisch** — das ist Absicht, da LLM-entworfene Regeln menschliche Prüfung brauchen.
+Sie prüfen die Vorschläge und kopieren die gewünschten in echte Rule-Dateien. **Der propose-rules-Befehl übernimmt nicht automatisch.** Das ist Absicht, denn LLM-entworfene Regeln brauchen menschliche Prüfung.
 
 ---
 
 ## Verdichtungsalgorithmus
 
-Das Memory wächst, läuft aber nicht aus dem Ruder. Eine vierstufige Verdichtung läuft, wenn Sie aufrufen:
+Das Memory wächst, läuft aber nicht aus dem Ruder. Eine vierstufige Verdichtung läuft beim Aufruf:
 
 ```bash
 npx claudeos-core memory compact
@@ -129,7 +129,7 @@ npx claudeos-core memory compact
 
 | Stufe | Trigger | Aktion |
 |---|---|---|
-| 1 | `lastSeen > 30 days` UND nicht preserved | Body kollabiert auf eine 1-Zeilen-„fix" + Meta |
+| 1 | `lastSeen > 30 days` UND nicht preserved | Body kollabiert auf eine 1-Zeilen-„fix" plus Meta |
 | 2 | Doppelte Headings | Verschmolzen (Frequenzen summiert, Body = aktuellster) |
 | 3 | `importance < 3` UND `lastSeen > 60 days` | Verworfen |
 | 4 | Datei > 400 Zeilen | Älteste nicht-preservierten Einträge gekürzt |
@@ -138,11 +138,11 @@ npx claudeos-core memory compact
 
 - `importance >= 7`
 - `lastSeen < 30 days`
-- Der Body enthält einen konkreten (nicht-Glob) aktiven Rule-Pfad (z. B. `.claude/rules/10.backend/orm-rules.md`)
+- Der Body enthält einen konkreten (nicht-Glob) aktiven Rule-Pfad, etwa `.claude/rules/10.backend/orm-rules.md`.
 
-Die „Active-Rule-Path"-Prüfung ist interessant: Wenn ein Memory-Eintrag eine reale, aktuell existierende Rule-Datei referenziert, ist der Eintrag an den Lebenszyklus dieser Regel gekoppelt. Solange die Regel existiert, bleibt das Memory.
+Die „Active-Rule-Path"-Prüfung ist interessant: Referenziert ein Memory-Eintrag eine reale, aktuell existierende Rule-Datei, ist der Eintrag an den Lebenszyklus dieser Regel gekoppelt. Solange die Regel existiert, bleibt das Memory.
 
-Der Verdichtungsalgorithmus ist eine bewusste Nachahmung menschlicher Vergessenskurven — häufige, aktuelle, wichtige Dinge bleiben; seltene, alte, unwichtige verblassen.
+Der Verdichtungsalgorithmus ahmt bewusst menschliche Vergessenskurven nach: häufige, aktuelle, wichtige Dinge bleiben, seltene, alte, unwichtige verblassen.
 
 Den Verdichtungs-Code finden Sie in `bin/commands/memory.js` (Funktion `compactFile()`).
 
@@ -162,11 +162,11 @@ Berechnet Wichtigkeitswerte für Einträge in `failure-patterns.md` neu:
 importance = round(frequency × 1.5 + recency × 5), capped at 10
 ```
 
-Wobei `recency = max(0, 1 - daysSince(lastSeen) / 90)` (linearer Abfall über 90 Tage).
+Dabei gilt `recency = max(0, 1 - daysSince(lastSeen) / 90)` — linearer Abfall über 90 Tage.
 
 Effekte:
-- Ein Eintrag mit `frequency = 3` und `lastSeen = today` → `round(3 × 1.5 + 1.0 × 5) = round(9.5) = 10`
-- Ein Eintrag mit `frequency = 3` und `lastSeen = 90+ Tage her` → `round(3 × 1.5 + 0 × 5) = 5`
+- Eintrag mit `frequency = 3` und `lastSeen = today` → `round(3 × 1.5 + 1.0 × 5) = round(9.5) = 10`
+- Eintrag mit `frequency = 3` und `lastSeen = 90+ Tage her` → `round(3 × 1.5 + 0 × 5) = 5`
 
 **Der score-Befehl entfernt vor dem Einfügen ALLE bestehenden Importance-Zeilen.** Das verhindert Duplikat-Zeilen-Regressionen, wenn score mehrfach läuft.
 
@@ -190,10 +190,10 @@ Das tut:
    evidence    = 1.5 × frequency + 0.5 × importance   (importance defaults to 0; capped at 6 if importance is missing)
    confidence  = sigmoid_{k=0.35, x0=8}(evidence) × (anchored ? 1.0 : 0.6)
    ```
-   wobei `anchored` bedeutet, dass der Eintrag einen realen Datei-Pfad auf der Festplatte referenziert.
+   `anchored` heißt: der Eintrag referenziert einen realen Datei-Pfad auf der Festplatte.
 5. Schreibt die Vorschläge in `auto-rule-update.md` zur menschlichen Prüfung.
 
-**Der Evidence-Wert wird auf 6 gekappt, wenn die Importance fehlt** — ohne Importance-Score sollte Frequenz allein nicht ausreichen, das Sigmoid in Richtung hoher Confidence zu schieben. (Das kappt die Eingabe ins Sigmoid, nicht die Anzahl der Vorschläge.)
+**Der Evidence-Wert wird auf 6 gekappt, wenn die Importance fehlt.** Ohne Importance-Score sollte Frequenz allein nicht ausreichen, das Sigmoid in Richtung hoher Confidence zu schieben. Gekappt wird die Eingabe ins Sigmoid, nicht die Anzahl der Vorschläge.
 
 ---
 
@@ -203,33 +203,33 @@ Bei einem lang laufenden Projekt sieht der Rhythmus so aus:
 
 1. **`init` einmal ausführen**, um die Memory-Dateien zusammen mit allem anderen einzurichten.
 
-2. **Claude Code einige Wochen normal nutzen.** Wiederkehrende Fehler bemerken (z. B. Claude verwendet immer wieder den falschen Response-Wrapper). Einträge in `failure-patterns.md` anhängen — entweder manuell oder indem Sie Claude darum bitten (die Regel in `60.memory/02.failure-patterns.md` weist Claude an, wann anzuhängen ist).
+2. **Claude Code einige Wochen normal nutzen.** Wiederkehrende Fehler bemerken (z. B. Claude verwendet immer wieder den falschen Response-Wrapper). Einträge in `failure-patterns.md` anhängen, entweder manuell oder indem Sie Claude darum bitten (die Regel in `60.memory/02.failure-patterns.md` sagt Claude, wann anzuhängen ist).
 
-3. **Periodisch `memory score` ausführen**, um Wichtigkeitswerte zu aktualisieren. Das ist schnell und idempotent.
+3. **Periodisch `memory score` ausführen**, um Wichtigkeitswerte zu aktualisieren. Schnell und idempotent.
 
-4. **Wenn Sie ~5+ hochwertige Patterns haben**, `memory propose-rules` ausführen, um Regel-Entwürfe zu erhalten.
+4. **Bei ~5+ hochwertigen Patterns** `memory propose-rules` ausführen, um Regel-Entwürfe zu bekommen.
 
 5. **Vorschläge in `auto-rule-update.md` prüfen.** Für jeden, den Sie wollen, den Inhalt in eine permanente Rule-Datei unter `.claude/rules/` kopieren.
 
-6. **`memory compact` periodisch ausführen** (einmal pro Monat oder in geplanter CI), um `failure-patterns.md` begrenzt zu halten.
+6. **`memory compact` periodisch ausführen** (einmal pro Monat oder in einem geplanten CI-Job), um `failure-patterns.md` schlank zu halten.
 
-Dieser Rhythmus ist das, wofür die vier Dateien gedacht sind. Einen Schritt zu überspringen ist okay — die Memory-Schicht ist opt-in, ungenutzte Dateien stehen Ihnen nicht im Weg.
+Genau für diesen Rhythmus sind die vier Dateien gedacht. Einen Schritt zu überspringen ist okay. Die Memory-Schicht ist opt-in, ungenutzte Dateien stehen Ihnen nicht im Weg.
 
 ---
 
 ## Session-Kontinuität
 
-CLAUDE.md wird von Claude Code in jeder Session automatisch geladen. Die Memory-Dateien werden **per Default nicht automatisch geladen** — sie werden bei Bedarf von den `60.memory/`-Regeln geladen, wenn deren `paths:`-Glob die aktuell von Claude bearbeitete Datei matcht.
+Claude Code lädt CLAUDE.md in jeder Session automatisch. Die Memory-Dateien lädt es **per Default nicht automatisch**: Die `60.memory/`-Regeln laden sie bei Bedarf, sobald deren `paths:`-Glob die aktuell von Claude bearbeitete Datei matcht.
 
-Das bedeutet: In einer frischen Claude-Code-Session ist Memory unsichtbar, bis Sie an einer relevanten Datei arbeiten.
+Das heißt: In einer frischen Claude-Code-Session ist Memory unsichtbar, bis Sie an einer relevanten Datei arbeiten.
 
-Nachdem Claude Codes Auto-Verdichtung läuft (etwa bei 85 % des Kontexts), verliert Claude das Bewusstsein für Memory-Dateien, selbst wenn sie zuvor geladen waren. Section 8 von CLAUDE.md enthält einen **Session Resume Protocol**-Prosa-Block, der Claude erinnert:
+Greift Claude Codes Auto-Verdichtung (etwa bei 85 % des Kontexts), vergisst Claude die Memory-Dateien wieder, selbst wenn sie zuvor geladen waren. Section 8 von CLAUDE.md enthält einen **Session Resume Protocol**-Prosa-Block, der Claude erinnert:
 
 - `failure-patterns.md` nach relevanten Einträgen erneut zu scannen.
 - Die jüngsten Einträge von `decision-log.md` erneut zu lesen.
 - Die `60.memory/`-Regeln gegen aktuell offene Dateien neu zu matchen.
 
-Das ist **Prosa, nicht erzwungen** — aber die Prosa ist so strukturiert, dass Claude ihr tendenziell folgt. Das Session Resume Protocol ist Teil des kanonischen Scaffolds ab v2.3.2+ und bleibt über alle 10 Ausgabesprachen erhalten.
+Das ist **Prosa, nicht erzwungen**. Aber die Prosa ist so strukturiert, dass Claude ihr tendenziell folgt. Das Session Resume Protocol ist Teil des kanonischen Scaffolds ab v2.3.2+ und bleibt über alle 10 Ausgabesprachen erhalten.
 
 ---
 
@@ -238,26 +238,26 @@ Das ist **Prosa, nicht erzwungen** — aber die Prosa ist so strukturiert, dass 
 Die Memory-Schicht bringt Mehrwert für:
 
 - **Lang lebende Projekte** (Monate oder länger).
-- **Teams** — `decision-log.md` wird zu einem geteilten institutionellen Gedächtnis und Onboarding-Werkzeug.
-- **Projekte, in denen Claude Code ≥10×/Tag aufgerufen wird** — Failure-Patterns sammeln sich schnell genug, um nützlich zu sein.
+- **Teams**: `decision-log.md` wird zu einem geteilten institutionellen Gedächtnis und Onboarding-Werkzeug.
+- **Projekte, in denen Claude Code ≥10×/Tag aufgerufen wird**: Failure-Patterns sammeln sich schnell genug, um nützlich zu sein.
 
 Übertrieben für:
 
-- Einmalige Skripte, die Sie in einer Woche wegwerfen.
+- Einmalige Skripte, die nach einer Woche im Papierkorb landen.
 - Spike- oder Prototyp-Projekte.
 - Tutorials oder Demos.
 
-Die Memory-Dateien werden weiterhin von Pass 4 geschrieben, aber wenn Sie sie nicht aktualisieren, wachsen sie nicht. Es gibt keine Wartungslast, wenn Sie sie nicht nutzen.
+Pass 4 schreibt die Memory-Dateien weiterhin, aber wenn Sie sie nicht aktualisieren, wachsen sie nicht. Keine Wartungslast, wenn Sie sie nicht nutzen.
 
-Wenn Sie aktiv nicht wollen, dass die Memory-Regeln etwas automatisch laden (aus Kontextkostengründen), können Sie:
+Wollen Sie aktiv nicht, dass die Memory-Regeln etwas automatisch laden (aus Kontextkostengründen), gibt es zwei Wege:
 
-- Die `60.memory/`-Regeln löschen — Pass 4 erzeugt sie beim Resume nicht neu, nur unter `--force`.
+- Die `60.memory/`-Regeln löschen. Pass 4 erzeugt sie beim Resume nicht neu, nur unter `--force`.
 - Oder die `paths:`-Globs in jeder Regel so eng setzen, dass sie nichts matchen.
 
 ---
 
 ## Siehe auch
 
-- [architecture.md](architecture.md) — Pass 4 im Pipeline-Kontext
-- [commands.md](commands.md) — Referenz zu `memory compact` / `memory score` / `memory propose-rules`
-- [verification.md](verification.md) — `[9/9]`-Memory-Prüfungen des content-validator
+- [architecture.md](architecture.md): Pass 4 im Pipeline-Kontext
+- [commands.md](commands.md): Referenz zu `memory compact` / `memory score` / `memory propose-rules`
+- [verification.md](verification.md): `[9/9]`-Memory-Prüfungen des content-validator

@@ -58,7 +58,7 @@ npm uninstall -g claudeos-core
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.3"
+    "claudeos-core": "^2.4.4"
   }
 }
 ```
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# claudeos-core-2.4.3.tgz 생성
+# claudeos-core-2.4.4.tgz 생성
 ```
 
 **`.tgz` 파일을 air-gapped 환경으로 옮깁니다.**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **로컬 파일에서 설치:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.3.tgz
+npm install -g ./claudeos-core-2.4.4.tgz
 ```
 
 추가로 필요한 것:
@@ -156,7 +156,7 @@ npm install -g ./claudeos-core-2.4.3.tgz
 설치 방법과 상관없이 다음 네 가지를 모두 확인합니다:
 
 ```bash
-# 버전 출력 (예: 2.4.3)
+# 버전 출력 (예: 2.4.4)
 claudeos-core --version
 
 # Claude Code 버전 출력

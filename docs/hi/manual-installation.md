@@ -1,18 +1,18 @@
 # Manual Installation
 
-यदि आप `npx` का उपयोग नहीं कर सकते (corporate firewall, air-gapped environment, locked-down CI), तो यहाँ बताया गया है कि ClaudeOS-Core को मैन्युअल रूप से कैसे install करें और चलाएँ।
+`npx` use नहीं कर सकते (corporate firewall, air-gapped environment, locked-down CI)? तो ClaudeOS-Core manually install और चलाने का तरीक़ा यहाँ है.
 
-> अंग्रेज़ी मूल: [docs/manual-installation.md](../manual-installation.md)। हिन्दी अनुवाद अंग्रेज़ी के साथ समकालिक रखा गया है।
+> अंग्रेज़ी मूल: [docs/manual-installation.md](../manual-installation.md). हिन्दी अनुवाद अंग्रेज़ी के साथ sync में रखा गया है.
 
-अधिकांश users के लिए, `npx claudeos-core init` पर्याप्त है — आपको यह पृष्ठ पढ़ने की आवश्यकता नहीं है।
+ज़्यादातर users के लिए `npx claudeos-core init` काफ़ी है. यह page पढ़ने की ज़रूरत नहीं.
 
 ---
 
-## पूर्वापेक्षाएँ (install method की परवाह किए बिना)
+## Prerequisites (install method कोई भी हो)
 
-- **Node.js 18+** — `node --version` से सत्यापित करें। यदि पुराना है, तो [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm), या अपने OS package manager के माध्यम से upgrade करें।
-- **Claude Code** — installed और authenticated। `claude --version` से सत्यापित करें। [Anthropic की आधिकारिक install guide](https://docs.anthropic.com/en/docs/claude-code) देखें।
-- **Git repo (preferred)** — `init` `.git/` और project root पर `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` में से कम से कम एक की जाँच करता है।
+- **Node.js 18+** — `node --version` से check करो. पुराना हो तो [nvm](https://github.com/nvm-sh/nvm), [fnm](https://github.com/Schniz/fnm), या OS package manager से upgrade करो.
+- **Claude Code** — installed और authenticated. `claude --version` से check करो. [Anthropic की official install guide](https://docs.anthropic.com/en/docs/claude-code) देखो.
+- **Git repo (preferred)** — `init` `.git/` और project root पर `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml` में से कम से कम एक check करता है.
 
 ---
 
@@ -22,28 +22,28 @@
 npm install -g claudeos-core
 ```
 
-सत्यापित करें:
+Verify करो:
 
 ```bash
 claudeos-core --version
 ```
 
-फिर बिना `npx` के उपयोग करें:
+फिर बिना `npx` के use करो:
 
 ```bash
 claudeos-core init
 ```
 
-**Pros:** Standard, अधिकांश setups पर काम करता है।
-**Cons:** Global `node_modules` के लिए npm + write access चाहिए।
+**Pros:** Standard, ज़्यादातर setups पर काम करता है.
+**Cons:** Global `node_modules` के लिए npm + write access चाहिए.
 
-बाद में upgrade करने के लिए:
+बाद में upgrade करना हो:
 
 ```bash
 npm install -g claudeos-core@latest
 ```
 
-Uninstall करने के लिए:
+Uninstall करना हो:
 
 ```bash
 npm uninstall -g claudeos-core
@@ -53,23 +53,23 @@ npm uninstall -g claudeos-core
 
 ## Option 2 — Per-project devDependency
 
-अपने project की `package.json` में जोड़ें:
+Project की `package.json` में add करो:
 
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.3"
+    "claudeos-core": "^2.4.4"
   }
 }
 ```
 
-Install करें:
+Install करो:
 
 ```bash
 npm install
 ```
 
-npm scripts के माध्यम से उपयोग करें:
+npm scripts से use करो:
 
 ```json
 {
@@ -87,10 +87,10 @@ npm scripts के माध्यम से उपयोग करें:
 npm run claudeos:init
 ```
 
-**Pros:** प्रति project pinned version; CI-friendly; कोई global pollution नहीं।
-**Cons:** `node_modules` को bloat करता है — हालाँकि dependencies न्यूनतम हैं (बस `glob` और `gray-matter`)।
+**Pros:** Per-project pinned version, CI-friendly, कोई global pollution नहीं.
+**Cons:** `node_modules` bloat होता है. हालाँकि dependencies minimal हैं (बस `glob` और `gray-matter`).
 
-एक project से uninstall करने के लिए:
+एक project से uninstall करना हो:
 
 ```bash
 npm uninstall claudeos-core
@@ -98,9 +98,9 @@ npm uninstall claudeos-core
 
 ---
 
-## Option 3 — Clone & link (योगदानकर्ताओं के लिए)
+## Option 3 — Clone & link (contributors के लिए)
 
-विकास के लिए या जब आप योगदान करना चाहते हैं:
+Development के लिए या contribute करना हो:
 
 ```bash
 git clone https://github.com/claudeos-core/claudeos-core.git
@@ -109,17 +109,17 @@ npm install
 npm link
 ```
 
-अब `claudeos-core` आपके PATH पर globally है, cloned repo की ओर इशारा कर रहा है।
+अब `claudeos-core` PATH पर globally है, cloned repo को point करता हुआ.
 
-किसी अन्य project में local clone का उपयोग करने के लिए:
+किसी और project में local clone use करना हो:
 
 ```bash
 cd /path/to/your/other/project
 npm link claudeos-core
 ```
 
-**Pros:** टूल के source को संपादित करें और तुरंत changes test करें।
-**Cons:** केवल योगदानकर्ताओं के लिए उपयोगी। यदि आप cloned repo को move करते हैं तो link टूट जाता है।
+**Pros:** Tool का source edit करो और तुरंत changes test करो.
+**Cons:** सिर्फ contributors के लिए useful. Cloned repo move कर दो तो link टूट जाता है.
 
 ---
 
@@ -127,75 +127,75 @@ npm link claudeos-core
 
 बिना internet access वाले environments के लिए:
 
-**एक connected machine पर:**
+**Connected machine पर:**
 
 ```bash
 npm pack claudeos-core
-# claudeos-core-2.4.3.tgz उत्पन्न करता है
+# claudeos-core-2.4.4.tgz generate करता है
 ```
 
-**`.tgz` को अपने air-gapped environment में transfer करें।**
+**`.tgz` को air-gapped environment में transfer करो.**
 
-**Local file से install करें:**
+**Local file से install करो:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.3.tgz
+npm install -g ./claudeos-core-2.4.4.tgz
 ```
 
-आपको यह भी चाहिए:
-- Node.js 18+ पहले से air-gapped environment में installed।
-- Claude Code पहले से installed और authenticated।
-- `glob` और `gray-matter` npm packages offline npm cache में bundle किए गए (या उन्हें अलग से `npm pack`-ing करके vendored)।
+ये भी चाहिए:
+- Node.js 18+ पहले से air-gapped environment में installed.
+- Claude Code पहले से installed और authenticated.
+- `glob` और `gray-matter` npm packages offline npm cache में bundled (या उन्हें अलग से `npm pack` करके vendored).
 
-सभी transitive dependencies bundle करने के लिए, transfer करने से पहले tarball की unpacked copy के अंदर `npm install --omit=dev` चला सकते हैं।
+सारी transitive dependencies bundle करनी हों, तो transfer से पहले tarball की unpacked copy के अंदर `npm install --omit=dev` चला सकते हो.
 
 ---
 
-## Installation सत्यापित करना
+## Installation verify करना
 
-किसी भी install method के बाद, सभी चार पूर्वापेक्षाओं को सत्यापित करें:
+कोई भी install method use करो, चारों prerequisites verify कर लो:
 
 ```bash
-# Version प्रिंट करना चाहिए (उदा., 2.4.3)
+# Version print करना चाहिए (जैसे 2.4.4)
 claudeos-core --version
 
-# Claude Code version प्रिंट करना चाहिए
+# Claude Code version print करना चाहिए
 claude --version
 
-# Node version प्रिंट करना चाहिए (18+ होना चाहिए)
+# Node version print करना चाहिए (18+ हो)
 node --version
 
-# Help text प्रिंट करना चाहिए
+# Help text print करना चाहिए
 claudeos-core --help
 ```
 
-यदि सभी चार काम करते हैं, आप एक project में `claudeos-core init` चलाने के लिए तैयार हैं।
+चारों काम कर रहे हैं, तो किसी project में `claudeos-core init` चलाने के लिए ready हो.
 
 ---
 
 ## Uninstalling
 
 ```bash
-# यदि globally installed
+# Globally installed हो तो
 npm uninstall -g claudeos-core
 
-# यदि per-project installed
+# Per-project installed हो तो
 npm uninstall claudeos-core
 ```
 
-एक project से उत्पन्न content को भी हटाने के लिए:
+Project से generated content भी हटाना हो:
 
 ```bash
 rm -rf claudeos-core/ .claude/rules/ CLAUDE.md
 ```
 
-ClaudeOS-Core केवल `claudeos-core/`, `.claude/rules/`, और `CLAUDE.md` पर लिखता है। उन तीनों को हटाना एक project से उत्पन्न content को पूरी तरह से हटाने के लिए पर्याप्त है।
+ClaudeOS-Core सिर्फ `claudeos-core/`, `.claude/rules/`, और `CLAUDE.md` पर write करता है. इन तीनों को हटा देना project से generated content पूरी तरह remove करने के लिए काफ़ी है.
 
 ---
 
 ## CI integration
 
-GitHub Actions के लिए, आधिकारिक workflow `npx` का उपयोग करता है:
+GitHub Actions के लिए official workflow `npx` use करता है:
 
 ```yaml
 - uses: actions/setup-node@v5
@@ -205,9 +205,9 @@ GitHub Actions के लिए, आधिकारिक workflow `npx` का 
 - run: npx claudeos-core health
 ```
 
-यह अधिकांश CI use cases के लिए पर्याप्त है — `npx` package को on demand download करता है और cache करता है।
+ज़्यादातर CI use cases के लिए यही काफ़ी है. `npx` package on demand download करके cache कर लेता है.
 
-यदि आपका CI air-gapped है या आप एक pinned version चाहते हैं, तो Option 2 (per-project devDependency) का उपयोग करें और:
+CI air-gapped हो या pinned version चाहिए, तो Option 2 (per-project devDependency) use करो और:
 
 ```yaml
 - uses: actions/setup-node@v5
@@ -219,9 +219,9 @@ GitHub Actions के लिए, आधिकारिक workflow `npx` का 
 - run: npm run claudeos:health
 ```
 
-अन्य CI systems (GitLab, CircleCI, Jenkins आदि) के लिए, pattern समान है: Node install करें, Claude Code install करें, authenticate करें, `npx claudeos-core <command>` चलाएँ।
+बाक़ी CI systems (GitLab, CircleCI, Jenkins वगैरह) के लिए pattern same है: Node install, Claude Code install, authenticate, `npx claudeos-core <command>` चलाओ.
 
-**`health` अनुशंसित CI check है** — यह तेज़ है (कोई LLM calls नहीं) और चार runtime validators को कवर करता है। संरचनात्मक validation के लिए, `claudeos-core lint` भी चलाएँ।
+**CI में `health` recommended check है.** Fast है (कोई LLM calls नहीं), चारों runtime validators cover कर लेता है. Structural validation के लिए साथ में `claudeos-core lint` भी चलाओ.
 
 ---
 
@@ -229,14 +229,14 @@ GitHub Actions के लिए, आधिकारिक workflow `npx` का 
 
 ### "Command not found: claudeos-core"
 
-या तो यह globally installed नहीं है, या आपका PATH npm के global bin को include नहीं करता।
+या तो globally installed नहीं है, या PATH में npm का global bin नहीं है.
 
 ```bash
 npm config get prefix
-# सुनिश्चित करें कि इस path का bin/ directory आपके PATH में है
+# Ensure करो कि इस path का bin/ directory PATH में है
 ```
 
-या इसके बजाय `npx` का उपयोग करें:
+या `npx` use करो:
 
 ```bash
 npx claudeos-core <command>
@@ -244,11 +244,11 @@ npx claudeos-core <command>
 
 ### "Cannot find module 'glob'"
 
-आप ClaudeOS-Core को एक ऐसी directory से चला रहे हैं जो project root नहीं है। या तो अपने project में `cd` करें, या `npx` का उपयोग करें (जो कहीं से भी काम करता है)।
+ClaudeOS-Core को project root नहीं, किसी और directory से चला रहे हो. Project में `cd` करो, या `npx` use करो (कहीं से भी चलता है).
 
 ### "Node.js version not supported"
 
-आपके पास Node 16 या पुराना है। Node 18+ पर upgrade करें:
+Node 16 या पुराना है. Node 18+ पर upgrade करो:
 
 ```bash
 # nvm
@@ -257,18 +257,18 @@ nvm install 20 && nvm use 20
 # fnm
 fnm install 20 && fnm use 20
 
-# OS package manager — अलग-अलग होता है
+# OS package manager. हर system पर अलग.
 ```
 
 ### "Claude Code not found"
 
-ClaudeOS-Core आपके local Claude Code installation का उपयोग करता है। पहले Claude Code install करें ([आधिकारिक guide](https://docs.anthropic.com/en/docs/claude-code)), फिर `claude --version` से सत्यापित करें।
+ClaudeOS-Core local Claude Code installation use करता है. पहले Claude Code install करो ([official guide](https://docs.anthropic.com/en/docs/claude-code)), फिर `claude --version` से verify करो.
 
-यदि `claude` installed है लेकिन आपके PATH पर नहीं है, अपना PATH ठीक करें — कोई override env variable नहीं है।
+`claude` installed है पर PATH पर नहीं है, तो PATH ठीक करो. कोई override env variable नहीं है.
 
 ---
 
 ## यह भी देखें
 
-- [commands.md](commands.md) — एक बार installed होने पर, क्या चलाना है
+- [commands.md](commands.md) — Install हो जाने के बाद क्या चलाना है
 - [troubleshooting.md](troubleshooting.md) — `init` के दौरान runtime errors

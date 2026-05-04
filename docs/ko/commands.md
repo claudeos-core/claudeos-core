@@ -70,7 +70,7 @@ npx claudeos-core init --force
 
 ### Resume safety
 
-`init`은 **resume-safe**합니다. 네트워크가 끊기거나 타임아웃, Ctrl-C로 중단되어도 다음 실행이 마지막으로 완료된 pass marker부터 이어서 갑니다. Marker는 `claudeos-core/generated/`에 자리잡고 있습니다:
+`init`은 **resume-safe**합니다. 네트워크가 끊기거나 타임아웃, Ctrl-C로 중단되어도 다음 실행이 마지막으로 완료된 pass marker부터 이어서 갑니다. Marker는 `claudeos-core/generated/`에 들어 있습니다:
 
 - `pass1-<group>.json` — 도메인별 Pass 1 출력
 - `pass2-merged.json` — Pass 2 출력

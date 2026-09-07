@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const os = require("os");
 const { spawnSync } = require("child_process");
 
@@ -57,6 +58,41 @@ test("memory compact: removes low-importance aged entries", () => {
 
   const comp = fs.readFileSync(path.join(d, "claudeos-core/memory/compaction.md"), "utf-8");
   assert.match(comp, /Ran at/);
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("memory compact: decision-log.md is never touched, even with entries far older than the 30-day window (v2.5.0)", () => {
+  const d = tmpProject();
+  const old400 = daysAgo(400);
+  const decisionLog = `# Decision Log
+
+## ${old400} — Chose MyBatis over JPA
+- **Context:** Legacy schema with 200+ hand-tuned SQL statements
+- **Options:** JPA, MyBatis, jOOQ
+- **Decision:** MyBatis (XML mappers)
+- **Consequences:** No lazy loading; explicit SQL per query
+
+## ${daysAgo(200)} — Centralized error handling
+- **Context:** try/catch scattered across 40 controllers
+- **Decision:** @ControllerAdvice + ApiResponse wrapper
+- **Consequences:** Controllers return plain DTOs
+`;
+  const dlPath = path.join(d, "claudeos-core/memory/decision-log.md");
+  fs.writeFileSync(dlPath, decisionLog);
+  fs.writeFileSync(path.join(d, "claudeos-core/memory/failure-patterns.md"), `# Failure Patterns
+
+## aged-low
+- importance: 1
+- last seen: ${daysAgo(90)}
+- Fix: gone
+`);
+  fs.writeFileSync(path.join(d, "claudeos-core/memory/compaction.md"), "# Compaction\n## Last Compaction\n(never)\n");
+  const r = runMemory(d, "compact");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(dlPath, "utf-8"), decisionLog, "decision-log.md must be byte-identical after compact");
+  assert.match(r.stdout, /decision-log\.md: append-only, never compacted/);
+  assert.ok(!fs.readFileSync(path.join(d, "claudeos-core/memory/failure-patterns.md"), "utf-8").includes("aged-low"),
+    "failure-patterns.md is still compacted");
   fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -144,13 +180,13 @@ test("memory compact: Stage 2 merges duplicate pattern-ids and writes summed fre
 
 ## dup-pattern
 - frequency: 3
-- last seen: 2026-04-10
+- last seen: ${daysAgo(9)}
 - importance: 5
 - Fix: first version
 
 ## dup-pattern
 - frequency: 5
-- last seen: 2026-04-17
+- last seen: ${daysAgo(2)}
 - importance: 5
 - Fix: second version (latest)
 `);
@@ -169,8 +205,8 @@ test("memory compact: Stage 2 merges duplicate pattern-ids and writes summed fre
   assert.doesNotMatch(after, /frequency: 3\b/, "old frequency value (3) must be overwritten");
 
   // last seen must be the more recent date
-  assert.match(after, /last seen: 2026-04-17/, "last seen must be the most recent date");
-  assert.doesNotMatch(after, /last seen: 2026-04-10/, "older last seen must be overwritten");
+  assert.match(after, new RegExp(`last seen: ${daysAgo(2)}`), "last seen must be the most recent date");
+  assert.doesNotMatch(after, new RegExp(`last seen: ${daysAgo(9)}`), "older last seen must be overwritten");
 
   // Latest body content wins
   assert.match(after, /second version \(latest\)/, "newer body should win");
@@ -400,7 +436,7 @@ test("memory compact: parseEntries ignores '## ...' inside fenced code blocks", 
 
 ## real-with-embedded-md
 - frequency: 4
-- last seen: 2026-04-17
+- last seen: ${daysAgo(2)}
 - Fix: use this template
 
 \`\`\`markdown
@@ -444,7 +480,7 @@ test("memory score: parseField is anchored to field-line format (ignores pseudo-
 ## config-trap
 - Fix: bump pool frequency: 10 then restart
 - frequency: 3
-- last seen: 2026-04-17
+- last seen: ${daysAgo(2)}
 `);
 
   const r = runMemory(d, "score");
@@ -470,9 +506,9 @@ test("memory propose-rules: summary skips metadata lines and uses content (Sympt
   fs.writeFileSync(path.join(d, "claudeos-core/memory/failure-patterns.md"), `# Failure Patterns
 
 ## content-rich-bug
-- **importance**: 10 _(auto-scored 2026-04-17, freq=5, recency=1.00)_
+- **importance**: 10 _(auto-scored ${daysAgo(2)}, freq=5, recency=1.00)_
 - frequency: 5
-- last seen: 2026-04-17
+- last seen: ${daysAgo(2)}
 - importance: 8
 - **Symptom:** NullPointerException in UserService
 - **Root cause:** Lazy fields accessed after session close

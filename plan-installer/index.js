@@ -37,7 +37,7 @@ async function main() {
   if (!stack.language && !stack.framework) {
     console.warn("\n  ⚠️  No language or framework detected.");
     console.warn("  Supported: Java, Kotlin, TypeScript, JavaScript, Python");
-    console.warn("  Ensure you have build.gradle, package.json, pyproject.toml, or requirements.txt in the project root.\n");
+    console.warn("  Ensure you have build.gradle(.kts), pom.xml, package.json, pyproject.toml, or requirements.txt in the project root.\n");
   }
   console.log(`    Frontend:    ${stack.frontend || "none"} ${stack.frontendVersion || ""}`);
   // v2.4.0 — when a project ships more than one DB driver (e.g. Oracle +
@@ -115,7 +115,7 @@ async function main() {
   // Phase 6: Prompt generation
   const lang = process.env.CLAUDEOS_LANG || "en";
   console.log(`  [Phase 6] Generating prompts (lang: ${lang})...`);
-  generatePrompts(templates, lang, TEMPLATES_DIR, GENERATED_DIR);
+  generatePrompts(templates, lang, TEMPLATES_DIR, GENERATED_DIR, stack);
   console.log();
 
   // Save outputs
@@ -127,15 +127,34 @@ async function main() {
   //      the project declares no port of its own. This is a last-resort
   //      default; prefer that stack-detector extract it from .env.example
   //      to keep CLAUDE.md truthful to what the project actually runs.
-  const defaultPort = (stack.framework === "fastapi" || stack.framework === "django") ? 8000
+  //
+  // v2.5.0 — backend port and frontend dev-server port are resolved
+  // SEPARATELY. Pre-v2.5.0 the single chain (`stack.frontend === "angular"
+  // ? 4200 …`) handed a Spring/Django backend the Angular/Next dev-server
+  // port whenever a SPA lived beside it. Now:
+  //   stack.port         — the backend's port when a backend exists; for a
+  //                        frontend-only project it is the dev-server port.
+  //   stack.frontendPort — the SPA's dev-server port whenever a frontend
+  //                        exists: sub-directory `.env*` (stack-detector) →
+  //                        root `.env*` PORT for a root SPA → convention.
+  // Same definition as stack-detector's env-port split: a JVM/Python project
+  // is a backend even when no framework was recognized (plain Maven/Gradle
+  // project without Spring Boot coordinates).
+  const hasBackend = (!!stack.framework && stack.framework !== "vite") || ["java", "kotlin", "python"].includes(stack.language);
+  const backendDefaultPort = (stack.framework === "fastapi" || stack.framework === "django") ? 8000
     : stack.framework === "flask" ? 5000
-    : stack.framework === "vite" ? 5173
-    : stack.frontend === "angular" ? 4200
-    : stack.frontend === "nextjs" ? 3000
     : (stack.framework === "express" || stack.framework === "nestjs" || stack.framework === "fastify") ? 3000 : 8080;
+  const frontendDefaultPort = (stack.frontendBundler === "vite" || stack.framework === "vite") ? 5173
+    : stack.frontend === "angular" ? 4200
+    : 3000;
+  const frontendPort = !stack.frontend ? null
+    : stack.frontendPort ? stack.frontendPort
+    : (!hasBackend && stack.port) ? stack.port
+    : frontendDefaultPort;
+  const defaultPort = hasBackend ? backendDefaultPort : (stack.frontend ? frontendPort : backendDefaultPort);
   const analysis = {
     analyzedAt: new Date().toISOString(), lang,
-    stack: { ...stack, port: stack.port || defaultPort },
+    stack: { ...stack, port: stack.port || defaultPort, ...(frontendPort ? { frontendPort } : {}) },
     templates, isMultiStack, rootPackage,
     domains, backendDomains, frontendDomains, frontend,
     activeDomains: active,

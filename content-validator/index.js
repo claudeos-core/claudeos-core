@@ -423,10 +423,35 @@ async function main() {
   // check covers both. No natural-language matching involved.
   console.log("  [10/10] path-claim verification (hallucination + MANIFEST drift)...");
 
-  // Regex: matches `src/...` paths to TS/TSX/JS/JSX files, not inside
-  // inline code already fenced. We still strip fenced blocks first so
-  // example blocks inside ```...``` don't produce false positives.
-  const SRC_PATH_RE = /\bsrc\/[\w\-./]+\.(?:ts|tsx|js|jsx)\b/g;
+  // Regex: matches `src/...` paths to source files, not inside inline code
+  // already fenced. We still strip fenced blocks first so example blocks
+  // inside ```...``` don't produce false positives.
+  //
+  // v2.5.0 — extension list widened. Pre-v2.5.0 only ts/tsx/js/jsx were
+  // checked, so Java/Kotlin/Python projects (and MyBatis mapper XML, the
+  // single most-hallucinated path class on Spring projects) got zero
+  // path-claim coverage despite "no invented paths" being the headline
+  // guarantee. Config extensions (yml/properties/json) are deliberately
+  // NOT included: those are cited as illustrative profile names
+  // (`application-{profile}.yml`) far more often than as path claims.
+  //
+  // An optional module prefix (`api/src/…`, `apps/web/src/…`,
+  // `servers/query/x/src/…`) is captured as part of the claim. A prefixed
+  // claim is checked at that exact location only — citing `core/src/…` for a
+  // file that lives under `api/` is a wrong-module claim and must be flagged,
+  // which the bare-`src/` module search below would otherwise hide.
+  //
+  // Two alternatives, each with its own left boundary:
+  //   (1) `<module>/…/src/…` — the prefix may not start right after a word
+  //       char, `.`, `/` or `@`, so `@acme/ui/src/Button.tsx` (a package
+  //       import, not a repo path) is NOT captured as module `acme/ui`;
+  //   (2) bare `src/…` — may be preceded by `/` (so the `src/Button.tsx`
+  //       tail of that import is still checked via the module search) but
+  //       not by a word char, so `libsrc/x.ts` never yields `src/x.ts`.
+  // Dependency paths (`node_modules/<pkg>/src/…`) are skipped below.
+  // `:` is excluded before a prefix so a dev-server URL (`localhost:5173/src/main.tsx`)
+  // does not yield the module `5173`; its `src/main.tsx` tail is still checked.
+  const SRC_PATH_RE = /(?:(?<![\w\-./@:])[\w\-][\w\-.]*\/(?:[\w\-][\w\-.]*\/)*src\/|(?<![\w\-.@])src\/)[\w\-./]+\.(?:ts|tsx|js|jsx|mjs|cjs|vue|svelte|java|kt|kts|py|xml|sql)\b/g;
 
   // Placeholder paths are scaffold templates / teaching examples, not
   // real path claims. We skip them. Three patterns qualify:
@@ -541,18 +566,59 @@ async function main() {
   // The monorepo fallback only fires for paths starting with `src/`,
   // which is the conventional workspace-relative form. Non-`src/` paths
   // (e.g., `claudeos-core/skills/...`) are checked direct-only.
+  // Directories that are never application modules even when they contain a
+  // `src/` child: virtualenvs (pip editable installs default to `<venv>/src`),
+  // vendored code, docs, tooling, test fixtures.
+  //
+  // Two tiers: HARD names are never modules at any depth (build output,
+  // dependencies, virtualenvs). SOFT names (`docs`, `tools`, `scripts`,
+  // `test(s)`, `fixtures`) are skipped only at the project root — inside a
+  // workspace container (`apps/docs`, `packages/tools`) they are legitimate
+  // packages, and skipping them there produced false STALE_PATH advisories on
+  // the default Turborepo layout.
+  const MODULE_SCAN_SKIP = new Set(["node_modules", ".git", ".claude", "claudeos-core", "build", "target", "dist", "out", ".gradle", ".idea", "coverage", ".next",
+    "venv", ".venv", "env", "virtualenv", "site-packages", "__pycache__", "vendor", "tmp", "temp"]);
+  const MODULE_SCAN_SKIP_ROOT_ONLY = new Set(["docs", "doc", "tools", "scripts", "test", "tests", "__tests__", "fixtures"]);
+  const WORKSPACE_CONTAINERS = new Set(["apps", "packages", "libs", "services", "servers", "modules"]);
+  function listModuleDirs(dir, { root = false, parentName = "" } = {}) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch (_e) { return []; }
+    const inWorkspace = WORKSPACE_CONTAINERS.has(parentName);
+    return entries
+      .filter(e => e.isDirectory() && !MODULE_SCAN_SKIP.has(e.name) && !e.name.startsWith(".")
+        && !((root || !inWorkspace) && MODULE_SCAN_SKIP_ROOT_ONLY.has(e.name)))
+      .map(e => path.join(dir, e.name));
+  }
+  // Memoized once per run: every directory up to three levels deep that
+  // contains a `src/` folder (JS workspaces `apps/x`, Gradle modules `api`,
+  // and the nested Kotlin CQRS layout `servers/query/x` the scanner itself
+  // supports). Computed lazily on the first `src/...` miss so projects with
+  // zero misses pay nothing.
+  let moduleSrcRoots = null;
+  function getModuleSrcRoots(ROOT) {
+    if (moduleSrcRoots) return moduleSrcRoots;
+    moduleSrcRoots = [];
+    const walk = (dir, depth) => {
+      for (const child of listModuleDirs(dir, { root: depth === 1, parentName: path.basename(dir) })) {
+        if (fs.existsSync(path.join(child, "src"))) moduleSrcRoots.push(child);
+        if (depth < 3) walk(child, depth + 1);
+      }
+    };
+    walk(ROOT, 1);
+    return moduleSrcRoots;
+  }
   function resolvePathClaim(ROOT, claimed) {
     if (fs.existsSync(path.join(ROOT, claimed))) return true;
     if (!claimed.startsWith("src/")) return false;
-    for (const workspace of ["apps", "packages"]) {
-      const wsDir = path.join(ROOT, workspace);
-      let entries;
-      try { entries = fs.readdirSync(wsDir, { withFileTypes: true }); }
-      catch (_e) { continue; }
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        if (fs.existsSync(path.join(wsDir, entry.name, claimed))) return true;
-      }
+    // v2.4.0: JS monorepo workspaces (apps/*, packages/*).
+    // v2.5.0: any first- or second-level module directory — Gradle/Maven
+    // multi-module (`api/src/main/java/...`, `servers/query/x/src/main/kotlin/...`)
+    // cite `src/...` relative to the module, exactly like JS workspaces do.
+    // Without this, widening SRC_PATH_RE to .java/.kt/.py would have turned
+    // every valid multi-module citation into a STALE_PATH false positive.
+    for (const moduleRoot of getModuleSrcRoots(ROOT)) {
+      if (fs.existsSync(path.join(moduleRoot, claimed))) return true;
     }
     return false;
   }
@@ -608,6 +674,9 @@ async function main() {
         if (seen.has(claimed)) continue;
         seen.add(claimed);
         if (hasPlaceholder(claimed)) continue;
+        // A dependency path is a reference to a library, not a claim about
+        // this repository's source tree.
+        if (/(^|\/)node_modules\//.test(claimed)) continue;
         pathClaimsChecked++;
         if (!resolvePathClaim(ROOT, claimed)) {
           pathClaimErrors++;

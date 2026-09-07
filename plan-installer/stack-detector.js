@@ -9,7 +9,7 @@
 const path = require("path");
 const { glob } = require("glob");
 const { readFileSafe, readJsonSafe, existsSafe } = require("../lib/safe-fs");
-const { readStackEnvInfo } = require("../lib/env-parser");
+const { readStackEnvInfo, extractPort } = require("../lib/env-parser");
 
 // ─── Lookup tables ──────────────────────────────────────────────
 
@@ -64,6 +64,33 @@ const DB_KEYWORD_RULES = [
 
 // h2 needs word-boundary check (avoid oauth2, cache2k false positives)
 const H2_REGEX = /\bh2\b/;
+
+// Java version literals come in two spellings: modern `17` / `21` and the
+// legacy dotted form `1.8` (Java 8 — still the norm in enterprise SI
+// codebases). Normalize the legacy form so `1.8` → `8`; pass everything
+// else through unchanged.
+function normalizeJavaVersion(v) {
+  if (v == null) return v;
+  const m = String(v).match(/^1\.(\d+)$/);
+  return m ? m[1] : String(v);
+}
+
+// v2.5.0 — Source-language evidence. Build-file keywords alone are ambiguous:
+// `buildSrc/build.gradle.kts` carries `kotlin-dsl` in pure-Java repos, and a
+// Java catalog may pin `kotlin = "1.9.22"` only to settle kotlin-stdlib
+// conflicts. When `.java` sources exist and no `.kt` sources do, a "kotlin"
+// keyword must NOT flip the language — the Kotlin scanner would then find
+// zero domains and `init` would abort. Memoized per detectStack() call.
+async function hasJavaOnlySources(ROOT) {
+  // `buildSrc/` and `build-logic/` (Gradle's documented buildSrc replacement)
+  // hold convention plugins written in Kotlin DSL — build tooling, not
+  // application code.
+  const ignore = ["**/node_modules/**", "**/build/**", "**/target/**", "**/buildSrc/**", "**/build-logic/**", "**/gradle/plugins/**", "**/src/test/**", "**/.git/**"];
+  const kt = await glob("**/src/main/{java,kotlin}/**/*.kt", { cwd: ROOT, ignore });
+  if (kt.length > 0) return false;
+  const java = await glob("**/src/main/java/**/*.java", { cwd: ROOT, ignore });
+  return java.length > 0;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -233,6 +260,16 @@ function detectDb(stack, content, rules) {
  * @returns {Promise<object>} stack info
  */
 async function detectStack(ROOT) {
+  // Lazily evaluated once per call; only consulted when a "kotlin" keyword
+  // would otherwise flip the language (see hasJavaOnlySources).
+  let javaOnlyMemo = null;
+  const isJavaOnly = async () => {
+    if (javaOnlyMemo === null) javaOnlyMemo = await hasJavaOnlySources(ROOT);
+    return javaOnlyMemo;
+  };
+  // Set when `language` was taken from a root package.json (see Node block);
+  // the Python block reclaims it when the backend turns out to be Python.
+  let languageFromPackageJson = false;
   const stack = {
     language: null, languageVersion: null,
     framework: null, frameworkVersion: null,
@@ -274,7 +311,12 @@ async function detectStack(ROOT) {
       // and downstream tooling don't show "PackageMgr: none" for a build tool
       // that IS the package manager. Only set if not already detected.
       if (!stack.packageManager) stack.packageManager = "gradle";
-      if (g.includes("spring-boot")) { stack.language = "java"; stack.framework = "spring-boot"; stack.detected.push("spring-boot"); }
+      // `spring-boot` (starter coords) OR `org.springframework.boot` (plugin id —
+      // the only spelling present in a multi-module root that declares
+      // `id 'org.springframework.boot' version 'x' apply false`).
+      if (g.includes("spring-boot") || g.includes("org.springframework.boot")) {
+        stack.language = "java"; stack.framework = "spring-boot"; stack.detected.push("spring-boot");
+      }
       const svPatterns = [
         /org\.springframework\.boot.*version\s*['"]([^'"]+)['"]/,
         /id\s*\(\s*["']org\.springframework\.boot["']\s*\)\s*version\s*["']([^"']+)["']/,
@@ -332,8 +374,9 @@ async function detectStack(ROOT) {
       // Java 21).
       const javaVersionPatterns = [
         // (1) numeric literal on sourceCompatibility or targetCompatibility
-        /sourceCompatibility\s*=\s*['"]?(\d+)['"]?/,
-        /targetCompatibility\s*=\s*['"]?(\d+)['"]?/,
+        // `(\d+(?:\.\d+)?)` — captures `1.8` whole instead of stopping at `1`
+        /sourceCompatibility\s*=\s*['"]?(\d+(?:\.\d+)?)['"]?/,
+        /targetCompatibility\s*=\s*['"]?(\d+(?:\.\d+)?)['"]?/,
         // (2) JavaVersion enum — supports both VERSION_21 and VERSION_1_8
         /JavaVersion\.VERSION_(?:1_)?(\d+)/,
         // (3) toolchain block
@@ -341,7 +384,7 @@ async function detectStack(ROOT) {
       ];
       for (const pattern of javaVersionPatterns) {
         const m = g.match(pattern);
-        if (m) { stack.languageVersion = m[1]; break; }
+        if (m) { stack.languageVersion = normalizeJavaVersion(m[1]); break; }
       }
       // (4) ext variable reference fallback — if the Compatibility
       // assignment used "${varName}" we now resolve varName inside the
@@ -356,9 +399,9 @@ async function detectStack(ROOT) {
           // defensive guard against unexpected characters, not a
           // practical necessity for today's inputs.
           const escapedVarName = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const extAssign = new RegExp(`${escapedVarName}\\s*=\\s*['"]?(\\d+)['"]?`);
+          const extAssign = new RegExp(`${escapedVarName}\\s*=\\s*['"]?(\\d+(?:\\.\\d+)?)['"]?`);
           const extVal = g.match(extAssign);
-          if (extVal) stack.languageVersion = extVal[1];
+          if (extVal) stack.languageVersion = normalizeJavaVersion(extVal[1]);
         }
       }
 
@@ -382,7 +425,8 @@ async function detectStack(ROOT) {
       detectLogging(stack, g);
 
       // Kotlin detection: override language if Kotlin plugin found
-      if (g.includes("kotlin") || g.includes("org.jetbrains.kotlin")) {
+      // (unless the source tree is Java-only — see hasJavaOnlySources).
+      if ((g.includes("kotlin") || g.includes("org.jetbrains.kotlin")) && !(await isJavaOnly())) {
         stack.language = "kotlin"; stack.detected.push("kotlin");
         const kvPatterns = [
           /kotlin\S*\s*version\s*['"]([^'"]+)['"]/,
@@ -427,15 +471,66 @@ async function detectStack(ROOT) {
           if (!stack.databases.includes(value)) stack.databases.push(value);
         }
       }
-      if (!stack.language && vc.includes("kotlin")) {
+      // A `kotlin = "x.y.z"` version entry or a Kotlin *plugin* coordinate in
+      // the catalog is decisive — it overrides the `java` default that the
+      // root build file's `org.springframework.boot` plugin id sets.
+      // Library coordinates (`org.jetbrains.kotlin:kotlin-stdlib`) are NOT a
+      // signal: Java projects pin them in the catalog to settle transitive
+      // version conflicts without writing a line of Kotlin.
+      const KOTLIN_CATALOG_RE = /(^\s*kotlin\s*=|org\.jetbrains\.kotlin\.(?:jvm|plugin|multiplatform|android|kapt)|kotlin-gradle-plugin)/m;
+      if (stack.language !== "kotlin" && KOTLIN_CATALOG_RE.test(vc) && !(await isJavaOnly())) {
         stack.language = "kotlin"; stack.detected.push("kotlin (catalog)");
       }
     }
   }
 
+  // ── Java: multi-module Gradle detection ──
+  // Root build.gradle of a multi-module project often holds only
+  // `allprojects { repositories {...} }` and no framework coords at all;
+  // the real declarations live in `api/build.gradle`, `core/build.gradle`, …
+  // Scan sub-module build files (same bound as the Kotlin block below) for
+  // the Java plugin / Spring Boot coords so the project isn't reported as
+  // "no language detected" and the Java scanner actually runs.
+  if (!stack.language && stack.buildTool === "gradle") {
+    const subBuildFiles = await glob("*/**/build.gradle{,.kts}", { cwd: ROOT, ignore: ["**/node_modules/**", "**/build/**", "**/buildSrc/**"] });
+    for (const sbf of subBuildFiles.slice(0, 30)) {
+      const sc = readFileSafe(path.join(ROOT, sbf));
+      if (!sc) continue;
+      if (sc.includes("kotlin") || sc.includes("org.jetbrains.kotlin")) continue; // handled by the Kotlin block
+      const isJava = /\bid\s*\(?\s*['"](java|java-library|org\.springframework\.boot)['"]/.test(sc)
+        || /apply\s+plugin:\s*['"](java|java-library)['"]/.test(sc)
+        || sc.includes("spring-boot");
+      if (isJava) {
+        // Do not `break` on the first Java module: a `core` library module
+        // usually comes before the `api` module that actually declares
+        // Spring Boot. Set language once, keep sweeping for framework/versions.
+        if (stack.language !== "java") { stack.language = "java"; stack.detected.push("java (submodule)"); }
+        if (!stack.framework && (sc.includes("spring-boot") || sc.includes("org.springframework.boot"))) {
+          stack.framework = "spring-boot"; stack.detected.push("spring-boot (submodule)");
+        }
+        if (!stack.frameworkVersion) {
+          // `spring-boot-starter-web:2.7.18`, `spring-boot-dependencies:3.2.0`,
+          // or `id 'org.springframework.boot' version '3.2.5'` inside the module.
+          const sv = sc.match(/spring-boot[\w-]*[:\s'"]+(\d+\.\d+\.\d+)/)
+            || sc.match(/org\.springframework\.boot[^\n]*?version\s*\(?\s*['"](\d+\.\d+\.\d+)['"]/);
+          if (sv) stack.frameworkVersion = sv[1];
+        }
+        if (!stack.languageVersion) {
+          const jv = sc.match(/(?:sourceCompatibility|targetCompatibility)\s*=\s*['"]?(\d+(?:\.\d+)?)['"]?/)
+            || sc.match(/JavaVersion\.VERSION_(?:1_)?(\d+)/)
+            || sc.match(/JavaLanguageVersion\.of\s*\(\s*(\d+)\s*\)/);
+          if (jv) stack.languageVersion = normalizeJavaVersion(jv[1]);
+        }
+        if (stack.framework && stack.frameworkVersion && stack.languageVersion) break;
+      }
+    }
+  }
+
   // ── Kotlin: multi-module Gradle detection ──
-  if (stack.language !== "kotlin" && stack.buildTool === "gradle") {
-    const subBuildFiles = await glob("**/build.gradle{,.kts}", { cwd: ROOT, ignore: ["**/node_modules/**", "**/build/**"] });
+  // v2.5.0: `buildSrc/` is ignored (its `kotlin-dsl` plugin is not evidence of
+  // Kotlin application code) and a Java-only source tree never flips.
+  if (stack.language !== "kotlin" && stack.buildTool === "gradle" && !(await isJavaOnly())) {
+    const subBuildFiles = await glob("**/build.gradle{,.kts}", { cwd: ROOT, ignore: ["**/node_modules/**", "**/build/**", "**/buildSrc/**"] });
     for (const sbf of subBuildFiles.slice(0, 5)) {
       const sc = readFileSafe(path.join(ROOT, sbf));
       if (sc && (sc.includes("kotlin") || sc.includes("org.jetbrains.kotlin"))) {
@@ -510,13 +605,13 @@ async function detectStack(ROOT) {
       // pom.xml (cross-file resolution — parent pom, BOM — is out of
       // scope; the resulting null falls through to LLM-side analysis).
       const mvnJavaPatterns = [
-        /<java\.version>\s*(\d+)\s*<\/java\.version>/,
-        /<maven\.compiler\.source>\s*(\d+)\s*<\/maven\.compiler\.source>/,
-        /<maven\.compiler\.target>\s*(\d+)\s*<\/maven\.compiler\.target>/,
+        /<java\.version>\s*(\d+(?:\.\d+)?)\s*<\/java\.version>/,
+        /<maven\.compiler\.source>\s*(\d+(?:\.\d+)?)\s*<\/maven\.compiler\.source>/,
+        /<maven\.compiler\.target>\s*(\d+(?:\.\d+)?)\s*<\/maven\.compiler\.target>/,
       ];
       for (const pattern of mvnJavaPatterns) {
         const m = pom.match(pattern);
-        if (m) { stack.languageVersion = m[1]; break; }
+        if (m) { stack.languageVersion = normalizeJavaVersion(m[1]); break; }
       }
       // Pattern 3 fallback: if <java.version> references a property,
       // resolve it inside the same pom.
@@ -525,9 +620,9 @@ async function detectStack(ROOT) {
         if (propRef) {
           const propName = propRef[1].trim();
           const escapedProp = propName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const propDef = new RegExp(`<${escapedProp}>\\s*(\\d+)\\s*</${escapedProp}>`);
+          const propDef = new RegExp(`<${escapedProp}>\\s*(\\d+(?:\\.\\d+)?)\\s*</${escapedProp}>`);
           const propVal = pom.match(propDef);
-          if (propVal) stack.languageVersion = propVal[1];
+          if (propVal) stack.languageVersion = normalizeJavaVersion(propVal[1]);
         }
       }
       // For dependency detection (framework, ORM, DB, logging), strip
@@ -628,7 +723,10 @@ async function detectStack(ROOT) {
         }
       }
 
-      if (!stack.language) stack.language = deps.typescript ? "typescript" : "javascript";
+      // Provisional: a root package.json may exist only for frontend tooling
+      // (Tailwind/PostCSS) in a Python repo. The Python block below reclaims
+      // `language` when a Python framework is detected and no Node backend is.
+      if (!stack.language) { stack.language = deps.typescript ? "typescript" : "javascript"; languageFromPackageJson = true; }
       if (deps.typescript) { stack.detected.push("typescript"); const tv = deps.typescript.match(/(\d+(?:\.\d+)*)/); if (tv) stack.languageVersion = tv[1]; }
 
       // Frontend (Angular checked before React — Angular projects may include react in devDependencies)
@@ -666,6 +764,14 @@ async function detectStack(ROOT) {
         stack.detected.push("vite");
         stack.frameworkVersion = deps.vite.replace(/[^0-9.]/g, "");
       }
+      // v2.5.0 — Record the frontend bundler independently of `framework`.
+      // When a backend framework occupies `stack.framework` (Spring + React/Vite
+      // in one repo), `framework === "vite"` can never be true, and
+      // selectTemplates() used to fall back to the Next.js template for a
+      // Vite SPA. `frontendBundler` carries that signal regardless of backend.
+      if (deps.vite && stack.frontend && stack.frontend !== "nextjs") {
+        stack.frontendBundler = "vite";
+      }
 
       // ORM
       for (const [depKeys, ormName] of NODE_ORM_RULES) {
@@ -698,18 +804,95 @@ async function detectStack(ROOT) {
     }
   }
 
+  let subDirSpa = null;
+  // ── Frontend in a sub-directory (v2.5.0) ──
+  // Spring/Django/... repos commonly keep the SPA in frontend/, client/, web/ or
+  // ui/ with its own package.json and no root package.json. Detect it there and
+  // record the sub-directory so the frontend scanner can be rooted at it.
+  if (!stack.frontend) {
+    for (const sub of ["frontend", "client", "web", "ui", "webapp", "front"]) {
+      const subDir = path.join(ROOT, sub);
+      const pj = path.join(subDir, "package.json");
+      const spkg = existsSafe(pj) ? readJsonSafe(pj) : null;
+      const sdeps = spkg ? { ...(spkg.dependencies || {}), ...(spkg.devDependencies || {}) } : null;
+      if (sdeps) {
+        // Same precedence as the root package.json rules (Angular before React —
+        // Angular projects may carry react in devDependencies). `nuxt` maps to
+        // vue so a Nuxt app is not missed when `vue` is only transitive.
+        const rules = [["next", "nextjs", "next.js"], ["@angular/core", "angular", "angular"], ["nuxt", "vue", "nuxt"], ["react", "react", "react"], ["vue", "vue", "vue"]];
+        for (const [dep, name, label] of rules) {
+          if (sdeps[dep]) {
+            stack.frontend = name;
+            // `frontendVersion` is the framework's version (Vue for a Nuxt app),
+            // never the meta-framework's — a Nuxt 3.11 app is not "Vue 3.11".
+            const verDep = dep === "nuxt" ? (sdeps.vue ? "vue" : null) : dep;
+            stack.frontendVersion = verDep ? String(sdeps[verDep]).replace(/[^0-9.]/g, "") : null;
+            stack.frontendRoot = sub;
+            stack.detected.push(`${label} (${sub}/)`);
+            break;
+          }
+        }
+        if (stack.frontend && sdeps.vite && stack.frontend !== "nextjs") stack.frontendBundler = "vite";
+      }
+      // Config-file fallback inside the sub-directory (mirrors the root fallback
+      // below): a package.json without a recognizable framework dep, or none at all.
+      if (!stack.frontend) {
+        const subFallbacks = [
+          [["next.config.js", "next.config.mjs", "next.config.ts"], "nextjs", null, "next.config"],
+          [["vite.config.ts", "vite.config.js"], "react", "vite", "vite.config"],
+          [["nuxt.config.ts", "nuxt.config.js"], "vue", null, "nuxt.config"],
+          [["angular.json", ".angular.json"], "angular", null, "angular.json"],
+        ];
+        for (const [files, frontendName, bundler, label] of subFallbacks) {
+          if (files.some(f => existsSafe(path.join(subDir, f)))) {
+            stack.frontend = frontendName;
+            stack.frontendRoot = sub;
+            if (bundler) stack.frontendBundler = bundler;
+            stack.detected.push(`${label} (${sub}/, fallback)`);
+            break;
+          }
+        }
+      }
+      if (stack.frontend) {
+        // Remember the sub-directory; language / package manager are filled
+        // AFTER every backend block has run (see "SPA-only sub-directory
+        // repo" below). Filling them here would pre-empt the Python block's
+        // `if (!stack.language)` and turn a Django + frontend/ repo into
+        // "typescript", silently skipping the Python scanner.
+        subDirSpa = { subDir, sdeps };
+        break;
+      }
+    }
+  }
+
   // ── Python ──
   const hasPyproject = existsSafe(path.join(ROOT, "pyproject.toml"));
   const hasRequirements = existsSafe(path.join(ROOT, "requirements.txt"));
   if (hasPyproject || hasRequirements) {
-    if (!stack.language) stack.language = "python";
+    // v2.5.0 — a Python manifest at the root beats a `language` that came
+    // from a root package.json with NO Node backend framework: that
+    // package.json exists for Tailwind/PostCSS/ESLint tooling, and the
+    // backend is Python. (A NestJS/Express/Fastify framework keeps Node.)
+    const NODE_BACKENDS = ["nestjs", "express", "fastify"];
+    if (!stack.language) {
+      stack.language = "python";
+    } else if (languageFromPackageJson && !NODE_BACKENDS.includes(stack.framework)) {
+      stack.language = "python";
+      stack.languageVersion = null; // was the TypeScript version; Python's is read below
+    }
     stack.detected.push("python");
 
     const pyFrameworkRules = [["django", "django"], ["fastapi", "fastapi"], ["flask", "flask"]];
     const pyOrmRules = [["sqlalchemy", "sqlalchemy"], ["tortoise", "tortoise-orm"]];
 
+    // v2.5.0 — keyword matching is case-insensitive. `pip freeze` and PyPI
+    // canonical names are capitalized (`Django==5.0`, `Flask==3.0`,
+    // `SQLAlchemy==2.0`); the previous case-sensitive `includes()` never
+    // recognized Django/Flask from requirements.txt, and a Django project
+    // then aborted `init` with "domain-groups.json has invalid totalGroups: 0".
     if (hasPyproject) {
-      const pp = readFileSafe(path.join(ROOT, "pyproject.toml"));
+      const ppRaw = readFileSafe(path.join(ROOT, "pyproject.toml"));
+      const pp = ppRaw ? ppRaw.toLowerCase() : ppRaw;
       if (pp) {
         const pv = pp.match(/python\s*=\s*"[><=^~]*(\d+\.\d+)/);
         if (pv && !stack.languageVersion) stack.languageVersion = pv[1];
@@ -725,7 +908,8 @@ async function detectStack(ROOT) {
     }
 
     if (hasRequirements) {
-      const r = readFileSafe(path.join(ROOT, "requirements.txt"));
+      const rRaw = readFileSafe(path.join(ROOT, "requirements.txt"));
+      const r = rRaw ? rRaw.toLowerCase() : rRaw;
       if (r) {
         for (const [kw, name] of pyFrameworkRules) {
           if (r.includes(kw) && !stack.framework) { stack.framework = name; stack.detected.push(name); break; }
@@ -922,6 +1106,8 @@ async function detectStack(ROOT) {
           stack.framework = frameworkName;
           stack.detected.push(frameworkName + " (fallback)");
         }
+        // v2.5.0 — keep the bundler signal even when a backend owns `framework`.
+        if (frameworkName === "vite") stack.frontendBundler = "vite";
         break;
       }
     }
@@ -932,13 +1118,65 @@ async function detectStack(ROOT) {
   // the project actually declares. This overrides framework-default guesses
   // in downstream code (plan-installer/index.js defaultPort) and exposes the
   // full variable map to Pass 3 prompts via project-analysis.json.
+  // v2.5.0 — SPA-only sub-directory repo. Runs after EVERY backend block
+  // (Gradle / Maven / Node / Python): a repo whose only application is the
+  // SPA in `frontend/` must not be reported as "no language detected", but a
+  // backend's language / package manager always takes precedence.
+  if (subDirSpa && !stack.language) {
+    const { subDir, sdeps } = subDirSpa;
+    const ts = (sdeps && sdeps.typescript) || existsSafe(path.join(subDir, "tsconfig.json"));
+    stack.language = ts ? "typescript" : "javascript";
+    if (sdeps && sdeps.typescript && !stack.languageVersion) {
+      const tv = String(sdeps.typescript).match(/(\d+(?:\.\d+)*)/);
+      if (tv) stack.languageVersion = tv[1];
+    }
+  }
+  if (subDirSpa && !stack.packageManager) {
+    const { subDir } = subDirSpa;
+    stack.packageManager = existsSafe(path.join(subDir, "pnpm-lock.yaml")) ? "pnpm"
+      : existsSafe(path.join(subDir, "yarn.lock")) ? "yarn"
+      : existsSafe(path.join(subDir, "bun.lockb")) || existsSafe(path.join(subDir, "bun.lock")) ? "bun" : "npm";
+  }
+
   const envInfo = readStackEnvInfo(ROOT);
   if (envInfo) {
     stack.envInfo = envInfo;
     // Promote .env-declared port to stack.port if no earlier detection won
-    // (e.g., Spring application.yml parsing at line 407).
-    if (!stack.port && envInfo.port) {
-      stack.port = envInfo.port;
+    // (e.g., Spring application.yml parsing).
+    //
+    // v2.5.0 — a root `.env*` may carry BOTH a backend port and a frontend
+    // dev-server port (`VITE_PORT` / `NEXT_PUBLIC_PORT` / `NUXT_PORT` /
+    // `NG_PORT`). `extractPort()` prefers the frontend keys, so when a
+    // backend exists the frontend key must go to `frontendPort`, never to the
+    // backend's `stack.port`.
+    const vars = envInfo.vars || {};
+    const feKeys = Object.keys(vars).filter(k => /^(VITE_|NEXT_|NUXT_|NG_)\w*PORT$/.test(k));
+    const backendOnlyVars = Object.fromEntries(Object.entries(vars).filter(([k]) => !feKeys.includes(k)));
+    const backendPort = extractPort(backendOnlyVars);
+    const frontendPort = feKeys.length ? extractPort(Object.fromEntries(feKeys.map(k => [k, vars[k]]))) : null;
+    const hasBackend = (!!stack.framework && stack.framework !== "vite") || ["java", "kotlin", "python"].includes(stack.language);
+    if (!stack.port) {
+      const p = hasBackend ? backendPort : envInfo.port;
+      if (p) stack.port = p;
+    }
+    if (frontendPort && stack.frontend && !stack.frontendRoot && !stack.frontendPort) stack.frontendPort = frontendPort;
+    // Keep `stack.envInfo.port` consistent with the split: Pass 3 prompts read
+    // `stack.envInfo.port` for the backend Server Port row, so it must never
+    // carry the frontend dev-server value when a backend exists.
+    envInfo.port = hasBackend ? (backendPort || null) : envInfo.port;
+    if (frontendPort) envInfo.frontendPort = frontendPort;
+  }
+  // v2.5.0 — Sub-directory SPA: its own `.env*` (VITE_PORT, VITE_API_URL,
+  // NEXT_PUBLIC_*) lives under `frontend/`, not at the project root. Read it
+  // separately (same redaction/masking) so the dev-server port and API target
+  // come from the project instead of framework-default guesses. Kept apart
+  // from `stack.envInfo` / `stack.port` so a frontend `PORT=3000` never
+  // overrides the backend's port.
+  if (stack.frontendRoot) {
+    const feEnv = readStackEnvInfo(path.join(ROOT, stack.frontendRoot));
+    if (feEnv) {
+      stack.frontendEnvInfo = { ...feEnv, source: `${stack.frontendRoot}/${feEnv.source}` };
+      if (feEnv.port) stack.frontendPort = feEnv.port;
     }
   }
 

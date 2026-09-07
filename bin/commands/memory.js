@@ -2,7 +2,7 @@
  * ClaudeOS-Core — Memory command (L4 memory)
  *
  * Subcommands:
- *   memory compact         — apply 4-stage compaction to decision-log.md / failure-patterns.md
+ *   memory compact         — apply 4-stage compaction to failure-patterns.md (decision-log.md is append-only)
  *   memory score           — recompute importance of failure-patterns.md entries
  *   memory propose-rules   — analyze failure patterns, append suggestions to auto-rule-update.md
  */
@@ -247,7 +247,13 @@ function cmdCompact() {
   ensureDir(MEMORY_DIR);
   const activeRulePaths = loadActiveRulePaths();
 
-  const files = ["decision-log.md", "failure-patterns.md"];
+  // decision-log.md is EXCLUDED from compaction. Its contract (rules/60.memory/
+  // 01.decision-log.md, CLAUDE.md §8) is "permanent, append-only". Stage 1
+  // summarization dropped the Context/Options/Decision/Consequences body of
+  // every entry older than 30 days — i.e. exactly the "why" the file exists
+  // to preserve. Only failure-patterns.md carries the frequency/importance
+  // metadata the 4-stage policy is designed around.
+  const files = ["failure-patterns.md"];
   const summaries = [];
   for (const f of files) {
     const r = compactFile(path.join(MEMORY_DIR, f), activeRulePaths);
@@ -255,6 +261,7 @@ function cmdCompact() {
     if (r.changed) log(`  ✅ ${f}: ${r.before} → ${r.after} entries`);
     else log(`  ⏭️  ${f}: ${r.reason}`);
   }
+  log("  ⏭️  decision-log.md: append-only, never compacted");
 
   // Update compaction.md "Last Compaction" section.
   // Replace ONLY the "## Last Compaction" section (up to next `##` heading or EOF).
@@ -411,7 +418,7 @@ function showHelp() {
 Usage: npx claudeos-core memory <subcommand>
 
 Subcommands:
-  compact            Apply 4-stage compaction to decision-log.md and failure-patterns.md
+  compact            Apply 4-stage compaction to failure-patterns.md (decision-log.md is append-only, never compacted)
   score              Recompute importance of failure-patterns.md entries (frequency × recency)
   propose-rules      Analyze failure patterns, append rule update suggestions to auto-rule-update.md
 `);

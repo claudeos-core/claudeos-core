@@ -75,7 +75,7 @@ Xác minh **nội dung** các tệp đã sinh (không phải cấu trúc CLAUDE.
 
 | Class | Bắt cái gì |
 |---|---|
-| `STALE_PATH` | Bất kỳ tham chiếu `src/...\.(ts|tsx|js|jsx)` nào trong `.claude/rules/**` hoặc `claudeos-core/standard/**` phải resolve đến tệp thật. Block code có fence và đường dẫn placeholder (`src/{domain}/feature.ts`) loại trừ. |
+| `STALE_PATH` | Bất kỳ tham chiếu `src/...` nào kết thúc bằng `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` trong `.claude/rules/**` hoặc `claudeos-core/standard/**` phải resolve đến tệp thật: ngay dưới root dự án, hoặc dưới bất kỳ thư mục module nào sâu tối đa ba cấp có chứa `src/` (workspace JS `apps/*`, `packages/*`; module Gradle/Maven như `api/src/main/java/…`; bố cục lồng nhau như `servers/query/<x>/src/…`). Block code có fence và đường dẫn placeholder (`src/{domain}/feature.ts`) được loại trừ; các phần mở rộng cấu hình (`.yml`, `.properties`) cố ý không kiểm tra vì chúng thường được trích dẫn như tên profile minh hoạ. |
 | `STALE_SKILL_ENTRY` | Mỗi đường dẫn skill đăng ký trong `claudeos-core/skills/00.shared/MANIFEST.md` phải tồn tại trên đĩa. |
 | `MANIFEST_DRIFT` | Mỗi skill đã đăng ký phải được nhắc trong `CLAUDE.md` (kèm **ngoại lệ orchestrator/sub-skill**: Pass 3b viết Section 6 trước khi Pass 3c tạo sub-skills, nên liệt kê mọi sub-skill ngay từ đầu là không khả thi). |
 

@@ -54,6 +54,22 @@ describe("generatePrompts — single stack", () => {
   });
   afterEach(() => { cleanup(tmpTemplates); cleanup(tmpGenerated); });
 
+  it("prepends a Frontend source root note to every prompt when stack.frontendRoot is set (v2.5.0)", () => {
+    const templates = { backend: "java-spring", frontend: null };
+    generatePrompts(templates, "en", tmpTemplates, tmpGenerated, { frontendRoot: "frontend/" });
+    for (const f of ["pass1-backend-prompt.md", "pass2-prompt.md", "pass3-prompt.md"]) {
+      const out = fs.readFileSync(path.join(tmpGenerated, f), "utf-8");
+      assert.match(out, /Frontend source root: \{\{PROJECT_ROOT\}\}\/frontend\//, `${f} must carry the note`);
+      assert.ok(out.indexOf("Frontend source root") > out.indexOf("# HEADER"), "note follows the shared header");
+    }
+    // No stack / no frontendRoot → no note (byte-identical to the legacy call shape).
+    generatePrompts(templates, "en", tmpTemplates, tmpGenerated);
+    const plain = fs.readFileSync(path.join(tmpGenerated, "pass1-backend-prompt.md"), "utf-8");
+    assert.doesNotMatch(plain, /Frontend source root/);
+    generatePrompts(templates, "en", tmpTemplates, tmpGenerated, { frontend: "react" });
+    assert.doesNotMatch(fs.readFileSync(path.join(tmpGenerated, "pass1-backend-prompt.md"), "utf-8"), /Frontend source root/);
+  });
+
   it("generates pass1-backend-prompt.md with template body", () => {
     const templates = { backend: "java-spring", frontend: null };
     generatePrompts(templates, "en", tmpTemplates, tmpGenerated);

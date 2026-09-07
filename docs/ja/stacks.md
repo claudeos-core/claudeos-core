@@ -265,7 +265,7 @@ scanner は `.env*` ファイルを読んで実行時設定を取得し、生成
 7. `.env.local`
 8. `.env.development`
 
-**機密変数の redaction:** `PASSWORD`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。**例外:** `DATABASE_URL` は scanner が DB タイプ検出のためにプロトコルを必要とするので、ホワイトリストに入っています。
+**機密変数の redaction:** `PASSWORD`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。
 
 **Port 解決の優先順位:**
 1. Spring Boot の `application.yml` の `server.port`

@@ -121,11 +121,13 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
 
 ## 压缩算法
 
-memory 会增长但不会膨胀。调用下列命令时,4 阶段压缩开始运行:
+memory 会增长但不会膨胀。调用下列命令时,会对 `failure-patterns.md` 运行 4 阶段压缩:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` **永远**不会被压缩:按约定它是 append-only 的(每个决定背后的"为什么"恰恰是必须留下来的东西),所以下面的各阶段只作用于 `failure-patterns.md`。
 
 | Stage | 触发 | 动作 |
 |---|---|---|

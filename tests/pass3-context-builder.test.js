@@ -94,6 +94,9 @@ test("buildPass3Context — happy path produces slim structured context", () => 
     assert.strictEqual(ctx.stack.buildTool, "gradle");
     assert.strictEqual(ctx.stack.orm, "exposed");
     assert.strictEqual(ctx.stack.port, 8080);
+    // v2.5.0: sub-directory SPA fields are projected (null when absent)
+    assert.strictEqual(ctx.stack.frontendRoot, null);
+    assert.strictEqual(ctx.stack.frontendBundler, null);
 
     // Architecture flags derived
     assert.strictEqual(ctx.architecture.cqrs, true);
@@ -220,5 +223,98 @@ test("buildPass3Context — handles frontend-only project (no backend domains)",
     assert.strictEqual(ctx.frontend.exists, true);
     // pass2-merged doesn't exist here; descriptor should still be valid
     assert.strictEqual(ctx.pass2Merged.exists, false);
+  } finally { rm(tmp); }
+});
+
+test("buildPass3Context — projects stack.frontendRoot / frontendBundler for a sub-directory SPA (v2.5.0)", () => {
+  const tmp = makeTmp();
+  try {
+    fs.writeFileSync(path.join(tmp, "project-analysis.json"), JSON.stringify({
+      stack: { language: "java", framework: "spring-boot", frontend: "react", frontendRoot: "frontend", frontendBundler: "vite" },
+      backendDomains: [], frontendDomains: [], summary: {}, activeDomains: {},
+    }));
+    const ctx = buildPass3Context(tmp);
+    assert.strictEqual(ctx.stack.frontendRoot, "frontend");
+    assert.strictEqual(ctx.stack.frontendBundler, "vite");
+  } finally { rm(tmp); }
+});
+
+// ─── v2.5.0: deterministic allowlist injection into pass3a-facts.md ─────
+const { injectAllowedPathsSection } = require("../plan-installer/source-paths");
+
+test("injectAllowedPathsSection appends the section when absent", () => {
+  const out = injectAllowedPathsSection("# Pass 3 Fact Sheet\n\n## Stack\n- Language: java\n",
+    { mode: "full", paths: ["src/a.java", "src/b.java"], totalFiles: 2, excludedDirs: [] });
+  assert.match(out, /^## Stack/m);
+  assert.match(out, /^## Allowed Source Paths/m);
+  assert.match(out, /- `src\/a\.java`/);
+  assert.match(out, /total: 2/);
+});
+
+test("injectAllowedPathsSection replaces an LLM-written section wholesale (up to next ## heading)", () => {
+  const md = "# Facts\n\n## Allowed Source Paths\n\n- `src/hallucinated.ts`\n- `src/other.ts`\n\n## Testing\n- JUnit\n";
+  const out = injectAllowedPathsSection(md, { mode: "full", paths: ["src/real.ts"], totalFiles: 1, excludedDirs: [] });
+  assert.doesNotMatch(out, /hallucinated/);
+  assert.match(out, /- `src\/real\.ts`/);
+  assert.match(out, /^## Testing\n- JUnit/m, "content after the section must survive");
+  assert.equal((out.match(/^## Allowed Source Paths/gm) || []).length, 1);
+});
+
+test("injectAllowedPathsSection writes the documented fallback line when allowlist is empty", () => {
+  const out = injectAllowedPathsSection("# Facts\n", { mode: "full", paths: [], totalFiles: 0, excludedDirs: [] });
+  assert.match(out, /allowlist unavailable/);
+  const out2 = injectAllowedPathsSection("# Facts\n", null);
+  assert.match(out2, /allowlist unavailable/);
+});
+
+test("injectAllowedPathsSection ignores a matching heading inside a fenced block", () => {
+  const md = "# Facts\n\n```markdown\n## Allowed Source Paths\n(example)\n```\n";
+  const out = injectAllowedPathsSection(md, { mode: "rollup", paths: ["src/app/"], totalFiles: 900, excludedDirs: [] });
+  assert.match(out, /```markdown\n## Allowed Source Paths\n\(example\)\n```/, "fenced example untouched");
+  assert.equal((out.match(/^## Allowed Source Paths/gm) || []).length, 2 - 1 + 1); // fenced one + real one
+  assert.match(out, /rollup|directories/i);
+});
+
+test("injectAllowedPathsSection also replaces a heading with an LLM-added suffix", () => {
+  const md = "# Facts\n\n## Allowed Source Paths (full mode)\n\n- `src/x.ts`\n\n## Next\n";
+  const out = injectAllowedPathsSection(md, { mode: "full", paths: ["src/y.ts"], totalFiles: 1, excludedDirs: [] });
+  assert.equal((out.match(/^## Allowed Source Paths/gm) || []).length, 1);
+  assert.doesNotMatch(out, /src\/x\.ts/);
+  assert.match(out, /^## Next/m);
+});
+
+test("injectAllowedPathsSection normalizes a CRLF facts file to LF (no mixed endings)", () => {
+  const out = injectAllowedPathsSection("# F\r\n\r\n## Stack\r\n- x\r\n", { mode: "full", paths: ["src/a.java"], totalFiles: 1, excludedDirs: [] });
+  assert.ok(!out.includes("\r"));
+  assert.match(out, /^## Stack\n- x\n\n## Allowed Source Paths/m);
+});
+
+test("injectAllowedPathsSection closes an unterminated fence before appending", () => {
+  const out = injectAllowedPathsSection("# F\n\n```java\nclass A {}\n", { mode: "full", paths: ["src/a.java"], totalFiles: 1, excludedDirs: [] });
+  let inF = false, visible = 0;
+  for (const l of out.split("\n")) { if (/^(```|~~~)/.test(l.trimStart())) inF = !inF; if (!inF && /^## Allowed Source Paths/.test(l)) visible++; }
+  assert.equal(visible, 1);
+});
+
+test("injectAllowedPathsSection collapses duplicate LLM-written sections into one", () => {
+  const md = "# F\n\n## Allowed Source Paths\n\n- `src/a.ts`\n\n## Stack\n- x\n\n## Allowed Source Paths (again)\n\n- `src/b.ts`\n\n## Tail\n";
+  const out = injectAllowedPathsSection(md, { mode: "full", paths: ["src/z.ts"], totalFiles: 1, excludedDirs: [] });
+  assert.equal((out.match(/^## Allowed Source Paths/gm) || []).length, 1);
+  assert.doesNotMatch(out, /src\/a\.ts|src\/b\.ts/);
+  assert.match(out, /^## Stack\n- x/m); assert.match(out, /^## Tail/m);
+  assert.ok(out.indexOf("## Allowed Source Paths") < out.indexOf("## Stack"), "kept at the first position");
+});
+
+test("buildPass3Context — projects frontendPort / frontendEnvInfo for a sub-directory SPA (review follow-up 2)", () => {
+  const tmp = makeTmp();
+  try {
+    fs.writeFileSync(path.join(tmp, "project-analysis.json"), JSON.stringify({
+      stack: { language: "java", frontend: "react", frontendRoot: "frontend", frontendBundler: "vite", frontendPort: 3000,
+        frontendEnvInfo: { source: "frontend/.env.example", vars: { PORT: "3000" }, port: 3000, host: null, apiTarget: "http://localhost:8080" } },
+      backendDomains: [], frontendDomains: [], summary: {}, activeDomains: {},
+    }));
+    const ctx = buildPass3Context(tmp);
+    assert.strictEqual(ctx.stack.frontendPort, 3000);
+    assert.deepStrictEqual(ctx.stack.frontendEnvInfo, { source: "frontend/.env.example", port: 3000, apiTarget: "http://localhost:8080" });
   } finally { rm(tmp); }
 });

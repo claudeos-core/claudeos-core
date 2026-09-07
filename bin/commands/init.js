@@ -615,6 +615,42 @@ async function runPass3Split(ctx) {
     },
   });
 
+  // v2.5.0 — Deterministic allowlist injection ("LLMs guess, code confirms").
+  // The `## Allowed Source Paths` section is the single most important
+  // anti-hallucination input for 3b/3c/3d, yet until now it reached
+  // pass3a-facts.md only if the LLM faithfully hand-copied up to 500 paths
+  // out of pass3-context.json — and the 3a validator only checked file
+  // length. Node now writes that section itself from project-analysis.json
+  // (replacing any LLM-written version), so the allowlist is byte-exact
+  // every run, including resumed runs where 3a was skipped.
+  {
+    const { injectAllowedPathsSection } = require("../../plan-installer/source-paths");
+    let collected = null;
+    try {
+      const pa = JSON.parse(readFile(path.join(GENERATED_DIR, "project-analysis.json")));
+      collected = pa && pa.allowedSourcePaths;
+    } catch (_e) { /* tolerated — fallback line is written instead */ }
+    const before = readFileSafe(factsFile, "");
+    if (before.replace(/^\uFEFF/, "").trim().length === 0) {
+      // 3a is marked complete in the marker but the facts file is missing/empty
+      // (deleted by hand, or a crash between validate and marker write). Do not
+      // fabricate a facts file that contains only the allowlist — 3b would run
+      // against an empty fact sheet. Surface it and let the user resume/--force.
+      throw new InitError(
+        "pass3a-facts.md is missing or empty although Pass 3a is marked complete.\n" +
+        "    Delete claudeos-core/generated/pass3-complete.json to re-run Pass 3a, or use `init --force`."
+      );
+    }
+    const after = injectAllowedPathsSection(before, collected);
+    if (after !== before) {
+      if (!writeFileSafe(factsFile, after)) {
+        throw new InitError("Failed to write the Allowed Source Paths section into pass3a-facts.md.");
+      }
+      const n = collected && Array.isArray(collected.paths) ? collected.paths.length : 0;
+      log(`    📎 Allowed Source Paths section written by orchestrator (${n} ${collected && collected.mode === "rollup" ? "dirs" : "paths"})`);
+    }
+  }
+
   // ═══ Stage 3b: CLAUDE.md + standard/ + .claude/rules/ ═══════════
   //
   // Single batch (domains ≤ 15): keep legacy "3b" marker (backward-compatible).
@@ -699,8 +735,16 @@ async function runPass3Split(ctx) {
           }
         }
         // For every batch, confirm rules/ was generated (at least one staged-rules move must succeed).
+        // Count ONLY claudeos-core-managed categories (`NN.` prefix). Since v2.5.0
+        // --force/fresh preserve user-authored entries under .claude/rules/, so a
+        // plain recursive count could be >0 even when Pass 3 produced nothing.
         const rulesDir = path.join(PROJECT_ROOT, ".claude/rules");
-        const rulesCount = countFilesRecursive(rulesDir);
+        let rulesCount = 0;
+        try {
+          for (const e of fs.readdirSync(rulesDir, { withFileTypes: true })) {
+            if (e.isDirectory() && /^\d{2}\./.test(e.name)) rulesCount += countFilesRecursive(path.join(rulesDir, e.name));
+          }
+        } catch (_e) { rulesCount = 0; }
         if (rulesCount === 0) {
           problems.push(".claude/rules/ has 0 files (staging-override may have been ignored)");
         }
@@ -855,7 +899,7 @@ function checkPrerequisites() {
   );
   if (!hasProjectMarker) {
     log(`\n  ⚠️  Warning: ${PROJECT_ROOT} does not look like a project root.`);
-    log("  No .git, package.json, build.gradle, or pom.xml found.");
+    log("  No .git, package.json, build.gradle(.kts), pom.xml, or pyproject.toml found.");
     log("  Run this command from your project directory.\n");
   }
 
@@ -910,6 +954,28 @@ async function resolveLanguage(parsedArgs) {
   return lang;
 }
 
+// Remove only the rule categories claudeos-core generates (`NN.` prefixed:
+// 00.core, 10.backend, …, 90.optional). Files/dirs the user authored under
+// .claude/rules/ without that prefix are left untouched. Returns the number
+// of entries removed.
+function wipeManagedRuleCategories(rulesDir) {
+  if (!fileExists(rulesDir)) return 0;
+  let removed = 0;
+  let entries;
+  try { entries = fs.readdirSync(rulesDir, { withFileTypes: true }); }
+  catch (_e) { return 0; }
+  for (const e of entries) {
+    // Managed entries are category DIRECTORIES (00.core/, 10.backend/, …).
+    // claudeos-core never writes a `NN.`-prefixed FILE at the rules root, so
+    // such a file (`.claude/rules/01.team-style.md`) is user-authored — keep it.
+    // Guard 2 (zero-rules detection) counts with the same predicate.
+    if (!e.isDirectory() || !/^\d{2}\./.test(e.name)) continue;
+    fs.rmSync(path.join(rulesDir, e.name), { recursive: true, force: true });
+    removed++;
+  }
+  return removed;
+}
+
 // ─── Stage 3: Resume/Fresh selection ──────────────────────────────
 // Returns { wasFreshClean: boolean } — the caller uses this to gate the
 // v1.7.x migration backfill in dispatchPass3.
@@ -930,14 +996,15 @@ async function applyResumeMode(parsedArgs, lang) {
     // (only .json/.md are unlinked above; directories aren't touched).
     const stagedDir = path.join(GENERATED_DIR, ".staged-rules");
     if (fileExists(stagedDir)) fs.rmSync(stagedDir, { recursive: true, force: true });
-    // Also wipe .claude/rules/ so Guard 2 (zero-rules detection) can't
-    // false-negative on stale rules from a previous run when the fresh
-    // Pass 3 run fails silently (e.g. Claude ignores staging-override).
-    // Step [2] recreates the subdirs from scratch. Any manual edits the
-    // user made to rule files are lost — acceptable under --force
-    // ("truly fresh start").
-    const rulesDir = path.join(PROJECT_ROOT, ".claude/rules");
-    if (fileExists(rulesDir)) fs.rmSync(rulesDir, { recursive: true, force: true });
+    // Also wipe the claudeos-core-managed categories under .claude/rules/
+    // so Guard 2 (zero-rules detection) can't false-negative on stale rules
+    // from a previous run when the fresh Pass 3 run fails silently (e.g.
+    // Claude ignores staging-override). Step [2] recreates the subdirs.
+    // Manual edits to GENERATED rule files are lost — acceptable under
+    // --force ("truly fresh start"). Anything the user placed under
+    // .claude/rules/ that is NOT a claudeos-core category (no `NN.` prefix)
+    // is preserved — it was never ours to delete.
+    wipeManagedRuleCategories(path.join(PROJECT_ROOT, ".claude/rules"));
     wasFreshClean = true;
     log("  🔄 Previous results deleted (--force)\n");
     return { wasFreshClean };
@@ -993,11 +1060,9 @@ async function applyResumeMode(parsedArgs, lang) {
     // Clean .staged-rules/ leftover from a prior crashed run (same reason as --force branch).
     const stagedDir = path.join(GENERATED_DIR, ".staged-rules");
     if (fileExists(stagedDir)) fs.rmSync(stagedDir, { recursive: true, force: true });
-    // Wipe .claude/rules/ for the same Guard 2 false-negative reason as
-    // the --force branch. Step [2] recreates the subdirs; any manual
-    // edits are lost — acceptable under an explicit "fresh" choice.
-    const rulesDir = path.join(PROJECT_ROOT, ".claude/rules");
-    if (fileExists(rulesDir)) fs.rmSync(rulesDir, { recursive: true, force: true });
+    // Wipe managed rule categories for the same Guard 2 false-negative
+    // reason as the --force branch (user-owned, non-`NN.` entries survive).
+    wipeManagedRuleCategories(path.join(PROJECT_ROOT, ".claude/rules"));
     wasFreshClean = true;
   } else if (mode === "continue" && existingPass1.length === 0 && pass2Exists) {
     // pass2 exists but no pass1 → pass2 is stale, force re-run
@@ -1078,7 +1143,7 @@ function ensureDirectories() {
 }
 
 // ─── Stage 5: Load & validate domain-groups.json ──────────────────
-function loadDomainGroups() {
+function loadDomainGroups({ wasFreshClean = false } = {}) {
   let domainGroups;
   try {
     domainGroups = JSON.parse(
@@ -1089,6 +1154,34 @@ function loadDomainGroups() {
   }
   const totalGroups = domainGroups.totalGroups;
   if (!totalGroups || typeof totalGroups !== "number" || totalGroups < 1) {
+    if (totalGroups === 0) {
+      let stackLine = "";
+      try {
+        const pa = JSON.parse(readFile(path.join(GENERATED_DIR, "project-analysis.json")));
+        const st = pa.stack || {};
+        stackLine = `    Detected stack: language=${st.language || "none"} framework=${st.framework || "none"} frontend=${st.frontend || "none"}\n`;
+      } catch (_e) { /* best effort */ }
+      throw new InitError(
+        "No domains were found in this project, so there is nothing for Pass 1-3 to analyze.\n" +
+        stackLine +
+        "    The scanner recognizes layouts such as:\n" +
+        "      Java/Kotlin  src/main/java/<pkg>/<domain>/controller/*.java, <pkg>/controller/<domain>/*.java,\n" +
+        "                   <pkg>/controller/*Controller.java, <pkg>/<domain>/adapter/in/web/*.java,\n" +
+        "                   <pkg>/<feature>/*Controller.kt, <module>/src/main/java/... (Gradle/Maven multi-module)\n" +
+        "      Node         src/<domain>/*.ts, src/modules/<domain>/, src/{controllers,routes,services}/<domain>.*\n" +
+        "      Python       app/<domain>/, app/{routers,routes}/<domain>.py, Django apps with models.py\n" +
+        "      Frontend     app/<route>/page.tsx (incl. (group)/), pages/<route>/, src/components/<name>/, src/features/<name>/\n" +
+        "    If your layout differs, open an issue with your directory tree, or check claudeos-core/generated/project-analysis.json\n" +
+        "    to see what was detected. " +
+        (wasFreshClean
+          // --force / "fresh" already wiped the managed rule categories and
+          // generated/*.json|*.md before the scanner ran — say so, do not
+          // claim nothing was touched.
+          ? "CLAUDE.md was not modified, but --force / fresh had already removed the previously generated\n" +
+            "    .claude/rules/NN.* categories and claudeos-core/generated/ pass files before this check. Restore them from version control if needed."
+          : "Nothing was written to CLAUDE.md or .claude/rules/.")
+      );
+    }
     throw new InitError(`domain-groups.json has invalid totalGroups: ${totalGroups}\n    Re-run plan-installer or check claudeos-core/generated/`);
   }
   if (!domainGroups.groups || totalGroups !== domainGroups.groups.length) {
@@ -1564,7 +1657,8 @@ async function runPass4(opts) {
       // Note: master plan files are no longer generated (previously this
       // included "claudeos-core/plan/50.memory-master.md"). The marker schema
       // still accepts an optional planFiles field for backward compatibility.
-      claudeMdAppended: true,
+      // v2.3.0+: CLAUDE.md is never touched by Pass 4 (Pass 3 §8 is authoritative).
+      claudeMdAppended: false,
     }, null, 2);
     return writeFileSafe(pass4Marker, markerBody);
   }
@@ -1625,7 +1719,7 @@ async function runPass4(opts) {
     pass4Label = "Pass 4 already present";
   } else if (!fileExists(pass4PromptFile)) {
     log("    ⚠️  pass4-prompt.md not found — falling back to static scaffold");
-    if (applyStaticFallback()) { log("    ✅ Memory/Rules/Plans scaffolded + CLAUDE.md appended (static fallback)"); pass4Label = "Pass 4 (static fallback)"; }
+    if (applyStaticFallback()) { log("    ✅ Memory/Rules/Standard scaffolded (static fallback)"); pass4Label = "Pass 4 (static fallback)"; }
     else { log("    ❌ Static fallback failed to write marker"); pass4Label = "Pass 4 fallback failed"; }
   } else {
     let prompt4 = injectProjectRoot(readFile(pass4PromptFile));
@@ -1675,7 +1769,7 @@ async function runPass4(opts) {
 
     if (!ok4 || !isValidPass4Marker(pass4Marker)) {
       log("    ⚠️  Pass 4 did not produce a valid pass4-memory.json — using static fallback");
-      if (applyStaticFallback()) { log("    ✅ Memory/Rules/Plans scaffolded + CLAUDE.md appended (static fallback)"); pass4Label = `Pass 4 (static fallback, ${formatElapsed(elapsed4)})`; }
+      if (applyStaticFallback()) { log("    ✅ Memory/Rules/Standard scaffolded (static fallback)"); pass4Label = `Pass 4 (static fallback, ${formatElapsed(elapsed4)})`; }
       else { log("    ❌ Static fallback failed to write marker"); pass4Label = "Pass 4 fallback failed"; }
     } else {
       // Claude-driven Pass 4 succeeded. Ensure memory + rules + plans + standard + CLAUDE.md append exist
@@ -1744,8 +1838,11 @@ async function runPass4(opts) {
 // ─── Stage 11: Run external verification tools ────────────────────
 function runVerificationTools() {
   const verifyTools = [
-    { name: "manifest-generator", script: path.join(TOOLS_DIR, "manifest-generator/index.js") },
-    { name: "health-checker",     script: path.join(TOOLS_DIR, "health-checker/index.js") },
+    // --sync-skills: only `init` is allowed to let manifest-generator patch
+    // CLAUDE.md §6 / MANIFEST.md (post-generation reconciliation). `health`
+    // runs the same tool without the flag and stays read-only.
+    { name: "manifest-generator", script: path.join(TOOLS_DIR, "manifest-generator/index.js"), args: " --sync-skills" },
+    { name: "health-checker",     script: path.join(TOOLS_DIR, "health-checker/index.js"),     args: "" },
   ];
 
   for (const t of verifyTools) {
@@ -1753,7 +1850,7 @@ function runVerificationTools() {
       log(`    ⏭️  ${t.name} — not found, skipping`);
       continue;
     }
-    const ok = run(`node "${t.script}"`, { ignoreError: true });
+    const ok = run(`node "${t.script}"${t.args}`, { ignoreError: true });
     if (!ok) {
       log(`    ⚠️  ${t.name} reported issues (non-fatal)`);
     }
@@ -1914,7 +2011,7 @@ async function cmdInit(parsedArgs) {
 
   // ─── [4] Pass 1: Deep analysis per domain group ────────────
   header("[4] Pass 1 — Deep analysis per domain group...");
-  const { domainGroups, totalGroups } = loadDomainGroups();
+  const { domainGroups, totalGroups } = loadDomainGroups({ wasFreshClean });
   const pass1Prompts = loadPass1Prompts();
 
   // Progress tracking: Pass 1 (N groups) + Pass 2 + Pass 3 + Pass 4 = totalSteps
@@ -1976,4 +2073,4 @@ async function cmdInit(parsedArgs) {
   printCompletionBanner({ lang, totalGroups, totalStart });
 }
 
-module.exports = { cmdInit, InitError };
+module.exports = { cmdInit, InitError, wipeManagedRuleCategories };

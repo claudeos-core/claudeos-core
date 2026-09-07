@@ -265,7 +265,7 @@ Scanner đọc tệp `.env*` lấy cấu hình runtime, để tài liệu sinh r
 7. `.env.local`
 8. `.env.development`
 
-**Redact biến nhạy cảm:** key khớp `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. **Ngoại lệ:** `DATABASE_URL` whitelist vì scanner cần protocol để phát hiện loại DB.
+**Redact biến nhạy cảm:** key khớp `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng.
 
 **Thứ tự ưu tiên xác định port:**
 1. `server.port` của Spring Boot `application.yml`

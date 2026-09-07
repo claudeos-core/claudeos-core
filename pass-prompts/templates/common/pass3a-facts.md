@@ -125,11 +125,15 @@ IMPORT, not redefine.
 - ...
 - ...
 
-## Allowed Source Paths (v2.3.x+ — MANDATORY)
+## Allowed Source Paths (v2.5.0+ — WRITTEN BY THE ORCHESTRATOR)
 
-Copy the **entire** `allowedSourcePaths` section from `pass3-context.json`
-verbatim into this pass3a-facts.md. Do NOT summarize it, do NOT truncate
-it, do NOT reword it. The shape to copy:
+**Do NOT write this section yourself.** After you finish, the Node.js
+orchestrator appends `## Allowed Source Paths` to this file directly from
+`project-analysis.json` — byte-exact, every run. Anything you write under
+that heading will be replaced. Skip it and save the tokens.
+
+The remainder of this section documents the shape the orchestrator emits,
+so Pass 3b/3c/3d know what to expect:
 
 - Header: whether the list is in `full` mode (individual file paths) or
   `rollup` mode (parent directories, used when the project exceeds the
@@ -175,11 +179,9 @@ fall back to pass2-merged.json verification per file)` instead.
 3. **Exact values only.** Every class name, method name, package path, and
    file path must be verbatim from the analysis data. If a value is not
    captured in the analysis, write `(not in analysis)` — do NOT guess.
-4. **Allowed Source Paths section is COPIED, not extracted.** Do not apply
-   judgment, ranking, or "relevance filtering" to the allowlist. The
-   whole point is that Pass 3b/3c/3d get the complete enumeration; any
-   path you drop here becomes a path they can fabricate later without
-   the downstream validator catching it until after Pass 3 completes.
+4. **Do not write the `## Allowed Source Paths` section.** The orchestrator
+   injects it verbatim from `project-analysis.json` once this step ends
+   (v2.5.0+). It is deterministic by design — no LLM copying involved.
 5. **Do NOT write any other files.** CLAUDE.md, standard/, rules/, etc.
    come in later Pass 3 steps. Writing them here is a bug.
 6. **Do NOT read source code.** All information comes from the three JSON

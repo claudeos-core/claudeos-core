@@ -199,6 +199,16 @@ describe("selectTemplates", () => {
     assert.equal(t.frontend, "node-nextjs");
   });
 
+  it("selects node-vite for React + Vite when a backend framework owns `framework` (v2.5.0)", () => {
+    // Spring + frontend/ (React + Vite): framework is spring-boot, so the old
+    // `framework === "vite"` test could never pick node-vite.
+    const t = selectTemplates({ language: "java", framework: "spring-boot", frontend: "react", frontendBundler: "vite", frontendRoot: "frontend" });
+    assert.equal(t.backend, "java-spring");
+    assert.equal(t.frontend, "node-vite");
+    // Without the bundler signal React still defaults to the Next.js template.
+    assert.equal(selectTemplates({ language: "java", framework: "spring-boot", frontend: "react" }).frontend, "node-nextjs");
+  });
+
   it("selects python-django for Django", () => {
     const t = selectTemplates({ language: "python", framework: "django" });
     assert.equal(t.backend, "python-django");

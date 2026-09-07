@@ -58,7 +58,7 @@ Project की `package.json` में add करो:
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.4"
+    "claudeos-core": "^2.5.0"
   }
 }
 ```
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# claudeos-core-2.4.4.tgz generate करता है
+# claudeos-core-2.5.0.tgz generate करता है
 ```
 
 **`.tgz` को air-gapped environment में transfer करो.**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **Local file से install करो:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.4.tgz
+npm install -g ./claudeos-core-2.5.0.tgz
 ```
 
 ये भी चाहिए:
@@ -156,7 +156,7 @@ npm install -g ./claudeos-core-2.4.4.tgz
 कोई भी install method use करो, चारों prerequisites verify कर लो:
 
 ```bash
-# Version print करना चाहिए (जैसे 2.4.4)
+# Version print करना चाहिए (जैसे 2.5.0)
 claudeos-core --version
 
 # Claude Code version print करना चाहिए

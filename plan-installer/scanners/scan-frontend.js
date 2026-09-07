@@ -61,7 +61,11 @@ function dirGlobPrefix(dir) {
   return fwd.endsWith("/") ? fwd : fwd + "/";
 }
 
-async function scanFrontendDomains(stack, ROOT) {
+// `opts.projectRoot` (v2.5.0): when the SPA lives in a sub-directory, ROOT is
+// that sub-directory (so all globs are relative to it) while `.claudeos-scan.json`
+// is still read from the PROJECT root, where it is documented to live.
+async function scanFrontendDomains(stack, ROOT, opts = {}) {
+  const PROJECT_ROOT = opts.projectRoot || ROOT;
   const frontendDomains = [];
 
   // ── Angular ──
@@ -129,9 +133,63 @@ async function scanFrontendDomains(stack, ROOT) {
     const skipPages = ["api", "_app", "_document", "fonts", "not-found", "error", "loading",
       "components", "hooks", "widgets", "entities", "features", "modules",
       "lib", "libs", "utils", "util", "config", "types", "shared", "common", "assets"];
-    for (const dir of allDirs) {
+
+    // v2.5.0 — Next.js App Router route groups. `app/(marketing)/about/`,
+    // `app/(shop)/cart/` — the parenthesized folder is invisible in the URL
+    // and exists only to share layouts. Pre-v2.5.0 these were skipped
+    // outright (`name.startsWith("(")`), so any project that organizes
+    // routes under groups (the App Router default in most starters) came
+    // back with ZERO route domains. Expand each group one level so its
+    // children are evaluated exactly like top-level route folders. Nested
+    // groups (`(a)/(b)/x`) are expanded recursively up to 3 levels.
+    async function expandRouteGroups(dirs, depth = 0) {
+      const out = [];
+      for (const dir of dirs) {
+        const name = path.basename(dir.replace(/\/$/, ""));
+        if (name.startsWith("(") && name.endsWith(")") && depth < 3) {
+          const children = await glob(`${dirGlobPrefix(dir)}*/`, { cwd: ROOT, ignore: ["**/node_modules/**"] });
+          out.push(...await expandRouteGroups(children, depth + 1));
+        } else {
+          out.push(dir);
+        }
+      }
+      return out;
+    }
+    const routeDirs = [...new Set(await expandRouteGroups(allDirs))];
+    // Same leaf under different route groups — `(shop)/settings` and
+    // `(admin)/settings` — are DIFFERENT features. Domain names must stay
+    // unique (domain-groups.json, per-domain rules/standards are keyed by
+    // name), so colliding leaves are qualified with their group path:
+    // `shop-settings`, `admin-settings`. Non-colliding leaves keep the bare name.
+    // Two qualification levels: (1) segments after the last `app`/`pages`
+    // (route groups: `shop-settings`); (2) if still not unique — leaves that
+    // differ only BEFORE `pages`, such as `src/mobile/pages/home` vs
+    // `src/desktop/pages/home` — every non-structural segment of the path
+    // (`mobile-home`, `desktop-home`).
+    const STRUCTURAL = new Set(["src", "app", "pages", "apps", "packages"]);
+    const qualify = (dir, full) => {
+      const segs = dir.replace(/\\/g, "/").replace(/\/$/, "").split("/");
+      let from;
+      if (full) from = 0;
+      else {
+        const anchor = Math.max(segs.lastIndexOf("app"), segs.lastIndexOf("pages"));
+        // Segments after the `app`/`pages` anchor (route groups → `shop-settings`).
+        // Without an anchor (`src/views/home`), or when the anchored form adds
+        // nothing (`src/pages/home` → still `home`), qualify with the immediate
+        // parent (`views-home`, `pages-home`) — never with the whole path.
+        from = anchor >= 0 && anchor + 1 < segs.length - 1 ? anchor + 1 : Math.max(0, segs.length - 2);
+      }
+      return segs.slice(from).filter(s => !full || !STRUCTURAL.has(s)).map(s => s.replace(/^\((.*)\)$/, "$1")).join("-");
+    };
+    const count = (arr) => arr.reduce((m, n) => { m[n] = (m[n] || 0) + 1; return m; }, {});
+    const leafCount = count(routeDirs.map(d => path.basename(d)));
+    const level1 = new Map(routeDirs.map(d => [d, leafCount[path.basename(d)] > 1 ? qualify(d, false) : path.basename(d)]));
+    const level1Count = count([...level1.values()]);
+    const domainNames = new Map(routeDirs.map(d => [d, level1Count[level1.get(d)] > 1 ? qualify(d, true) : level1.get(d)]));
+    for (const dir of routeDirs) {
       const name = path.basename(dir);
       if (skipPages.includes(name) || name.startsWith("(") || name.startsWith("[") || name.startsWith("_") || name.startsWith(".")) continue;
+      const domainName = domainNames.get(dir);
       const files = await glob(`${dirGlobPrefix(dir)}**/*.{tsx,jsx,ts,js,vue}`, { cwd: ROOT });
       if (files.length > 0) {
         const pages = files.filter(f => /page\.|index\./.test(f)).length;
@@ -140,7 +198,7 @@ async function scanFrontendDomains(stack, ROOT) {
         const serverFiles = pages + layouts;
         const components = files.filter(f => !/page\.|layout\.|index\.|client\./.test(f)).length;
         frontendDomains.push({
-          name, type: "frontend", pages, layouts, clientFiles, serverFiles, components, totalFiles: files.length,
+          name: domainName, type: "frontend", pages, layouts, clientFiles, serverFiles, components, totalFiles: files.length,
           rscPattern: clientFiles > 0 ? "RSC+Client split" : "default",
         });
       }
@@ -190,7 +248,9 @@ async function scanFrontendDomains(stack, ROOT) {
         const parts = f.replace(/\\/g, "/").split("/");
         const appIdx = parts.indexOf("app");
         const pagesIdx = parts.indexOf("pages");
-        const baseIdx = appIdx >= 0 ? appIdx : pagesIdx;
+        let baseIdx = appIdx >= 0 ? appIdx : pagesIdx;
+        // Route groups `(group)` are URL-transparent — step over them.
+        while (baseIdx >= 0 && baseIdx + 1 < parts.length - 1 && /^\(.*\)$/.test(parts[baseIdx + 1])) baseIdx++;
         if (baseIdx >= 0 && baseIdx + 1 < parts.length - 1) {
           const domain = parts[baseIdx + 1];
           if (!skipNames.includes(domain) && !domain.startsWith("_") && !domain.startsWith("(") && !domain.startsWith("[") && !domain.startsWith(".")) {
@@ -204,7 +264,8 @@ async function scanFrontendDomains(stack, ROOT) {
       for (const f of clientFiles) {
         const parts = f.replace(/\\/g, "/").split("/");
         const appIdx = parts.indexOf("app");
-        const baseIdx = appIdx >= 0 ? appIdx : -1;
+        let baseIdx = appIdx >= 0 ? appIdx : -1;
+        while (baseIdx >= 0 && baseIdx + 1 < parts.length - 1 && /^\(.*\)$/.test(parts[baseIdx + 1])) baseIdx++;
         if (baseIdx >= 0 && baseIdx + 1 < parts.length - 1) {
           const domain = parts[baseIdx + 1];
           if (domainSet[domain]) {
@@ -298,7 +359,7 @@ async function scanFrontendDomains(stack, ROOT) {
   // by routes/-file layouts, which appear across all frontend frameworks.
   if (stack.frontend) {
     // Read optional per-project override (.claudeos-scan.json).
-    const overrides = loadScanOverrides(ROOT).frontendScan || {};
+    const overrides = loadScanOverrides(PROJECT_ROOT).frontendScan || {};
     // Platform-split layout: src/{platform}/{subapp}/ where platform is a
     // device/target-environment OR access-tier keyword. Both form the same
     // structural pattern (top-level segmentation with a common subapp layout).

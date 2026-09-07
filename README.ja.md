@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-736%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -25,7 +25,7 @@ Claude Code は新しいセッションを始めるたびに、フレームワ�
 
 **ClaudeOS-Core は、実際のソースコードから一貫した結果でこれを再生成します。** まず Node.js のスキャナがプロジェクトを読み、スタック・ORM・パッケージ構成・ファイルパスを把握します。次に 4-pass の Claude パイプラインがドキュメント一式を書き上げます。`CLAUDE.md`、自動ロードされる `.claude/rules/`、standards、skills のすべてが、明示的なパス allowlist の範囲内に収まります。LLM はこの範囲を超えられません。最後に 5 つの validator が、出力する前に結果を検証します。
 
-そのため、同じ入力からは常に同じ出力が返ります。10 言語のどれを選んでも byte 単位で完全に一致し、コードに存在しないパスが紛れ込むこともありません。(詳しくは下の[何が違うのか](#何が違うのか)を参照。)
+そのため、同じ入力からは常に同じ 8 セクション構造の `CLAUDE.md` が返ります。10 言語のどれを選んでも同じ 25 項目の構造チェックで検証され、引用されたソースパスはすべてディスク上に実在するか確認されます。(詳しくは下の[何が違うのか](#何が違うのか)を参照。)
 
 長く運用するプロジェクトには、[Memory Layer](#memory-layer-任意長期プロジェクト向け) も合わせて生成されます。
 
@@ -115,7 +115,7 @@ Claude Code は新しいセッションを始めるたびに、フレームワ�
 </details>
 
 <details>
-<summary><strong>実際の <code>CLAUDE.md</code> に入る内容 (実例の抜粋 — Section 1 + 2)</strong></summary>
+<summary><strong>実際の <code>CLAUDE.md</code> に入る内容 (実例の抜粋 — Section 1 + 2。README の表示用に見出しを <code>####</code> に下げています。実ファイルでは <code>## N.</code> です)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-上の表の値はすべて、正確な dependency の座標も、`dev.db` というファイル名も、`V1__create_tables.sql` というマイグレーション名も、「no JPA」という注記も、Claude がファイルを書く前にスキャナが `build.gradle`、`application.properties`、ソースツリーから直接読み取った内容です。推測した値は 1 つも入っていません。
+スタック表の各行 (Java 11、Spring Boot 2.6.3、Gradle、MyBatis、SQLite、ポート 8080) は決定論的なスキャナが読み取った値です。より細かい情報 (正確な dependency の座標、`dev.db` というファイル名、`V1__create_tables.sql` というマイグレーション名、「no JPA」という注記) は、スキャナが確定した事実を制約として Pass 1 が `build.gradle`、`application.properties`、ソースツリーから読み取り、その後 validator が照合します。フレームワークのデフォルト値から取った値は 1 つもありません。
 
 </details>
 
@@ -309,7 +309,7 @@ your-project/
 | こんな方に | このツールが解消する痛み |
 |---|---|
 | **Claude Code で新規プロジェクトを始める個人開発者** | セッションのたびに Claude へコンベンションを教え直す手間がなくなります。`CLAUDE.md` と 8 カテゴリの `.claude/rules/` を一発で生成します。 |
-| **複数リポジトリで共有標準を維持するチームリード** | パッケージ名の変更や ORM の差し替え、レスポンスラッパーの変更があるたびに `.claude/rules/` がついていけずズレていく問題。ClaudeOS-Core ならいつ走らせても同じ手順で再同期できます。同じ入力からは byte 単位で同じ出力が出るので、diff にノイズが乗りません。 |
+| **複数リポジトリで共有標準を維持するチームリード** | パッケージ名の変更や ORM の差し替え、レスポンスラッパーの変更があるたびに `.claude/rules/` がついていけずズレていく問題。ClaudeOS-Core は固定された 8 セクションの scaffold を基準に再生成します。どのリポジトリでも同じ構造、同じ validator の判定になるため、diff に現れるのはレイアウトのノイズではなく規約の変更だけです。 |
 | **Claude Code を使っているが生成コードの修正に疲れた方** | 違うレスポンスラッパー、違うパッケージ構成、MyBatis のプロジェクトなのに JPA、共通 middleware があるのに `try/catch` が散らばっている、といった出力。スキャナが実際のコンベンションを抽出し、Claude のすべての pass は明示的なパス allowlist の中だけで動きます。 |
 | **新しいリポジトリにジョインしたばかりの方** (既存プロジェクト、新しいチーム) | リポジトリで `init` を一度走らせれば、生きたアーキテクチャマップが手に入ります。CLAUDE.md のスタック表、レイヤーごとのルールと ✅/❌ の例、主要な決定の「なぜ」が書き込まれた decision log (JPA vs MyBatis、REST vs GraphQL など)。5,000 個のソースファイルを読むより、5 つのドキュメントを読むほうが速いです。 |
 | **韓国語、日本語、中国語など英語以外の言語で作業する方** | Claude Code 向けのルール生成ツールはほとんどが英語のみです。ClaudeOS-Core は **10 言語** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) でドキュメント一式を生成し、出力言語が何であっても同じ構造検証を適用します。`claude-md-validator` の判定はどの言語でも同じです。 |
@@ -331,7 +331,7 @@ ClaudeOS-Core は、よくある Claude Code のワークフローの順序を�
 
 パイプラインは **3 段階**で動きます。LLM を呼ぶ前にも後にも、コードが間に挟まる構成です。
 
-**1. Step A — スキャナ (LLM なしの決定論的処理)。** Node.js のスキャナがプロジェクトルートを巡回し、`package.json` / `build.gradle` / `pom.xml` / `pyproject.toml` を読み、`.env*` ファイルをパースします (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` などの機密変数は自動でマスクします)。続いてアーキテクチャパターンを分類し (Java の 5 パターン A/B/C/D/E、Kotlin の CQRS / マルチモジュール、Next.js の App Router と Pages Router、FSD、components パターン)、ドメインを抽出し、存在するすべてのソースファイルパスを明示的な allowlist にまとめます。結果は `project-analysis.json` 1 ファイルに集約され、以降の工程はこれを single source of truth として扱います。
+**1. Step A — スキャナ (LLM なしの決定論的処理)。** Node.js のスキャナがプロジェクトルートを巡回し、`package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml` を読み、`.env*` ファイルをパースします (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` などの機密変数は自動でマスクします)。続いてアーキテクチャパターンを分類し (Java の 5 パターン A/B/C/D/E、Kotlin の CQRS / マルチモジュール、Next.js の App Router と Pages Router、FSD、components パターン)、ドメインを抽出し、存在するすべてのソースファイルパスを明示的な allowlist にまとめます。結果は `project-analysis.json` 1 ファイルに集約され、以降の工程はこれを single source of truth として扱います。
 
 **2. Step B — 4-pass の Claude パイプライン (Step A の事実を制約として動作)。**
 - **Pass 1** はドメイングループごとに代表ファイルを読み、ドメインあたり 50 〜 100 個のコンベンション (レスポンスラッパー、ロギングライブラリ、エラー処理、命名規則、テストパターンなど) を抽出します。ドメイングループごとに 1 回ずつ実行する設計 (`max 4 domains, 40 files per group`) なので、context があふれることはありません。
@@ -393,7 +393,7 @@ Claude Code 向けのドキュメント生成ツールはほとんど、ユー�
 
 具体的な違いは 3 つあります。
 
-1. **決定論的なスタック検出。** 同じプロジェクト + 同じコード = 同じ出力。「今回の Claude はちょっと違う出力を出してきた」がありません。
+1. **決定論的なスタック検出と構造。** 同じプロジェクト + 同じコード = 同じスキャン結果、同じ 8 セクション構造の `CLAUDE.md`。セクション内の文章は引き続き LLM が書きますが、渡される事実と埋めるべき形は固定されています。
 2. **存在しないパスを作らない。** Pass 3 の prompt に許可済みのソースパスがすべて明示されているため、Claude はそこに無いパスを引用できません。
 3. **マルチスタックを意識した解析。** 同じ実行の中で、バックエンドとフロントエンドのドメインがそれぞれ別の解析 prompt を使います。
 
@@ -429,7 +429,7 @@ npx claudeos-core health
 
 ファイルは 4 つで、すべて Pass 4 が書き出します。
 
-- `decision-log.md` — append-only 形式の「なぜ X ではなく Y を選んだか」の記録。`pass2-merged.json` からシード。
+- `decision-log.md` — append-only 形式の「なぜ X ではなく Y を選んだか」の記録。`pass2-merged.json` からシード。(圧縮の対象外)
 - `failure-patterns.md` — frequency / importance のスコアが付いた、繰り返し起きるエラーの一覧。
 - `compaction.md` — 時間の経過とともにメモリが自動圧縮される仕組み。
 - `auto-rule-update.md` — 新しいルールに昇格させるべきパターン。
@@ -437,7 +437,7 @@ npx claudeos-core health
 このレイヤーを長く運用するためのコマンドが 2 つあります。
 
 ```bash
-# failure-patterns ログを圧縮 (定期的に実行)
+# failure-patterns ログを圧縮 (定期的に実行。decision-log.md には触れません)
 npx claudeos-core memory compact
 
 # よく出る failure pattern を提案ルールに昇格

@@ -454,3 +454,52 @@ describe("health-checker — soft-fail tier", () => {
     }
   });
 });
+
+// ─── v2.5.0: skills-sync is opt-in (`--sync-skills` flag only) ──
+describe("manifest-generator — skills-sync gating (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  function seed() {
+    // A per-domain catalog exists but MANIFEST.md has no "Per-domain notes"
+    // section — exactly the drift skills-sync is designed to patch.
+    writeFile(path.join(tmp, "claudeos-core/skills/00.shared/MANIFEST.md"), "# MANIFEST\n\n| Skill | Path |\n|---|---|\n| orch | `claudeos-core/skills/10.backend/01.orch.md` |\n");
+    writeFile(path.join(tmp, "claudeos-core/skills/10.backend/01.orch.md"), "# orch\n");
+    writeFile(path.join(tmp, "claudeos-core/skills/10.backend/domains/user.md"), "# user\n");
+    writeFile(path.join(tmp, "CLAUDE.md"), "# CLAUDE.md\n\n## 6. Rules & Skills\n\n### Skills\n\n- (none yet)\n\n## 7. Other\n\nbody\n");
+    mkdirp(path.join(tmp, "claudeos-core/generated"));
+  }
+  function run(extraArgs = "", extraEnv = {}) {
+    return execSync(`node "${path.join(TOOLS_DIR, "manifest-generator/index.js")}"${extraArgs}`, {
+      cwd: tmp, env: { ...process.env, CLAUDEOS_ROOT: tmp, ...extraEnv }, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
+    });
+  }
+
+  it("plain run (the `health` path) is read-only: MANIFEST.md and CLAUDE.md are byte-identical afterwards", () => {
+    seed();
+    const m0 = fs.readFileSync(path.join(tmp, "claudeos-core/skills/00.shared/MANIFEST.md"), "utf-8");
+    const c0 = fs.readFileSync(path.join(tmp, "CLAUDE.md"), "utf-8");
+    run();
+    assert.equal(fs.readFileSync(path.join(tmp, "claudeos-core/skills/00.shared/MANIFEST.md"), "utf-8"), m0, "MANIFEST.md must not be patched without --sync-skills");
+    assert.equal(fs.readFileSync(path.join(tmp, "CLAUDE.md"), "utf-8"), c0, "CLAUDE.md must not be patched without --sync-skills");
+    assert.ok(fs.existsSync(path.join(tmp, "claudeos-core/generated/rule-manifest.json")), "metadata generation still runs");
+  });
+
+  it("`--sync-skills` (the `init` path) reconciles MANIFEST.md / CLAUDE.md §6", () => {
+    seed();
+    run(" --sync-skills");
+    const m1 = fs.readFileSync(path.join(tmp, "claudeos-core/skills/00.shared/MANIFEST.md"), "utf-8");
+    assert.match(m1, /### Per-domain notes/, "MANIFEST.md gains the per-domain catalog section");
+    assert.match(m1, /user/);
+    const c1 = fs.readFileSync(path.join(tmp, "CLAUDE.md"), "utf-8");
+    assert.match(c1, /01\.orch\.md/, "CLAUDE.md §6 Skills mentions the orchestrator registered in MANIFEST");
+  });
+
+  it("an exported CLAUDEOS_SKILLS_SYNC=1 does NOT enable writes (health inherits the environment)", () => {
+    seed();
+    const m0 = fs.readFileSync(path.join(tmp, "claudeos-core/skills/00.shared/MANIFEST.md"), "utf-8");
+    run("", { CLAUDEOS_SKILLS_SYNC: "1" });
+    assert.equal(fs.readFileSync(path.join(tmp, "claudeos-core/skills/00.shared/MANIFEST.md"), "utf-8"), m0, "only the --sync-skills flag may enable the write");
+  });
+});

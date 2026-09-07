@@ -103,7 +103,10 @@ function selectTemplates(stack) {
   if (stack.frontend === "nextjs") {
     templates.frontend = "node-nextjs";
   } else if (stack.frontend === "react") {
-    templates.frontend = stack.framework === "vite" ? "node-vite" : "node-nextjs";
+    // `framework === "vite"` only when no backend framework was detected;
+    // `frontendBundler === "vite"` (v2.5.0) covers Spring/Django + React/Vite
+    // repos (root or `frontend/` sub-directory) where `framework` is the backend.
+    templates.frontend = (stack.framework === "vite" || stack.frontendBundler === "vite") ? "node-vite" : "node-nextjs";
   } else if (stack.frontend === "vue") {
     templates.frontend = "vue-nuxt";
   } else if (stack.frontend === "angular") {

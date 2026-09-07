@@ -121,11 +121,13 @@ On examine les propositions, on copie celles qu'on veut dans des fichiers rule r
 
 ## Algorithme de compaction
 
-La memory grandit mais ne devient pas obèse. Une compaction en quatre stages se déclenche via :
+La memory grandit mais ne devient pas obèse. Une compaction en quatre stages s'applique à `failure-patterns.md` via :
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` n'est **jamais** compacté : il est append-only par contrat (le « pourquoi » de chaque décision est précisément ce qui doit survivre), donc les stages ci-dessous ne s'appliquent qu'à `failure-patterns.md`.
 
 | Stage | Trigger | Action |
 |---|---|---|

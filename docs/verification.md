@@ -73,7 +73,7 @@ Validates the **content** of generated files (not the structure of CLAUDE.md). L
 
 | Class | What it catches |
 |---|---|
-| `STALE_PATH` | Any `src/...\.(ts|tsx|js|jsx)` reference in `.claude/rules/**` or `claudeos-core/standard/**` must resolve to a real file. Fenced code blocks and placeholder paths (`src/{domain}/feature.ts`) are excluded. |
+| `STALE_PATH` | Any `src/...` reference ending in `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` in `.claude/rules/**` or `claudeos-core/standard/**` must resolve to a real file — directly under the project root, or under any module directory up to three levels deep that contains `src/` (JS workspaces `apps/*`, `packages/*`; Gradle/Maven modules such as `api/src/main/java/…`; nested layouts such as `servers/query/<x>/src/…`). Fenced code blocks and placeholder paths (`src/{domain}/feature.ts`) are excluded; config extensions (`.yml`, `.properties`) are deliberately not checked because they are usually cited as illustrative profile names. |
 | `STALE_SKILL_ENTRY` | Every skill path registered in `claudeos-core/skills/00.shared/MANIFEST.md` must exist on disk. |
 | `MANIFEST_DRIFT` | Every registered skill must be mentioned in `CLAUDE.md` (with **orchestrator/sub-skill exception** — Pass 3b writes Section 6 before Pass 3c creates sub-skills, so listing every sub-skill is structurally impossible). |
 

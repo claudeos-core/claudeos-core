@@ -121,11 +121,13 @@ Sie prüfen die Vorschläge und kopieren die gewünschten in echte Rule-Dateien.
 
 ## Verdichtungsalgorithmus
 
-Das Memory wächst, läuft aber nicht aus dem Ruder. Eine vierstufige Verdichtung läuft beim Aufruf:
+Das Memory wächst, läuft aber nicht aus dem Ruder. Eine vierstufige Verdichtung von `failure-patterns.md` läuft beim Aufruf:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` wird **nie** verdichtet: Es ist per Vertrag append-only (das „Warum" hinter jeder Entscheidung ist genau das, was erhalten bleiben muss). Die folgenden Stufen gelten daher ausschließlich für `failure-patterns.md`.
 
 | Stufe | Trigger | Aktion |
 |---|---|---|

@@ -58,7 +58,7 @@ Thêm vào `package.json` của dự án:
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.4.4"
+    "claudeos-core": "^2.5.0"
   }
 }
 ```
@@ -131,7 +131,7 @@ Cho môi trường không có internet:
 
 ```bash
 npm pack claudeos-core
-# Tạo claudeos-core-2.4.4.tgz
+# Tạo claudeos-core-2.5.0.tgz
 ```
 
 **Chuyển `.tgz` sang môi trường air-gapped.**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **Cài từ tệp local:**
 
 ```bash
-npm install -g ./claudeos-core-2.4.4.tgz
+npm install -g ./claudeos-core-2.5.0.tgz
 ```
 
 Cần thêm:
@@ -156,7 +156,7 @@ Cần thêm:
 Sau bất kỳ cách cài nào, kiểm tra cả 4 yêu cầu:
 
 ```bash
-# Phải in version (ví dụ 2.4.4)
+# Phải in version (ví dụ 2.5.0)
 claudeos-core --version
 
 # Phải in version Claude Code

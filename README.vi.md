@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-736%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -25,7 +25,7 @@ Mỗi khi mở phiên mới, Claude Code lại rơi về mặc định của fra
 
 **ClaudeOS-Core sinh lại toàn bộ tài liệu này một cách nhất quán, đọc thẳng từ source code thật.** Đầu tiên, một Node.js scanner duyệt dự án để chốt stack, ORM, cấu trúc package và đường dẫn file. Tiếp đó pipeline 4-pass của Claude viết toàn bộ tài liệu: `CLAUDE.md`, `.claude/rules/` auto-load, standards và skills. Mọi pass đều bị khoá trong một allowlist đường dẫn tường minh, LLM không thoát ra được. Cuối cùng, năm validator soi lại kết quả trước khi xuất.
 
-Nhờ vậy, cùng input thì luôn ra cùng output, byte-identical ở cả 10 ngôn ngữ, và không bịa ra đường dẫn không có trong code. (Xem chi tiết ở phần [Điểm khác biệt](#điểm-khác-biệt) bên dưới.)
+Nhờ vậy, cùng input thì luôn ra cùng một `CLAUDE.md` với cấu trúc 8 section cố định, được kiểm bởi cùng 25 structural check ở cả 10 ngôn ngữ, và mọi đường dẫn source được trích dẫn đều được đối chiếu với đĩa. (Xem chi tiết ở phần [Điểm khác biệt](#điểm-khác-biệt) bên dưới.)
 
 Với các dự án chạy lâu dài, công cụ còn seed thêm một [Memory Layer](#memory-layer-tùy-chọn-cho-dự-án-dài-hạn) riêng.
 
@@ -115,7 +115,7 @@ Chạy thử trên [`spring-boot-realworld-example-app`](https://github.com/goth
 </details>
 
 <details>
-<summary><strong>Phần thực sự đi vào <code>CLAUDE.md</code> của bạn (trích đoạn thật — Section 1 + 2)</strong></summary>
+<summary><strong>Phần thực sự đi vào <code>CLAUDE.md</code> của bạn (trích đoạn thật — Section 1 + 2; heading được hạ xuống <code>####</code> để hiển thị trong README, file thật dùng <code>## N.</code>)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-Mọi giá trị trong bảng trên đều do scanner đọc thẳng từ `build.gradle`, `application.properties` và cây source trước khi Claude viết file. Toạ độ dependency, tên file `dev.db`, tên migration `V1__create_tables.sql`, ghi chú "no JPA" — tất cả đều là sự thật trích xuất, không chỗ nào là phỏng đoán.
+Các dòng stack (Java 11, Spring Boot 2.6.3, Gradle, MyBatis, SQLite, port 8080) đến từ scanner deterministic. Những chi tiết nhỏ hơn — toạ độ dependency chính xác, tên file `dev.db`, tên migration `V1__create_tables.sql`, ghi chú "no JPA" — do Pass 1 đọc từ `build.gradle`, `application.properties` và cây source, với các sự thật của scanner làm ràng buộc, rồi được validator đối chiếu lại. Không giá trị nào lấy từ default của framework.
 
 </details>
 
@@ -309,7 +309,7 @@ Các category cùng số prefix ở `rules/` và `standard/` cùng chỉ về m�
 | Bạn là... | Vấn đề được giải quyết |
 |---|---|
 | **Solo dev** đang khởi động dự án mới với Claude Code | Khỏi phải dạy lại quy ước cho Claude mỗi phiên. `CLAUDE.md` cùng 8 category trong `.claude/rules/` được sinh ra chỉ trong một lần chạy. |
-| **Team lead** quản lý standards dùng chung giữa nhiều repo | `.claude/rules/` rất hay drift mỗi khi đổi tên package, đổi ORM hay đổi response wrapper. ClaudeOS-Core đồng bộ lại một cách nhất quán: cùng input thì ra output byte-identical, không có diff thừa. |
+| **Team lead** quản lý standards dùng chung giữa nhiều repo | `.claude/rules/` rất hay drift mỗi khi đổi tên package, đổi ORM hay đổi response wrapper. ClaudeOS-Core sinh lại theo một scaffold 8 section cố định: repo nào cũng cùng cấu trúc, cùng verdict của validator, nên diff chỉ cho thấy thay đổi về convention chứ không phải nhiễu layout. |
 | **Đã quen Claude Code** nhưng chán cảnh phải sửa lại code mỗi lần | Sai response wrapper, sai cấu trúc package, viết JPA trong khi dự án dùng MyBatis, rải `try/catch` trong khi đã có middleware tập trung. Scanner trích quy ước thật của dự án, mỗi pass của Claude đều chạy trong allowlist tường minh. |
 | **Onboard vào repo mới** (dự án có sẵn, vào team mới) | Chạy `init` xong là có ngay tấm bản đồ kiến trúc sống. Bảng stack trong CLAUDE.md, rules theo từng layer kèm ví dụ ✅/❌, decision log seed sẵn lý do đằng sau những lựa chọn lớn (JPA hay MyBatis, REST hay GraphQL...). Đọc 5 file vẫn nhanh hơn lội qua 5.000 file source. |
 | **Làm việc bằng tiếng Hàn, Nhật, Trung và 7 ngôn ngữ khác** | Phần lớn rule generator cho Claude Code chỉ có tiếng Anh. ClaudeOS-Core viết toàn bộ ở **10 ngôn ngữ** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) và áp **kiểm tra cấu trúc byte-identical**. Verdict của `claude-md-validator` không đổi dù chọn ngôn ngữ output nào. |
@@ -331,7 +331,7 @@ Cách này:     Code đọc stack của bạn → Code đưa fact đã xác nh�
 
 Pipeline gồm **ba giai đoạn**, code có mặt ở cả hai phía của lời gọi LLM.
 
-**1. Step A — Scanner (nhất quán, không gọi LLM).** Một Node.js scanner đi qua thư mục gốc, đọc `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml`, parse các file `.env*` (đồng thời redact các biến nhạy cảm như `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), phân loại pattern kiến trúc (5 pattern A/B/C/D/E của Java; Kotlin CQRS hoặc multi-module; Next.js App Router so với Pages Router; FSD; components-pattern), tìm ra các domain, rồi dựng allowlist tường minh chứa mọi đường dẫn source thật. Output là `project-analysis.json`, đóng vai trò single source of truth cho mọi bước về sau.
+**1. Step A — Scanner (nhất quán, không gọi LLM).** Một Node.js scanner đi qua thư mục gốc, đọc `package.json`, `build.gradle`, `build.gradle.kts`, `pom.xml`, `pyproject.toml`, parse các file `.env*` (đồng thời redact các biến nhạy cảm như `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), phân loại pattern kiến trúc (5 pattern A/B/C/D/E của Java; Kotlin CQRS hoặc multi-module; Next.js App Router so với Pages Router; FSD; components-pattern), tìm ra các domain, rồi dựng allowlist tường minh chứa mọi đường dẫn source thật. Output là `project-analysis.json`, đóng vai trò single source of truth cho mọi bước về sau.
 
 **2. Step B — Pipeline Claude 4-pass (ràng buộc bởi fact của Step A).**
 - **Pass 1** đọc các file đại diện theo từng domain group rồi trích ra khoảng 50–100 quy ước cho mỗi domain: response wrapper, thư viện logging, cách xử lý lỗi, quy ước naming, pattern test. Mỗi domain group chỉ chạy một lần (`max 4 domains, 40 files per group`) nên context không bao giờ tràn.
@@ -393,7 +393,7 @@ Phần lớn công cụ tài liệu cho Claude Code sinh ra từ một bản mô
 
 Cách làm này dẫn tới ba điểm khác biệt cụ thể.
 
-1. **Stack detection nhất quán.** Cùng dự án, cùng code thì luôn ra cùng output. Hết cảnh "lần này Claude lại đoán khác".
+1. **Stack detection và cấu trúc nhất quán.** Cùng dự án, cùng code thì luôn ra cùng kết quả scan và cùng layout `CLAUDE.md` 8 section. Câu chữ bên trong từng section vẫn do LLM viết; thứ cố định là các sự thật nó được cung cấp và khuôn nó phải điền vào.
 2. **Không tạo path bịa.** Prompt của Pass 3 liệt kê tường minh mọi source path được phép, vì thế Claude không thể trích ra path không tồn tại.
 3. **Hiểu được multi-stack.** Trong cùng một lần chạy, domain backend và frontend dùng prompt phân tích riêng.
 
@@ -429,7 +429,7 @@ Ngoài pipeline scaffolding kể trên, ClaudeOS-Core còn seed thêm thư mục
 
 Bốn file, tất cả đều do Pass 4 viết.
 
-- `decision-log.md` — sổ append-only ghi "vì sao chọn X thay vì Y", seed từ `pass2-merged.json`
+- `decision-log.md` — sổ append-only ghi "vì sao chọn X thay vì Y", seed từ `pass2-merged.json` (không bao giờ bị compact)
 - `failure-patterns.md` — danh sách lỗi lặp lại kèm điểm frequency và importance
 - `compaction.md` — cách memory được tự động compact theo thời gian
 - `auto-rule-update.md` — các pattern nên được nâng thành rule mới
@@ -437,7 +437,7 @@ Bốn file, tất cả đều do Pass 4 viết.
 Hai lệnh để duy trì layer này lâu dài.
 
 ```bash
-# Compact log failure-patterns (chạy định kỳ)
+# Compact log failure-patterns (chạy định kỳ; decision-log.md được giữ nguyên)
 npx claudeos-core memory compact
 
 # Đề xuất rule mới từ các failure pattern xuất hiện thường xuyên

@@ -17,11 +17,49 @@ const { glob } = require("glob");
 // Normalize backslash paths from glob on Windows to forward slashes
 const norm = (p) => p.replace(/\\/g, "/");
 
+// v2.5.0 — Module-aware scanning.
+// Source roots (`[<module>/]src/main/java`, `[<module>/]src/main/resources`)
+// are discovered ONCE with a single ignore-filtered walk; every subsequent
+// pattern is then anchored at each discovered module prefix. This finds
+// Gradle/Maven multi-module layouts (`api/src/main/java/...`) with the same
+// pattern set as a single-module root, without re-walking the whole tree
+// (node_modules, web bundles, build output) for every per-domain glob.
+// `src/test/**` and `buildSrc/` are excluded: test-fixture projects
+// (`src/test/resources/projects/demo/src/main/java/...`) and Gradle
+// convention plugins are not application modules.
+const JAVA_ROOT_IGNORE = ["**/node_modules/**", "**/build/**", "**/target/**", "**/out/**", "**/.gradle/**", "**/generated/**", "**/.git/**", "**/src/test/**", "**/buildSrc/**"];
+
+async function discoverModulePrefixes(ROOT) {
+  const javaRoots = (await glob("**/src/main/java/", { cwd: ROOT, ignore: JAVA_ROOT_IGNORE })).map(norm);
+  const resRoots = (await glob("**/src/main/resources/", { cwd: ROOT, ignore: JAVA_ROOT_IGNORE })).map(norm);
+  const prefixes = new Set();
+  for (const r of [...javaRoots, ...resRoots]) {
+    const m = r.replace(/\/$/, "").match(/^(.*?)src\/main\/(?:java|resources)$/);
+    if (m) prefixes.add(m[1]); // "" for root, "api/" for a module
+  }
+  return [...prefixes].sort();
+}
+
+// Run one `src/main/...`-relative pattern against every discovered module
+// prefix and return the merged, normalized, de-duplicated file list.
+function makeModuleGlob(ROOT, prefixes) {
+  return async (pattern) => {
+    const out = new Set();
+    for (const pre of prefixes) {
+      for (const f of await glob(pre + pattern, { cwd: ROOT })) out.add(norm(f));
+    }
+    return [...out];
+  };
+}
+
 async function scanJavaDomains(stack, ROOT) {
   const backendDomains = [];
   let rootPackage = null;
 
-  const javaFiles = (await glob("src/main/java/**/*.java", { cwd: ROOT })).map(norm);
+  const modulePrefixes = await discoverModulePrefixes(ROOT);
+  const gj = makeModuleGlob(ROOT, modulePrefixes.length ? modulePrefixes : [""]);
+
+  const javaFiles = (await gj("src/main/java/**/*.java"));
 
   // v2.4.0 — Pick the LONGEST package prefix (1-4 segments) that still
   // covers ≥80% of layer-bearing files. Pre-v2.4.0 the first matched file
@@ -62,8 +100,86 @@ async function scanJavaDomains(stack, ROOT) {
   const domainMap = {};
   let detectedPattern = null;
 
+  // v2.5.0 — Flat-layout guard for Pattern B/D and the supplementary scan.
+  //
+  // In the standard Spring Initializr layout the layer dirs sit DIRECTLY
+  // under the root package: `com/example/demo/controller/UserController.java`.
+  // The Pattern B glob `**/*/controller/*.java` matched that with `*` =
+  // `demo` (the root package's last segment), so every flat project was
+  // classified as "Pattern B, single domain named after the package" and
+  // Pattern C (domain from class name) was unreachable.
+  //
+  // Two signals must BOTH hold for a `{d}/{layer}/` path to count as flat:
+  //   1. `{d}` is the root package's last segment (the layer dir is a
+  //      direct child of the root package), AND
+  //   2. none of the `*Controller` class stems under `{d}/controller/`
+  //      start with `{d}` — i.e. the classes are named after OTHER things
+  //      (`UserController`, `OrderController` under `demo/`).
+  // Signal 2 keeps single-domain domain-first projects intact: in
+  // `com/example/payment/controller/PaymentController.java` the root
+  // package also ends in `payment`, but the controller stem IS `payment`,
+  // so it stays Pattern B.
+  //
+  // Signal 2 looks at EVERY layer class under the base dir (controller,
+  // service, mapper, repository, dao, dto), not only controllers: a
+  // single-domain project such as `account/{controller/LoginController,
+  // service/AccountService, dto/LoginDto}` is domain-first because
+  // `AccountService` is named after the package, even though no controller is.
+  // A `*Application.java` (Spring Boot main class) sitting DIRECTLY in the base
+  // dir is a positive flat signal on its own — Initializr places it there,
+  // domain-first projects keep it one level above the domain packages.
+  //
+  // Base dirs: the root package, plus — for a file inside a Gradle/Maven
+  // module — `<rootPkg>/<moduleName>` (`api/src/main/java/com/example/api/
+  // controller/`), where the module's own sub-package plays the role of the
+  // Initializr base package and the domains again come from class names.
+  const rootPkgPath = rootPackage ? rootPackage.replace(/\./g, "/") : null;
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const flatDirCache = new Map();
+  const LAYER_CLASS_RE = /^(?:controller|service|mapper|repository|dao|dto)\/([A-Za-z0-9]+?)(?:Controller|Service|Mapper|Repository|Dao|Dto)\.java$/;
+  const isFlatBase = (base) => {
+    if (!flatDirCache.has(base)) {
+      const dirRe = new RegExp(`(^|/)src/main/java/${escRe(base)}/`);
+      const under = [];
+      for (const x of javaFiles) {
+        const m = x.match(dirRe);
+        if (m) under.push(x.slice(m.index + m[0].length));
+      }
+      const appInBase = under.some(rel => /^[A-Za-z0-9]*Application\.java$/.test(rel));
+      const stems = under.map(rel => (rel.match(LAYER_CLASS_RE) || [])[1]).filter(Boolean).map(s => s.toLowerCase());
+      const tail = base.split("/").pop().toLowerCase();
+      flatDirCache.set(base, appInBase || (stems.length > 0 && !stems.some(s => s.startsWith(tail))));
+    }
+    return flatDirCache.get(base);
+  };
+  // Directories (relative to src/main/java) holding a Spring Boot main class
+  // (`*Application.java`). The Initializr base package is wherever that class
+  // lives, independent of `rootPackage` (which is capped at 4 segments and
+  // therefore misses `kr/co/<org>/<proj>/<app>` style base packages).
+  const appBases = [...new Set(javaFiles
+    .map(f => (f.match(/src\/main\/java\/(.+)\/[A-Za-z0-9]*Application\.java$/) || [])[1])
+    .filter(Boolean))];
+  const isFlatLayerPath = (f, layerSegment) => {
+    if (!rootPkgPath && appBases.length === 0) return false;
+    const bases = [rootPkgPath, ...appBases].filter(Boolean);
+    const pre = modulePrefixes.find(p => p && f.startsWith(p));
+    if (pre && rootPkgPath) bases.push(`${rootPkgPath}/${pre.replace(/\/$/, "").split("/").pop()}`);
+    for (const base of bases) {
+      const layerRe = new RegExp(`(^|/)src/main/java/${escRe(base)}/${escRe(layerSegment)}/[^/]+\\.java$`);
+      if (layerRe.test(f) && isFlatBase(base)) return true;
+    }
+    return false;
+  };
+
+  // Controllers that Pattern B skipped as "flat" (layer dir directly under the
+  // base package). If another pattern wins (mixed tree: `demo/controller/
+  // HomeController.java` next to `demo/user/controller/UserController.java`),
+  // Pattern C never runs, so these are re-attached below by class name —
+  // a controller must never silently belong to no domain.
+  const flatSkippedControllers = [];
+
   // Pattern A: controller/{domain}/*.java (layer-first — domain under controller)
-  const controllersA = (await glob("src/main/java/**/controller/*/*.java", { cwd: ROOT })).map(norm);
+  const controllersA = (await gj("src/main/java/**/controller/*/*.java"));
   for (const f of controllersA) {
     const m = f.match(/controller\/([^/]+)\//);
     if (m) {
@@ -77,9 +193,10 @@ async function scanJavaDomains(stack, ROOT) {
   // Pattern B/D: {domain}/controller/*.java (domain-first — controller under domain)
   // D extends B: {module}/{domain}/controller/ — auto-upgrade to module/domain on name conflict
   if (!detectedPattern) {
-    const controllersB = (await glob("src/main/java/**/*/controller/*.java", { cwd: ROOT })).map(norm);
+    const controllersB = (await gj("src/main/java/**/*/controller/*.java"));
     const domainPaths = {};
     for (const f of controllersB) {
+      if (isFlatLayerPath(f, "controller")) { flatSkippedControllers.push(f); continue; }
       const m = f.match(/\/([^/]+)\/controller\/[^/]+\.java$/);
       if (m) {
         const d = m[1];
@@ -115,7 +232,7 @@ async function scanJavaDomains(stack, ROOT) {
 
   // Pattern E: DDD/Hexagonal — {domain}/adapter/in/web/*.java or {domain}/adapter/in/rest/*.java
   if (!detectedPattern) {
-    const controllersE = (await glob("src/main/java/**/adapter/in/{web,rest}/*.java", { cwd: ROOT })).map(norm);
+    const controllersE = (await gj("src/main/java/**/adapter/in/{web,rest}/*.java"));
     for (const f of controllersE) {
       const m = f.match(/\/([^/]+)\/adapter\/in\/(web|rest)\/[^/]+\.java$/);
       if (m) {
@@ -129,7 +246,7 @@ async function scanJavaDomains(stack, ROOT) {
 
   // Pattern C: Flat structure — controller/*.java (no domain directory, extract domain from class name)
   if (!detectedPattern) {
-    const controllersC = (await glob("src/main/java/**/controller/*.java", { cwd: ROOT })).map(norm);
+    const controllersC = (await gj("src/main/java/**/controller/*.java"));
     for (const f of controllersC) {
       const m = f.match(/\/([A-Z][a-zA-Z]*)Controller\.java$/);
       if (m) {
@@ -141,16 +258,30 @@ async function scanJavaDomains(stack, ROOT) {
     if (Object.keys(domainMap).length > 0) detectedPattern = "C";
   }
 
+  // Mixed tree: Pattern B/D/E claimed the tree, but flat controllers under the
+  // base package were skipped. Attach each by class name as a Pattern C
+  // domain (`HomeController` → `home`) so it is analyzed and gets rules.
+  if (detectedPattern && detectedPattern !== "C") {
+    for (const f of flatSkippedControllers) {
+      const m = f.match(/\/([A-Z][a-zA-Z]*)Controller\.java$/);
+      if (!m) continue;
+      const d = m[1].toLowerCase();
+      if (!domainMap[d]) domainMap[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "C" };
+      domainMap[d].controllers++;
+    }
+  }
+
   // ── Supplementary scan: detect domains without controllers (service/dao/aggregator/facade/usecase only) ──
   // Runs for ALL detected patterns (A/B/C/D/E) to catch core-only domains
   {
-    const serviceDirs = (await glob("src/main/java/**/*/service/*.java", { cwd: ROOT })).map(norm);
-    const mapperDirs = (await glob("src/main/java/**/*/{mapper,repository,dao}/*.java", { cwd: ROOT })).map(norm);
-    const orchestrationDirs = (await glob("src/main/java/**/*/{aggregator,facade,usecase,orchestrator}/*.java", { cwd: ROOT })).map(norm);
+    const serviceDirs = (await gj("src/main/java/**/*/service/*.java"));
+    const mapperDirs = (await gj("src/main/java/**/*/{mapper,repository,dao}/*.java"));
+    const orchestrationDirs = (await gj("src/main/java/**/*/{aggregator,facade,usecase,orchestrator}/*.java"));
     const allServiceFiles = [...serviceDirs, ...mapperDirs, ...orchestrationDirs];
     const skipDomains = ["common", "config", "util", "utils", "base", "core", "shared", "global", "framework", "infra", "front", "admin", "back", "internal", "external", "web", "app", "test", "tests", "main", "generated", "build"];
     for (const f of allServiceFiles) {
       const m = f.match(/\/([^/]+)\/(service|mapper|repository|dao|aggregator|facade|usecase|orchestrator)\/[^/]+\.java$/);
+      if (m && isFlatLayerPath(f, m[2])) continue; // flat layout: layer dir directly under root package
       if (m) {
         const d = m[1];
         if (!domainMap[d] && !skipDomains.includes(d) && !/^v\d+$/.test(d)) {
@@ -196,11 +327,11 @@ async function scanJavaDomains(stack, ROOT) {
       ? `src/main/resources/{mapper,mybatis}/**/{${dn}/${capDn}*.xml,${capDn}*.xml}`
       : `src/main/resources/{mapper,mybatis}/**/${dn}/*.xml`;
 
-    const svc = await glob(svcGlob, { cwd: ROOT });
-    const mpr = await glob(mprGlob, { cwd: ROOT });
-    const dto = await glob(dtoGlob, { cwd: ROOT });
-    const xml = await glob(xmlGlob, { cwd: ROOT });
-    const agg = aggGlob ? await glob(aggGlob, { cwd: ROOT }) : [];
+    const svc = await gj(svcGlob);
+    const mpr = await gj(mprGlob);
+    const dto = await gj(dtoGlob);
+    const xml = await gj(xmlGlob);
+    const agg = aggGlob ? await gj(aggGlob) : [];
     domainMap[d].services = svc.length + agg.length;
     domainMap[d].mappers = mpr.length;
     domainMap[d].dtos = dto.length;
@@ -233,7 +364,7 @@ async function scanJavaDomains(stack, ROOT) {
     // domains with healthy direct-layout file counts.
     const standardCount = svc.length + agg.length + mpr.length + dto.length + xml.length;
     if (standardCount === 0 && (p === "B" || p === "D")) {
-      const deepFiles = (await glob(`src/main/java/**/${dn}/**/*.java`, { cwd: ROOT })).map(norm);
+      const deepFiles = (await gj(`src/main/java/**/${dn}/**/*.java`));
       // v2.4.0 — extended layer recognition. Enterprise codebases
       // commonly include implementation/support layers beyond the canonical
       // controller/service/mapper/dto trio. Files in `factory/`, `strategy/`,

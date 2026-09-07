@@ -35,7 +35,7 @@ npx claudeos-core init --force
 `--force` 会删:
 - `claudeos-core/generated/` 下所有 `.json` 与 `.md` 文件(4 个 pass marker + scanner 输出)
 - 上次 move 崩溃留下的 `claudeos-core/generated/.staged-rules/` 目录(如有)
-- `.claude/rules/` 下的所有内容
+- `.claude/rules/` 下由 claudeos-core 管理的分类,即所有带 `NN.` 前缀的条目(`00.core/`、`10.backend/`、… `90.optional/`)。你自己放在那里、没有该前缀的文件或文件夹(例如 `.claude/rules/my-team-conventions.md`)**原样保留**,它们从来不是这个工具生成的
 
 `--force` **不会**删:
 - `claudeos-core/memory/` 文件(decision log 与 failure pattern 保留)
@@ -43,7 +43,7 @@ npx claudeos-core init --force
 - `claudeos-core/` 与 `.claude/` 之外的文件
 - 你的 CLAUDE.md(Pass 3 在正常生成中会覆盖)
 
-**为什么 `.claude/rules/` 在 `--force` 下被清空,其他目录不:** Pass 3 有一个 "zero-rules detection" guard,`.claude/rules/` 为空时触发,用来决定是否跳过按域 rules stage。上次的残留 rules 还在时,该 guard 会误判,新 rules 就不会生成。
+**为什么 `.claude/rules/NN.*` 这些受管分类在 `--force` 下被清空,其他目录不:** Pass 3 有一个 "zero-rules detection" guard,`.claude/rules/` 为空时触发,用来决定是否跳过按域 rules stage。上次的残留 rules 还在时,该 guard 会误判,新 rules 就不会生成。
 
 ---
 
@@ -70,7 +70,8 @@ mover 在 `lib/staged-rules.js`,优先用 `fs.renameSync`,Windows 跨卷 / 杀�
 
 | 文件类别 | 不带 `--force` | 带 `--force` |
 |---|---|---|
-| 对 `.claude/rules/` 的手工修改 | ✅ 保留(没有 pass 重跑) | ❌ 丢失(目录被清空) |
+| 对生成的 `.claude/rules/NN.*/` 文件的手工修改 | ✅ 保留(没有 pass 重跑) | ❌ 丢失(受管分类被清空) |
+| 你自己放在 `.claude/rules/` 下、没有 `NN.` 前缀的文件 | ✅ 保留 | ✅ 保留(从不触碰) |
 | 对 `claudeos-core/standard/` 的手工修改 | ✅ 保留(没有 pass 重跑) | ❌ 若 Pass 3 重新生成同名文件则被覆盖 |
 | 对 `claudeos-core/skills/` 的手工修改 | ✅ 保留 | ❌ 被 Pass 3 覆盖 |
 | 对 `claudeos-core/guide/` 的手工修改 | ✅ 保留 | ❌ 被 Pass 3 覆盖 |

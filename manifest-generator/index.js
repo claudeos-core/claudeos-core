@@ -166,10 +166,21 @@ async function main() {
   // Deterministically reconcile MANIFEST.md ↔ CLAUDE.md §6 cross-references
   // that LLM stages routinely drift on. Failure here is logged but not
   // fatal — manifest-generator's primary outputs above are already on disk.
-  try {
-    syncSkillsCatalog(ROOT);
-  } catch (e) {
-    console.log(`  ⚠️  skills-sync: unexpected error (${e.message || e})`);
+  //
+  // OPT-IN ONLY. This step WRITES to CLAUDE.md and MANIFEST.md. It must not
+  // run from `npx claudeos-core health` (documented as a read-only gate that
+  // users wire into CI / pre-commit) — a health check that dirties the
+  // working tree is a trap. `init` passes `--sync-skills` after Pass 3/4;
+  // everything else gets a pure metadata generation run. The flag is the ONLY
+  // switch — an environment variable would be inherited by `health`'s child
+  // process and silently re-enable writes from a shell that exported it.
+  const syncRequested = process.argv.includes("--sync-skills");
+  if (syncRequested) {
+    try {
+      syncSkillsCatalog(ROOT);
+    } catch (e) {
+      console.log(`  ⚠️  skills-sync: unexpected error (${e.message || e})`);
+    }
   }
 
   // ─── Initialize stale-report.json (preserve existing sub-tool results) ──

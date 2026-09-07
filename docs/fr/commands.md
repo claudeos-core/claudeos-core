@@ -86,13 +86,14 @@ Pass 3 partielle (split mode interrompu entre stages) : le mécanisme de resume 
 `--force` supprime :
 - Tous les fichiers `.json` et `.md` sous `claudeos-core/generated/` (les quatre pass markers inclus)
 - Le répertoire résiduel `claudeos-core/generated/.staged-rules/` si une exécution antérieure a crashé en milieu de move
-- Tout sous `.claude/rules/` (pour éviter qu'un faux négatif de la « zero-rules detection » de Pass 3 ne soit causé par des stale rules)
+- Les catégories gérées par claudeos-core sous `.claude/rules/` : toute entrée préfixée `NN.` (`00.core/`, `10.backend/`, … `90.optional/`), pour éviter qu'un faux négatif de la « zero-rules detection » de Pass 3 ne soit causé par des stale rules
 
 `--force` ne supprime **pas** :
 - Les fichiers `claudeos-core/memory/` (decision log et failure patterns préservés)
+- Les fichiers ou dossiers que vous avez placés vous-même sous `.claude/rules/` sans préfixe `NN.` (par ex. `.claude/rules/my-team-conventions.md`) : cet outil ne les a jamais générés
 - Les fichiers hors de `claudeos-core/` et `.claude/`
 
-**Les éditions manuelles de rules sont perdues sous `--force`.** C'est le compromis : `--force` existe pour « je veux une ardoise propre ». Pour préserver les éditions, relancez simplement sans `--force`.
+**Les éditions manuelles des fichiers de rules générés sont perdues sous `--force`.** C'est le compromis : `--force` existe pour « je veux une ardoise propre ». Pour préserver les éditions, relancez simplement sans `--force`.
 
 ### Interactif vs non-interactif
 
@@ -211,7 +212,7 @@ Pour le détail du modèle memory, voir [memory-layer.md](memory-layer.md).
 npx claudeos-core memory compact
 ```
 
-Applique une compaction en 4 stages sur `decision-log.md` et `failure-patterns.md` :
+Applique une compaction en 4 stages sur `failure-patterns.md` (`decision-log.md` est append-only et n'est jamais compacté) :
 
 | Stage | Trigger | Action |
 |---|---|---|

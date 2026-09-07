@@ -379,3 +379,72 @@ describe("scanKotlinDomains — root package", () => {
     assert.ok(rootPackage.startsWith("com.example"), `rootPackage should start with com.example, got: ${rootPackage}`);
   });
 });
+
+// ─── v2.5.0: package-by-feature single-module fallback ──────────
+describe("scanKotlinDomains — package-by-feature without layer dirs (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("derives domains from the feature package holding *Controller/*Service classes", async () => {
+    touch(path.join(tmp, "src/main/kotlin/com/acme/user/UserController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/user/UserService.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/order/OrderController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/config/WebConfig.kt"));
+    const { backendDomains } = await scanKotlinDomains({ language: "kotlin" }, tmp);
+    const names = backendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["order", "user"]);
+    const user = backendDomains.find(d => d.name === "user");
+    assert.equal(user.pattern, "kotlin-single");
+    assert.equal(user.controllers, 1);
+    assert.equal(user.services, 1);
+  });
+
+  it("flat root package falls back to class-name stems", async () => {
+    touch(path.join(tmp, "src/main/kotlin/com/acme/app/UserController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/app/OrderController.kt"));
+    const { backendDomains } = await scanKotlinDomains({ language: "kotlin" }, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name).sort(), ["order", "user"]);
+  });
+});
+
+describe("scanKotlinDomains — mixed layer-dir + package-by-feature layout (v2.5.0 review follow-up)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("keeps both `user` (user/controller/) and `order` (order/OrderController.kt)", async () => {
+    touch(path.join(tmp, "src/main/kotlin/com/acme/user/controller/UserController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/user/service/UserService.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/order/OrderController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/order/OrderService.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/SomeHandler.kt"));
+    const { backendDomains } = await scanKotlinDomains({ language: "kotlin" }, tmp);
+    const names = backendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["order", "user"], "stray root-package SomeHandler.kt must not become a domain in a structured tree");
+    assert.equal(backendDomains.find(d => d.name === "order").controllers, 1);
+    assert.equal(backendDomains.find(d => d.name === "user").services, 1);
+  });
+});
+
+describe("scanKotlinDomains — flat root package with a dto/ folder (review follow-up 2)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("com/acme/{UserController,OrderService}.kt + com/acme/dto/UserDto.kt → [order, user], no `acme` artifact", async () => {
+    touch(path.join(tmp, "src/main/kotlin/com/acme/UserController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/OrderService.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/acme/dto/UserDto.kt"));
+    const { backendDomains } = await scanKotlinDomains({ language: "kotlin" }, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name).sort(), ["order", "user"]);
+  });
+
+  it("a real single domain named after the root tail with controllers is kept", async () => {
+    touch(path.join(tmp, "src/main/kotlin/com/example/reservation/controller/ReservationController.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/example/reservation/service/ReservationService.kt"));
+    touch(path.join(tmp, "src/main/kotlin/com/example/reservation/api/PaymentHandler.kt"));
+    const { backendDomains } = await scanKotlinDomains({ language: "kotlin" }, tmp);
+    assert.ok(backendDomains.some(d => d.name === "reservation"), backendDomains.map(d => d.name).join(","));
+  });
+});

@@ -256,11 +256,20 @@ test("sensitive variable redaction", async (t) => {
     assert.strictEqual(out.JWT_SECRET, "***REDACTED***");
   });
 
-  await t.test("redactSensitiveVars preserves DATABASE_URL (documented whitelist)", () => {
-    // DATABASE_URL contains credentials but is kept for stack-detector back-compat
-    const input = { DATABASE_URL: "postgres://user:pass@host/db" };
+  await t.test("redactSensitiveVars masks credentials inside URL-shaped values (DATABASE_URL, REDIS_URL, …)", () => {
+    const input = {
+      DATABASE_URL: "postgres://user:pass@host:5432/db?sslmode=require",
+      REDIS_URL: "redis://:secret@cache.internal:6379/0",
+      JDBC_URL: "jdbc:postgresql://app:pw@db.internal:5432/app",
+      API_URL: "https://api.example.com/v1",
+      PORT: "3000",
+    };
     const out = redactSensitiveVars(input);
-    assert.strictEqual(out.DATABASE_URL, "postgres://user:pass@host/db");
+    assert.strictEqual(out.DATABASE_URL, "postgres://***:***@host:5432/db?sslmode=require");
+    assert.strictEqual(out.REDIS_URL, "redis://***:***@cache.internal:6379/0");
+    assert.strictEqual(out.JDBC_URL, "jdbc:postgresql://***:***@db.internal:5432/app", "jdbc:<driver>:// scheme must be masked too");
+    assert.strictEqual(out.API_URL, "https://api.example.com/v1", "URLs without userinfo are untouched");
+    assert.strictEqual(out.PORT, "3000");
   });
 
   await t.test("redactSensitiveVars does not mutate input", () => {
@@ -310,4 +319,30 @@ test("sensitive variable redaction", async (t) => {
     assert.strictEqual(extractPort(vars), 3000);
     assert.strictEqual(extractApiTarget(vars), "http://api");
   });
+});
+
+// ─── v2.5.0: credential masking must survive punctuation in passwords ──
+test("maskUrlCredentials masks passwords containing @, Go DSNs, and never rewrites @ that sits in a path, query, mailto or plain value", () => {
+  const { maskUrlCredentials } = require("../lib/env-parser");
+  assert.strictEqual(maskUrlCredentials("postgres://app:p@ss@db:5432/app"), "postgres://***:***@db:5432/app", "password with @");
+  // A raw "/" inside a password is not a valid URL; it is left alone rather than risk corrupting real URLs whose PATH contains "@".
+  assert.strictEqual(maskUrlCredentials("postgres://app:pa/ss@db:5432/app"), "postgres://app:pa/ss@db:5432/app");
+  assert.strictEqual(maskUrlCredentials("https://cdn.jsdelivr.net/npm/@scope/pkg"), "https://cdn.jsdelivr.net/npm/@scope/pkg", "scoped package path");
+  assert.strictEqual(maskUrlCredentials("https://api.example.com/users/@me"), "https://api.example.com/users/@me", "@ in path");
+  assert.strictEqual(maskUrlCredentials("https://host:8080/path/@x"), "https://host:8080/path/@x", "port before path with @");
+  assert.strictEqual(maskUrlCredentials("mailto:ops@example.com"), "mailto:ops@example.com", "mailto is not a DSN");
+  assert.strictEqual(maskUrlCredentials("0:30@daily"), "0:30@daily", "cron-ish value is not a DSN");
+  assert.strictEqual(maskUrlCredentials("postgres://app:p@ss@db:5432/app?sslmode=require"), "postgres://***:***@db:5432/app?sslmode=require");
+  assert.strictEqual(maskUrlCredentials("app:secret@tcp(db:3306)/app"), "***:***@tcp(db:3306)/app", "Go/MySQL DSN without scheme");
+  assert.strictEqual(maskUrlCredentials("user:pw@smtp.internal:587"), "user:pw@smtp.internal:587", "generic a:b@c is NOT rewritten (only the Go tcp()/unix() DSN shape is)");
+  assert.strictEqual(maskUrlCredentials("app:secret@unix(/var/run/mysqld.sock)/app"), "***:***@unix(/var/run/mysqld.sock)/app");
+  assert.strictEqual(maskUrlCredentials("https://api.example.com/v1?redirect=user@host"), "https://api.example.com/v1?redirect=user@host", "@ in query string is not userinfo");
+  assert.strictEqual(maskUrlCredentials("ops@example.com"), "ops@example.com", "plain e-mail untouched");
+  assert.strictEqual(maskUrlCredentials("jdbc:mysql://root:r@@t@db/app"), "jdbc:mysql://***:***@db/app");
+  // Credentials carried as connection parameters (JDBC / Mongo / SQL Server / token query params)
+  assert.strictEqual(maskUrlCredentials("jdbc:postgresql://db:5432/app?user=app&password=s3cret"), "jdbc:postgresql://db:5432/app?user=app&password=***");
+  assert.strictEqual(maskUrlCredentials("mongodb://host/db?authSource=admin&password=x"), "mongodb://host/db?authSource=admin&password=***");
+  assert.strictEqual(maskUrlCredentials("sqlserver://host;databaseName=app;user=sa;password=x"), "sqlserver://host;databaseName=app;user=sa;password=***");
+  assert.strictEqual(maskUrlCredentials("https://api.example.com/v1?token=abc&page=2"), "https://api.example.com/v1?token=***&page=2");
+  assert.strictEqual(maskUrlCredentials("user:p@ss@tcp(h:3306)/db"), "***:***@tcp(h:3306)/db", "Go DSN password containing @");
 });

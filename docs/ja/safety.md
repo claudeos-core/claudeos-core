@@ -35,7 +35,7 @@ npx claudeos-core init --force
 `--force` で削除されるもの:
 - `claudeos-core/generated/` 配下のすべての `.json` と `.md` ファイル (4 つの pass marker と scanner 出力)
 - 前回の実行が移動中にクラッシュした場合の `claudeos-core/generated/.staged-rules/` ディレクトリの残骸
-- `.claude/rules/` 配下のすべて
+- `.claude/rules/` 配下で claudeos-core が管理しているカテゴリ、つまり `NN.` プレフィックス付きのエントリすべて (`00.core/`、`10.backend/`、… `90.optional/`)。そのプレフィックスなしで自分で置いたファイルやフォルダ (例: `.claude/rules/my-team-conventions.md`) には **一切触れません**。このツールが生成したものではないためです
 
 `--force` で **削除されないもの**:
 - `claudeos-core/memory/` ファイル (decision log と failure patterns は保持)
@@ -43,7 +43,7 @@ npx claudeos-core init --force
 - `claudeos-core/` と `.claude/` の外側のファイル
 - CLAUDE.md (Pass 3 が通常の生成の一部として上書きする)
 
-**`--force` で `.claude/rules/` を wipe する一方で他のディレクトリは wipe しない理由:** Pass 3 には「ゼロルール検出」ガードがあり、`.claude/rules/` が空のときに発火して、ドメイン別ルールステージをスキップするか判断します。前回の古いルールが残っていると、このガードが false-negative し、新しいルールが生成されません。
+**`--force` で `.claude/rules/NN.*` の管理カテゴリを wipe する一方で他のディレクトリは wipe しない理由:** Pass 3 には「ゼロルール検出」ガードがあり、`.claude/rules/` が空のときに発火して、ドメイン別ルールステージをスキップするか判断します。前回の古いルールが残っていると、このガードが false-negative し、新しいルールが生成されません。
 
 ---
 
@@ -70,7 +70,8 @@ mover は `lib/staged-rules.js` にあります。まず `fs.renameSync` を試�
 
 | ファイルカテゴリ | `--force` なし | `--force` あり |
 |---|---|---|
-| `.claude/rules/` への手動編集 | ✅ 保持 (passes 再実行なし) | ❌ 失われる (ディレクトリが wipe) |
+| 生成済み `.claude/rules/NN.*/` ファイルへの手動編集 | ✅ 保持 (passes 再実行なし) | ❌ 失われる (管理カテゴリが wipe) |
+| `NN.` プレフィックスなしで `.claude/rules/` に置いた自分のファイル | ✅ 保持 | ✅ 保持 (一切触れない) |
 | `claudeos-core/standard/` への手動編集 | ✅ 保持 (passes 再実行なし) | ❌ Pass 3 が同じファイルを再生成すれば上書き |
 | `claudeos-core/skills/` への手動編集 | ✅ 保持 | ❌ Pass 3 が上書き |
 | `claudeos-core/guide/` への手動編集 | ✅ 保持 | ❌ Pass 3 が上書き |

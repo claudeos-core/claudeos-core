@@ -265,7 +265,7 @@ scanner는 `.env*` 파일을 읽어 런타임 설정을 가져옵니다. 생성�
 7. `.env.local`
 8. `.env.development`
 
-**민감 변수 마스킹:** `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 단 `DATABASE_URL`은 예외로 화이트리스트에 있습니다. scanner가 protocol에서 DB 타입을 감지해야 하기 때문입니다.
+**민감 변수 마스킹:** `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다.
 
 **Port 결정 우선순위:**
 1. Spring Boot `application.yml`의 `server.port`

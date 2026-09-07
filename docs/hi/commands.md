@@ -86,13 +86,14 @@ Partial Pass 3 के लिए (stages के बीच रुका split mode
 `--force` delete करता है:
 - `claudeos-core/generated/` के अंदर हर `.json` और `.md` file (चारों pass markers समेत)
 - बचा हुआ `claudeos-core/generated/.staged-rules/` directory, अगर पिछली run mid-move crash हुई थी
-- `.claude/rules/` के अंदर सब कुछ (ताकि Pass 3 का "zero-rules detection" stale rules पर false-negative न दे)
+- `.claude/rules/` के अंदर claudeos-core द्वारा manage की जाने वाली categories, यानी `NN.` prefix वाली हर entry (`00.core/`, `10.backend/`, … `90.optional/`), ताकि Pass 3 का "zero-rules detection" stale rules पर false-negative न दे
 
 `--force` delete **नहीं** करता:
 - `claudeos-core/memory/` files (decision log और failure patterns safe रहते हैं)
+- वे files या folders जो आपने ख़ुद `.claude/rules/` के अंदर बिना `NN.` prefix के रखे हैं (जैसे `.claude/rules/my-team-conventions.md`), क्योंकि इन्हें इस tool ने कभी generate नहीं किया
 - `claudeos-core/` और `.claude/` के बाहर की files
 
-**Rules में manual edits `--force` से चले जाते हैं.** यह trade-off है. `--force` "clean slate चाहिए" के लिए है. Edits बचाने हैं, तो बिना `--force` के दोबारा चलाओ.
+**Generate की गई rule files में manual edits `--force` से चले जाते हैं.** यह trade-off है. `--force` "clean slate चाहिए" के लिए है. Edits बचाने हैं, तो बिना `--force` के दोबारा चलाओ.
 
 ### Interactive vs non-interactive
 
@@ -211,7 +212,7 @@ Memory model का detail [memory-layer.md](memory-layer.md) में है.
 npx claudeos-core memory compact
 ```
 
-`decision-log.md` और `failure-patterns.md` पर 4-stage compaction apply करता है:
+`failure-patterns.md` पर 4-stage compaction apply करता है (`decision-log.md` append-only है और कभी compact नहीं होता):
 
 | Stage | Trigger | Action |
 |---|---|---|

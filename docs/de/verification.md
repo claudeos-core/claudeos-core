@@ -75,7 +75,7 @@ Prüft den **Inhalt** der generierten Dateien (nicht die Struktur von CLAUDE.md)
 
 | Klasse | Was sie aufdeckt |
 |---|---|
-| `STALE_PATH` | Jede `src/...\.(ts|tsx|js|jsx)`-Referenz in `.claude/rules/**` oder `claudeos-core/standard/**` muss auf eine reale Datei zeigen. Code-Fenced-Blöcke und Platzhalter-Pfade (`src/{domain}/feature.ts`) bleiben außen vor. |
+| `STALE_PATH` | Jede `src/...`-Referenz in `.claude/rules/**` oder `claudeos-core/standard/**`, die auf `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` endet, muss auf eine reale Datei zeigen: direkt unter dem Projekt-Root oder unter einem bis zu drei Ebenen tiefen Modulverzeichnis mit `src/` (JS-Workspaces `apps/*`, `packages/*`; Gradle/Maven-Module wie `api/src/main/java/…`; verschachtelte Layouts wie `servers/query/<x>/src/…`). Code-Fenced-Blöcke und Platzhalter-Pfade (`src/{domain}/feature.ts`) bleiben außen vor; Konfig-Endungen (`.yml`, `.properties`) werden bewusst nicht geprüft, weil sie meist als illustrative Profilnamen zitiert werden. |
 | `STALE_SKILL_ENTRY` | Jeder in `claudeos-core/skills/00.shared/MANIFEST.md` registrierte Skill-Pfad muss auf der Festplatte liegen. |
 | `MANIFEST_DRIFT` | Jeder registrierte Skill muss in `CLAUDE.md` auftauchen (mit **Orchestrator/Sub-Skill-Ausnahme**: Pass 3b schreibt Section 6, bevor Pass 3c die Sub-Skills erzeugt. Strukturell ist es also unmöglich, jeden Sub-Skill zu listen). |
 

@@ -86,13 +86,14 @@ Para un Pass 3 parcial (split mode interrumpido entre etapas), el mecanismo de r
 `--force` borra:
 - Cada archivo `.json` y `.md` dentro de `claudeos-core/generated/` (incluidos los cuatro pass markers)
 - El directorio `claudeos-core/generated/.staged-rules/` sobrante si alguna ejecución previa crasheó a mitad de move
-- Todo dentro de `.claude/rules/` (para que la "zero-rules detection" de Pass 3 no dé falso negativo por reglas viejas)
+- Las categorías gestionadas por claudeos-core dentro de `.claude/rules/`: toda entrada con prefijo `NN.` (`00.core/`, `10.backend/`, … `90.optional/`), para que la "zero-rules detection" de Pass 3 no dé falso negativo por reglas viejas
 
 `--force` **no** borra:
 - Archivos de `claudeos-core/memory/` (el decision log y los failure patterns se preservan)
+- Archivos o carpetas que tú mismo pusiste bajo `.claude/rules/` sin prefijo `NN.` (p. ej. `.claude/rules/my-team-conventions.md`): esta herramienta nunca los generó
 - Archivos fuera de `claudeos-core/` y `.claude/`
 
-**Las ediciones manuales a las reglas se pierden con `--force`.** Es el trade-off: `--force` existe para "quiero un slate limpio". Si quieres conservar tus ediciones, vuelve a correr sin `--force`.
+**Las ediciones manuales a los archivos de reglas generados se pierden con `--force`.** Es el trade-off: `--force` existe para "quiero un slate limpio". Si quieres conservar tus ediciones, vuelve a correr sin `--force`.
 
 ### Interactivo vs no-interactivo
 
@@ -211,7 +212,7 @@ Para los detalles del modelo de memoria, ver [memory-layer.md](memory-layer.md).
 npx claudeos-core memory compact
 ```
 
-Aplica una compactación de 4 etapas sobre `decision-log.md` y `failure-patterns.md`:
+Aplica una compactación de 4 etapas sobre `failure-patterns.md` (`decision-log.md` es append-only y nunca se compacta):
 
 | Etapa | Trigger | Acción |
 |---|---|---|

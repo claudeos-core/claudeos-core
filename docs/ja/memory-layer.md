@@ -121,11 +121,13 @@ generating repositories. Use `<Domain>Mapper.java` + `<Domain>.xml`, not
 
 ## コンパクションアルゴリズム
 
-memory は成長しますが、膨らみすぎはしません。4 ステージのコンパクションは次のコマンドで走ります:
+memory は成長しますが、膨らみすぎはしません。次のコマンドで `failure-patterns.md` に対する 4 ステージのコンパクションが走ります:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` は **決して** コンパクションされません。契約上 append-only であり (各決定の「なぜ」こそ残さなければならない情報です)、以下のステージは `failure-patterns.md` だけに適用されます。
 
 | Stage | トリガ | アクション |
 |---|---|---|

@@ -75,7 +75,7 @@ npx claudeos-core lint
 
 | Class | 잡아내는 것 |
 |---|---|
-| `STALE_PATH` | `.claude/rules/**` 또는 `claudeos-core/standard/**`의 모든 `src/...\.(ts|tsx|js|jsx)` 참조가 실제 파일로 resolve되는지 확인. 펜스 처리된 코드 블록과 placeholder 경로 (`src/{domain}/feature.ts`)는 제외. |
+| `STALE_PATH` | `.claude/rules/**` 또는 `claudeos-core/standard/**`에서 `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql`로 끝나는 모든 `src/...` 참조가 실제 파일로 resolve되는지 확인. 프로젝트 루트 바로 아래, 또는 `src/`를 가진 최대 3단계 깊이의 모듈 디렉토리 아래 (JS 워크스페이스 `apps/*`, `packages/*`; `api/src/main/java/…` 같은 Gradle/Maven 모듈; `servers/query/<x>/src/…` 같은 중첩 레이아웃)에서 찾습니다. 펜스 처리된 코드 블록과 placeholder 경로 (`src/{domain}/feature.ts`)는 제외. 설정 확장자 (`.yml`, `.properties`)는 대개 예시용 profile 이름으로 인용되므로 의도적으로 검사하지 않습니다. |
 | `STALE_SKILL_ENTRY` | `claudeos-core/skills/00.shared/MANIFEST.md`에 등록된 모든 skill 경로가 disk에 실제로 존재하는지 확인. |
 | `MANIFEST_DRIFT` | 등록된 모든 skill이 `CLAUDE.md`에 언급되어 있는지 확인 (**orchestrator/sub-skill 예외** 포함). Pass 3b가 Section 6을 작성하는 시점에는 아직 Pass 3c가 sub-skill을 만들기 전이라서, 모든 sub-skill을 함께 나열하는 것은 구조적으로 불가능합니다. |
 

@@ -15,14 +15,30 @@ const { readFileSafe, readJsonSafe, existsSafe, writeFileSafe } = require("../li
  * @param {string} templatesDir - path to pass-prompts/templates/
  * @param {string} generatedDir - path to claudeos-core/generated/
  */
-function generatePrompts(templates, lang, templatesDir, generatedDir) {
+function generatePrompts(templates, lang, templatesDir, generatedDir, stack) {
   const commonDir  = path.join(templatesDir, "common");
   const headerPath = path.join(commonDir, "header.md");
   const footerPath = path.join(commonDir, "pass3-footer.md");
   const langPath   = path.join(commonDir, "lang-instructions.json");
   const stagingOverridePath = path.join(commonDir, "staging-override.md");
 
-  const header = existsSafe(headerPath) ? readFileSafe(headerPath) : "";
+  let header = existsSafe(headerPath) ? readFileSafe(headerPath) : "";
+  // v2.5.0 — Sub-directory SPA. When stack-detector found the frontend under
+  // `frontend/` (stack.frontendRoot), every prompt must know that the
+  // frontend examples in the stack templates (`app/dashboard/page.tsx`,
+  // `src/components/...`) live under that prefix. Without this line the
+  // model looks for `app/` at the project root, finds nothing, and either
+  // guesses or reports the frontend as absent. The scanner-side allowlist
+  // already carries the prefixed paths; this keeps Pass 1/2 consistent.
+  const frontendRoot = stack && typeof stack.frontendRoot === "string" && stack.frontendRoot.trim()
+    ? stack.frontendRoot.replace(/\\/g, "/").replace(/\/+$/, "")
+    : null;
+  if (frontendRoot) {
+    header += `Frontend source root: {{PROJECT_ROOT}}/${frontendRoot}/\n` +
+      `The frontend application lives in the \`${frontendRoot}/\` sub-directory (own package.json). ` +
+      `Every frontend path in these instructions (\`app/\`, \`pages/\`, \`src/\`, \`components/\`, config files) ` +
+      `is relative to \`${frontendRoot}/\`; cite it as \`${frontendRoot}/app/...\` when writing project-relative paths.\n\n---\n\n`;
+  }
   const footer = existsSafe(footerPath) ? readFileSafe(footerPath) : "";
   // Injected into pass3/pass4 prompts — redirects .claude/rules/* writes to
   // claudeos-core/generated/.staged-rules/* to bypass Claude Code's sensitive-

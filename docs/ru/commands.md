@@ -86,13 +86,14 @@ npx claudeos-core init --force
 `--force` удаляет:
 - Каждый `.json` и `.md` файл в `claudeos-core/generated/` (включая все четыре pass-маркера)
 - Каталог `claudeos-core/generated/.staged-rules/`, если предыдущий запуск упал посреди перемещения
-- Всё в `.claude/rules/` (чтобы «zero-rules detection» Pass 3 не дал false-negative на устаревших rules)
+- Категории в `.claude/rules/`, которыми управляет claudeos-core, то есть все записи с префиксом `NN.` (`00.core/`, `10.backend/`, … `90.optional/`), чтобы «zero-rules detection» Pass 3 не дал false-negative на устаревших rules
 
 `--force` **не** удаляет:
 - Файлы `claudeos-core/memory/` (decision log и failure patterns сохраняются)
+- Файлы и папки, которые вы сами положили в `.claude/rules/` без префикса `NN.` (например, `.claude/rules/my-team-conventions.md`): этот инструмент их никогда не генерировал
 - Файлы вне `claudeos-core/` и `.claude/`
 
-**Ручные правки rules при `--force` теряются.** Это сознательный trade-off: `--force` существует ради «хочу чистый старт». Чтобы сохранить правки, перезапускайте без `--force`.
+**Ручные правки сгенерированных файлов rules при `--force` теряются.** Это сознательный trade-off: `--force` существует ради «хочу чистый старт». Чтобы сохранить правки, перезапускайте без `--force`.
 
 ### Интерактивный vs не-интерактивный
 
@@ -211,7 +212,7 @@ npx claudeos-core memory <subcommand>
 npx claudeos-core memory compact
 ```
 
-Применяет 4-стадийную компактацию к `decision-log.md` и `failure-patterns.md`:
+Применяет 4-стадийную компактацию к `failure-patterns.md` (`decision-log.md` — append-only и никогда не компактуется):
 
 | Стадия | Триггер | Действие |
 |---|---|---|

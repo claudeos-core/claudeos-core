@@ -75,7 +75,7 @@ npx claudeos-core lint
 
 | Class | 何を捕捉するか |
 |---|---|
-| `STALE_PATH` | `.claude/rules/**` または `claudeos-core/standard/**` 内の `src/...\.(ts|tsx|js|jsx)` 参照は実ファイルに解決される必要があります。fenced code block と placeholder パス (`src/{domain}/feature.ts`) は除外。 |
+| `STALE_PATH` | `.claude/rules/**` または `claudeos-core/standard/**` 内の、`.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` で終わるすべての `src/...` 参照は実ファイルに解決される必要があります。探索先はプロジェクトルート直下、または `src/` を持つ最大 3 階層までのモジュールディレクトリ配下 (JS ワークスペースの `apps/*`・`packages/*`、`api/src/main/java/…` のような Gradle/Maven モジュール、`servers/query/<x>/src/…` のようなネストしたレイアウト) です。fenced code block と placeholder パス (`src/{domain}/feature.ts`) は除外。設定ファイルの拡張子 (`.yml`、`.properties`) は例示的なプロファイル名として引用されることが多いため、意図的にチェックしません。 |
 | `STALE_SKILL_ENTRY` | `claudeos-core/skills/00.shared/MANIFEST.md` に登録されたすべての skill パスがディスクに存在する必要があります。 |
 | `MANIFEST_DRIFT` | 登録されたすべての skill が `CLAUDE.md` のどこかで言及されている必要があります (**orchestrator/sub-skill 例外** あり。Pass 3b は Pass 3c が sub-skill を作る前に Section 6 を書くため、すべての sub-skill を列挙するのは構造的に不可能)。 |
 

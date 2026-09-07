@@ -121,11 +121,13 @@ Ta xem xét các đề xuất, sao chép cái muốn vào tệp rule thật. **L
 
 ## Thuật toán compaction
 
-Memory tăng nhưng không phình. Compaction bốn-stage chạy khi gọi:
+Memory tăng nhưng không phình. Compaction bốn-stage chạy trên `failure-patterns.md` khi gọi:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` **không bao giờ** bị compact: theo hợp đồng nó là append-only (lý do "vì sao" đằng sau mỗi quyết định chính là thứ phải được giữ lại), nên các stage bên dưới chỉ áp dụng cho `failure-patterns.md`.
 
 | Stage | Trigger | Hành động |
 |---|---|---|

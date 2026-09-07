@@ -35,7 +35,7 @@ npx claudeos-core init --force
 Lo que `--force` borra:
 - Todos los archivos `.json` y `.md` bajo `claudeos-core/generated/` (los cuatro pass markers más la salida del scanner)
 - El directorio `claudeos-core/generated/.staged-rules/` sobrante si una ejecución previa crasheó a mitad de move
-- Todo bajo `.claude/rules/`
+- Las categorías gestionadas por claudeos-core bajo `.claude/rules/`: toda entrada con prefijo `NN.` (`00.core/`, `10.backend/`, … `90.optional/`). Los archivos o carpetas que tú mismo pusiste ahí sin ese prefijo (p. ej. `.claude/rules/my-team-conventions.md`) **quedan intactos**: esta herramienta nunca los generó.
 
 Lo que `--force` **no** borra:
 - Archivos `claudeos-core/memory/` (decision log y failure patterns se preservan)
@@ -43,7 +43,7 @@ Lo que `--force` **no** borra:
 - Archivos fuera de `claudeos-core/` y `.claude/`
 - CLAUDE.md (Pass 3 lo sobrescribe como parte de la generación normal)
 
-**Por qué `.claude/rules/` se borra con `--force` y otros directorios no:** Pass 3 tiene un guard de "zero-rules detection" que se dispara cuando `.claude/rules/` está vacío, y decide si saltarse la etapa de reglas por dominio. Si quedaran reglas viejas de una ejecución previa, el guard daría falso negativo y las reglas nuevas no se generarían.
+**Por qué las categorías gestionadas `.claude/rules/NN.*` se borran con `--force` y otros directorios no:** Pass 3 tiene un guard de "zero-rules detection" que se dispara cuando `.claude/rules/` está vacío, y decide si saltarse la etapa de reglas por dominio. Si quedaran reglas viejas de una ejecución previa, el guard daría falso negativo y las reglas nuevas no se generarían.
 
 ---
 
@@ -70,7 +70,8 @@ El movimiento vive en `lib/staged-rules.js`. Usa `fs.renameSync` primero y cae a
 
 | Categoría de archivo | Sin `--force` | Con `--force` |
 |---|---|---|
-| Ediciones manuales a `.claude/rules/` | ✅ Preservado (no se re-ejecutan pases) | ❌ Perdido (directorio borrado) |
+| Ediciones manuales a archivos generados `.claude/rules/NN.*/` | ✅ Preservado (no se re-ejecutan pases) | ❌ Perdido (categorías gestionadas borradas) |
+| Tus propios archivos bajo `.claude/rules/` sin prefijo `NN.` | ✅ Preservado | ✅ Preservado (nunca se tocan) |
 | Ediciones manuales a `claudeos-core/standard/` | ✅ Preservado (no se re-ejecutan pases) | ❌ Sobrescrito por Pass 3 si regenera los mismos archivos |
 | Ediciones manuales a `claudeos-core/skills/` | ✅ Preservado | ❌ Sobrescrito por Pass 3 |
 | Ediciones manuales a `claudeos-core/guide/` | ✅ Preservado | ❌ Sobrescrito por Pass 3 |

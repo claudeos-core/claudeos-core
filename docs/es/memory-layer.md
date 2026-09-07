@@ -121,11 +121,13 @@ Revisas las propuestas y copias las que quieras a archivos de regla reales. **El
 
 ## Algoritmo de compactación
 
-La memoria crece pero no se hincha. La compactación corre en cuatro etapas cuando llamas:
+La memoria crece pero no se hincha. La compactación en cuatro etapas corre sobre `failure-patterns.md` cuando llamas:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` **nunca** se compacta: es append-only por contrato (el "por qué" de cada decisión es justamente lo que debe sobrevivir), así que las etapas siguientes se aplican solo a `failure-patterns.md`.
 
 | Etapa | Trigger | Acción |
 |---|---|---|

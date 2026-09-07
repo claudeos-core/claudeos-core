@@ -35,7 +35,7 @@ npx claudeos-core init --force
 Was `--force` löscht:
 - Alle `.json`- und `.md`-Dateien unter `claudeos-core/generated/` (die vier Pass-Marker plus Scanner-Ausgabe)
 - Das übriggebliebene Verzeichnis `claudeos-core/generated/.staged-rules/`, falls ein vorheriger Lauf mitten im Move abgestürzt ist
-- Alles unter `.claude/rules/`
+- Die von claudeos-core verwalteten Kategorien unter `.claude/rules/`, also jeden Eintrag mit `NN.`-Präfix (`00.core/`, `10.backend/`, … `90.optional/`). Dateien oder Ordner, die Sie dort selbst ohne dieses Präfix abgelegt haben (z. B. `.claude/rules/my-team-conventions.md`), bleiben **unangetastet**, denn die hat dieses Tool nie erzeugt.
 
 Was `--force` **nicht** löscht:
 - `claudeos-core/memory/`-Dateien (Ihr Decision Log und Failure Patterns bleiben erhalten)
@@ -43,7 +43,7 @@ Was `--force` **nicht** löscht:
 - Dateien außerhalb von `claudeos-core/` und `.claude/`
 - Ihre CLAUDE.md (Pass 3 überschreibt sie als Teil der normalen Generierung)
 
-**Warum `.claude/rules/` unter `--force` gewischt wird, andere Verzeichnisse aber nicht:** Pass 3 hat einen „zero-rules detection"-Guard, der greift, wenn `.claude/rules/` leer ist, und der mitentscheidet, ob die Pro-Domain-Rule-Stage übersprungen wird. Sind veraltete Regeln aus einem früheren Lauf vorhanden, würde der Guard false-negativ auslösen und die neuen Regeln nicht generieren.
+**Warum die verwalteten `.claude/rules/NN.*`-Kategorien unter `--force` gewischt werden, andere Verzeichnisse aber nicht:** Pass 3 hat einen „zero-rules detection"-Guard, der greift, wenn `.claude/rules/` leer ist, und der mitentscheidet, ob die Pro-Domain-Rule-Stage übersprungen wird. Sind veraltete Regeln aus einem früheren Lauf vorhanden, würde der Guard false-negativ auslösen und die neuen Regeln nicht generieren.
 
 ---
 
@@ -70,7 +70,8 @@ Der Mover liegt in `lib/staged-rules.js`. Er nutzt zuerst `fs.renameSync` und f�
 
 | Datei-Kategorie | Ohne `--force` | Mit `--force` |
 |---|---|---|
-| Manuelle Änderungen an `.claude/rules/` | ✅ Erhalten (keine Passes laufen) | ❌ Verloren (Verzeichnis gelöscht) |
+| Manuelle Änderungen an generierten `.claude/rules/NN.*/`-Dateien | ✅ Erhalten (keine Passes laufen) | ❌ Verloren (verwaltete Kategorien gelöscht) |
+| Eigene Dateien unter `.claude/rules/` ohne `NN.`-Präfix | ✅ Erhalten | ✅ Erhalten (nie angefasst) |
 | Manuelle Änderungen an `claudeos-core/standard/` | ✅ Erhalten (keine Passes laufen) | ❌ Von Pass 3 überschrieben, falls dieselben Dateien neu generiert |
 | Manuelle Änderungen an `claudeos-core/skills/` | ✅ Erhalten | ❌ Von Pass 3 überschrieben |
 | Manuelle Änderungen an `claudeos-core/guide/` | ✅ Erhalten | ❌ Von Pass 3 überschrieben |

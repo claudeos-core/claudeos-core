@@ -119,11 +119,13 @@ You review the proposals, copy the ones you want into actual rule files. **The p
 
 ## Compaction algorithm
 
-The memory grows but doesn't bloat. Four-stage compaction runs when you call:
+The memory grows but doesn't bloat. Four-stage compaction runs over `failure-patterns.md` when you call:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` is **never** compacted — it is append-only by contract (the "why" behind each decision is exactly what must survive), so the stages below apply to `failure-patterns.md` only.
 
 | Stage | Trigger | Action |
 |---|---|---|

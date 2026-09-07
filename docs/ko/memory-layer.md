@@ -118,11 +118,13 @@ Claude Code가 같은 실수를 반복하면 (예: "Claude가 우리 프로젝�
 
 ## Compaction 알고리즘
 
-memory는 늘어나지만 무한정 부풀지는 않습니다. 다음 명령을 실행하면 4단계 compaction이 진행됩니다:
+memory는 늘어나지만 무한정 부풀지는 않습니다. 다음 명령을 실행하면 `failure-patterns.md`에 4단계 compaction이 진행됩니다:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md`는 **절대** compaction하지 않습니다. 계약상 append-only이기 때문입니다 (각 결정의 "이유"야말로 반드시 살아남아야 하는 내용입니다). 따라서 아래 단계는 `failure-patterns.md`에만 적용됩니다.
 
 | Stage | Trigger | Action |
 |---|---|---|

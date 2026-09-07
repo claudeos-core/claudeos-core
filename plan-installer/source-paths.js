@@ -234,9 +234,70 @@ function renderAllowedPathsSection(collected) {
   return lines.join("\n");
 }
 
+/**
+ * Deterministically insert (or replace) the `## Allowed Source Paths` section
+ * in a pass3a-facts.md body. Called by the orchestrator right after Pass 3a
+ * finishes, so the allowlist reaches Pass 3b/3c/3d verbatim — without asking
+ * the LLM to hand-copy up to 500 paths out of pass3-context.json.
+ *
+ * - If a `## Allowed Source Paths` section already exists (LLM wrote one),
+ *   it is replaced wholesale up to the next `## ` heading / EOF.
+ * - Otherwise the section is appended.
+ * - `collected` is the `allowedSourcePaths` object from project-analysis.json.
+ *   A missing/empty allowlist yields the documented fallback line so
+ *   downstream prompts see an explicit "unavailable" marker, not silence.
+ *
+ * Returns the new markdown string.
+ */
+function injectAllowedPathsSection(factsMd, collected) {
+  const heading = "## Allowed Source Paths";
+  const hasPaths = collected && Array.isArray(collected.paths) && collected.paths.length > 0;
+  const body = hasPaths
+    ? renderAllowedPathsSection(collected)
+    : "(allowlist unavailable — fall back to pass2-merged.json verification per file)";
+  const section = `${heading}\n\n${body}\n`;
+
+  const src = typeof factsMd === "string" ? factsMd : "";
+  const lines = src.split(/\r?\n/);
+  // Locate EVERY existing section heading outside fenced blocks. A model on a
+  // retry/resume may have written the section twice; all copies are removed
+  // and exactly one is put back at the position of the first.
+  const ranges = []; // [start, end) line indices
+  let inFence = false, cur = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^(```|~~~)/.test(lines[i].trimStart())) inFence = !inFence;
+    if (inFence) continue;
+    const isTarget = /^##\s+Allowed Source Paths\b/i.test(lines[i]);
+    const isHeading = /^##\s+/.test(lines[i]);
+    if (cur >= 0 && isHeading) { ranges.push([cur, i]); cur = -1; }
+    if (cur < 0 && isTarget) cur = i;
+  }
+  if (cur >= 0) ranges.push([cur, lines.length]);
+  if (ranges.length > 0) {
+    const out = [];
+    let pos = 0;
+    ranges.forEach(([a, b], idx) => {
+      out.push(...lines.slice(pos, a));
+      if (idx === 0) out.push(...section.split("\n"));
+      pos = b;
+    });
+    out.push(...lines.slice(pos));
+    return out.join("\n");
+  }
+  // Rebuild from `lines` (not `src`) so a CRLF input comes out as consistent LF
+  // instead of a mixed-ending file (CRLF body + LF appended section).
+  let trimmed = lines.join("\n").replace(/\s+$/, "");
+  // If the file ends inside an unclosed fence (LLM forgot the closing ```),
+  // close it first — otherwise the appended heading would sit inside a code
+  // block and be invisible to fence-aware readers of this file.
+  if (inFence) trimmed += "\n```";
+  return (trimmed ? trimmed + "\n\n" : "") + section;
+}
+
 module.exports = {
   collectSourcePaths,
   renderAllowedPathsSection,
+  injectAllowedPathsSection,
   // Exported for test visibility.
   _constants: { SOURCE_EXTENSIONS, EXCLUDED_DIRS, MAX_PATHS, MIN_FILES_PER_DIR, MAX_DIRS },
 };

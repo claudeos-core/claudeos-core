@@ -149,9 +149,26 @@ describe("scanJavaDomains — Pattern C (flat)", () => {
     const { backendDomains } = await scanJavaDomains(stack, tmp);
 
     // Pattern C extracts lowercase from PascalCase class name
-    assert.ok(backendDomains.length >= 1, "should detect at least one domain");
-    // On Windows, the fallback may detect "example" due to glob path differences
-    // The key assertion: domains are detected from this flat structure
+    const names = backendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["cart", "product"], "flat layout must yield one domain per *Controller class");
+    assert.ok(backendDomains.every(d => d.pattern === "C"), "flat layout must be classified as Pattern C");
+    assert.ok(!names.includes("example"), "root package tail must not become a domain");
+  });
+
+  it("Spring Initializr default layout (root/controller + root/service) is Pattern C, not a single package-named domain", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/demo/controller/UserController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/controller/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/service/UserService.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/service/OrderService.java"));
+
+    const { backendDomains, rootPackage } = await scanJavaDomains({ language: "java" }, tmp);
+    assert.equal(rootPackage, "com.example.demo");
+    const names = backendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["order", "user"]);
+    const user = backendDomains.find(d => d.name === "user");
+    assert.equal(user.pattern, "C");
+    assert.equal(user.controllers, 1);
+    assert.equal(user.services, 1);
   });
 });
 
@@ -504,5 +521,108 @@ describe("scanJavaDomains — MyBatis XML mybatis path", () => {
     const order = backendDomains.find(d => d.name === "order");
     assert.ok(order, "should detect order domain");
     assert.ok(order.xmlMappers >= 1, "should count XML from mybatis/ path");
+  });
+});
+
+// ─── v2.5.0: multi-module source roots ────────────────────────
+describe("scanJavaDomains — multi-module source roots (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("finds domain-first layouts under <module>/src/main/java with the primary patterns (not the fallback)", async () => {
+    touch(path.join(tmp, "api/src/main/java/com/acme/user/controller/UserController.java"));
+    touch(path.join(tmp, "api/src/main/java/com/acme/order/controller/OrderController.java"));
+    touch(path.join(tmp, "core/src/main/java/com/acme/user/service/UserService.java"));
+    touch(path.join(tmp, "core/src/main/java/com/acme/order/service/OrderService.java"));
+    touch(path.join(tmp, "core/src/main/resources/mapper/user/UserMapper.xml"));
+    // build output must not be scanned
+    touch(path.join(tmp, "api/build/classes/java/main/com/acme/ghost/controller/GhostController.java"));
+
+    const { backendDomains, rootPackage } = await scanJavaDomains({ language: "java" }, tmp);
+    assert.equal(rootPackage, "com.acme");
+    const names = backendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["order", "user"]);
+    const user = backendDomains.find(d => d.name === "user");
+    assert.equal(user.pattern, "B");
+    assert.equal(user.controllers, 1);
+    assert.equal(user.services, 1);
+    assert.equal(user.xmlMappers, 1);
+  });
+});
+
+// ─── v2.5.0 (review follow-up): flat-vs-domain-first disambiguation ────
+describe("scanJavaDomains — flat guard does not swallow single-domain domain-first projects", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("account/{controller/LoginController, service/AccountService, dto/LoginDto} stays Pattern B `account`", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/account/controller/LoginController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/account/controller/SignupController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/account/service/AccountService.java"));
+    touch(path.join(tmp, "src/main/java/com/example/account/dto/LoginDto.java"));
+    const { backendDomains } = await scanJavaDomains({ language: "java" }, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name), ["account"]);
+    const acc = backendDomains[0];
+    assert.equal(acc.pattern, "B");
+    assert.equal(acc.controllers, 2);
+    assert.equal(acc.services, 1);
+    assert.equal(acc.dtos, 1);
+  });
+
+  it("a *Application.java directly in the base package is a flat signal even when a controller shares the package name", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/demo/DemoApplication.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/controller/DemoController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/controller/UserController.java"));
+    const { backendDomains } = await scanJavaDomains({ language: "java" }, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name).sort(), ["demo", "user"]);
+    assert.ok(backendDomains.every(d => d.pattern === "C"));
+  });
+
+  it("multi-module with per-module packages (com.example.api / com.example.core) yields class-name domains, not module names", async () => {
+    touch(path.join(tmp, "api/src/main/java/com/example/api/controller/UserController.java"));
+    touch(path.join(tmp, "api/src/main/java/com/example/api/controller/OrderController.java"));
+    touch(path.join(tmp, "core/src/main/java/com/example/core/service/UserService.java"));
+    touch(path.join(tmp, "core/src/main/java/com/example/core/service/OrderService.java"));
+    const { backendDomains, rootPackage } = await scanJavaDomains({ language: "java" }, tmp);
+    assert.equal(rootPackage, "com.example");
+    const names = backendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["order", "user"], "module names api/core must not become domains");
+    const user = backendDomains.find(d => d.name === "user");
+    assert.equal(user.pattern, "C");
+    assert.equal(user.controllers, 1);
+    assert.equal(user.services, 1);
+  });
+
+  it("test-fixture projects under src/test/** and buildSrc/ are not treated as modules", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/user/controller/UserController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/user/service/UserService.java"));
+    touch(path.join(tmp, "src/test/resources/projects/demo/src/main/java/com/fixture/foo/controller/FooController.java"));
+    touch(path.join(tmp, "src/test/resources/projects/demo/src/main/java/com/fixture/foo/service/FooService.java"));
+    touch(path.join(tmp, "buildSrc/src/main/java/com/example/gradle/ConventionPlugin.java"));
+    const { backendDomains, rootPackage } = await scanJavaDomains({ language: "java" }, tmp);
+    assert.equal(rootPackage, "com.example.user");
+    assert.deepEqual(backendDomains.map(d => d.name), ["user"]);
+  });
+});
+
+describe("scanJavaDomains — flat controllers next to domain-first packages are re-attached by class name (review follow-up 2)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("demo/controller/HomeController.java + demo/user/controller/UserController.java → [home (C), user (B)]", async () => {
+    touch(path.join(tmp, "src/main/java/com/example/demo/DemoApplication.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/controller/HomeController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/user/controller/UserController.java"));
+    touch(path.join(tmp, "src/main/java/com/example/demo/user/service/UserService.java"));
+    const { backendDomains } = await scanJavaDomains({ language: "java" }, tmp);
+    const byName = Object.fromEntries(backendDomains.map(d => [d.name, d]));
+    assert.deepEqual(Object.keys(byName).sort(), ["home", "user"], "HomeController must not be dropped from every domain");
+    assert.equal(byName.user.pattern, "B");
+    assert.equal(byName.home.pattern, "C");
+    assert.equal(byName.home.controllers, 1);
+    assert.ok(!("demo" in byName), "no package-named pseudo-domain");
   });
 });

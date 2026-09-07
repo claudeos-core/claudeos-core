@@ -35,7 +35,7 @@ npx claudeos-core init --force
 Ce que `--force` supprime :
 - Tous les fichiers `.json` et `.md` sous `claudeos-core/generated/` (les quatre pass markers + sortie scanner)
 - Le répertoire résiduel `claudeos-core/generated/.staged-rules/` si une exécution antérieure a crashé en plein move
-- Tout sous `.claude/rules/`
+- Les catégories gérées par claudeos-core sous `.claude/rules/` : toute entrée préfixée `NN.` (`00.core/`, `10.backend/`, … `90.optional/`). Les fichiers ou dossiers que vous y avez placés vous-même sans ce préfixe (par ex. `.claude/rules/my-team-conventions.md`) restent **intacts** : cet outil ne les a jamais générés.
 
 Ce que `--force` ne supprime **pas** :
 - Les fichiers `claudeos-core/memory/` (decision log et failure patterns préservés)
@@ -43,7 +43,7 @@ Ce que `--force` ne supprime **pas** :
 - Les fichiers en dehors de `claudeos-core/` et `.claude/`
 - Le CLAUDE.md (Pass 3 l'écrase via la génération normale)
 
-**Pourquoi `.claude/rules/` est wipé sous `--force` mais pas les autres répertoires :** Pass 3 a une garde « zero-rules detection » qui se déclenche quand `.claude/rules/` est vide, pour décider s'il faut sauter le stage rules par domaine. Avec des stale rules d'une exécution antérieure, la garde donnerait un faux négatif et les nouvelles rules ne se généreraient pas.
+**Pourquoi les catégories gérées `.claude/rules/NN.*` sont wipées sous `--force` mais pas les autres répertoires :** Pass 3 a une garde « zero-rules detection » qui se déclenche quand `.claude/rules/` est vide, pour décider s'il faut sauter le stage rules par domaine. Avec des stale rules d'une exécution antérieure, la garde donnerait un faux négatif et les nouvelles rules ne se généreraient pas.
 
 ---
 
@@ -70,7 +70,8 @@ Le mover vit dans `lib/staged-rules.js`. Il essaie `fs.renameSync` d'abord, puis
 
 | Catégorie de fichier | Sans `--force` | Avec `--force` |
 |---|---|---|
-| Éditions manuelles à `.claude/rules/` | ✅ Préservées (aucune pass ne se réexécute) | ❌ Perdues (répertoire wipé) |
+| Éditions manuelles aux fichiers générés `.claude/rules/NN.*/` | ✅ Préservées (aucune pass ne se réexécute) | ❌ Perdues (catégories gérées wipées) |
+| Vos propres fichiers sous `.claude/rules/` sans préfixe `NN.` | ✅ Préservés | ✅ Préservés (jamais touchés) |
 | Éditions manuelles à `claudeos-core/standard/` | ✅ Préservées (aucune pass ne se réexécute) | ❌ Écrasées par Pass 3 s'il régénère les mêmes fichiers |
 | Éditions manuelles à `claudeos-core/skills/` | ✅ Préservées | ❌ Écrasées par Pass 3 |
 | Éditions manuelles à `claudeos-core/guide/` | ✅ Préservées | ❌ Écrasées par Pass 3 |

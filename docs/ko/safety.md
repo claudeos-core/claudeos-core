@@ -35,7 +35,7 @@ npx claudeos-core init --force
 `--force`가 삭제하는 것:
 - `claudeos-core/generated/` 아래의 모든 `.json` 및 `.md` 파일 (4개 pass marker와 scanner 출력)
 - 이전 실행이 move 도중에 충돌하면서 남긴 `claudeos-core/generated/.staged-rules/` 디렉토리
-- `.claude/rules/` 아래의 모든 파일
+- `.claude/rules/` 아래에서 claudeos-core가 관리하는 카테고리, 즉 `NN.` 접두사가 붙은 항목 전부 (`00.core/`, `10.backend/`, … `90.optional/`). 그 접두사 없이 직접 넣은 파일이나 폴더 (예: `.claude/rules/my-team-conventions.md`)는 **건드리지 않습니다**. 이 도구가 만든 적이 없는 파일이기 때문입니다.
 
 `--force`가 **삭제하지 않는** 것:
 - `claudeos-core/memory/` 파일 (decision log와 failure pattern 보존)
@@ -43,7 +43,7 @@ npx claudeos-core init --force
 - `claudeos-core/`와 `.claude/` 바깥의 파일
 - CLAUDE.md (Pass 3가 일반적인 생성 과정의 일부로 덮어씁니다)
 
-**`--force`가 다른 디렉토리는 그대로 두면서 `.claude/rules/`만 비우는 이유.** Pass 3에는 `.claude/rules/`가 비어 있을 때 발화하는 "zero-rules detection" guard가 있습니다. 도메인별 rules stage를 건너뛸지 결정할 때 쓰는 장치입니다. 이전 실행의 stale rule이 남아 있으면 guard가 false-negative를 내어 새 rule이 만들어지지 않습니다.
+**`--force`가 다른 디렉토리는 그대로 두면서 `.claude/rules/NN.*` 관리 카테고리만 비우는 이유.** Pass 3에는 `.claude/rules/`가 비어 있을 때 발화하는 "zero-rules detection" guard가 있습니다. 도메인별 rules stage를 건너뛸지 결정할 때 쓰는 장치입니다. 이전 실행의 stale rule이 남아 있으면 guard가 false-negative를 내어 새 rule이 만들어지지 않습니다.
 
 ---
 
@@ -70,7 +70,8 @@ mover 코드는 `lib/staged-rules.js`에 있습니다. 먼저 `fs.renameSync`를
 
 | 파일 카테고리 | `--force` 없음 | `--force` 사용 |
 |---|---|---|
-| `.claude/rules/` 수동 편집 | ✅ 보존 (pass 재실행 안 함) | ❌ 손실 (디렉토리 wipe) |
+| 생성된 `.claude/rules/NN.*/` 파일 수동 편집 | ✅ 보존 (pass 재실행 안 함) | ❌ 손실 (관리 카테고리 wipe) |
+| `NN.` 접두사 없이 `.claude/rules/`에 직접 넣은 파일 | ✅ 보존 | ✅ 보존 (건드리지 않음) |
 | `claudeos-core/standard/` 수동 편집 | ✅ 보존 (pass 재실행 안 함) | ❌ Pass 3가 같은 파일을 다시 만들면 덮어씁니다 |
 | `claudeos-core/skills/` 수동 편집 | ✅ 보존 | ❌ Pass 3가 덮어씁니다 |
 | `claudeos-core/guide/` 수동 편집 | ✅ 보존 | ❌ Pass 3가 덮어씁니다 |

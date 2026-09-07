@@ -75,7 +75,7 @@ npx claudeos-core lint
 
 | Класс | Что ловит |
 |---|---|
-| `STALE_PATH` | Любая ссылка `src/...\.(ts|tsx|js|jsx)` в `.claude/rules/**` или `claudeos-core/standard/**` обязана указывать на реальный файл. Fenced code blocks и placeholder-пути (`src/{domain}/feature.ts`) исключены. |
+| `STALE_PATH` | Любая ссылка `src/...` в `.claude/rules/**` или `claudeos-core/standard/**`, оканчивающаяся на `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql`, обязана указывать на реальный файл: непосредственно в корне проекта либо в каталоге модуля глубиной до трёх уровней, содержащем `src/` (JS-workspaces `apps/*`, `packages/*`; модули Gradle/Maven вроде `api/src/main/java/…`; вложенные раскладки вроде `servers/query/<x>/src/…`). Fenced code blocks и placeholder-пути (`src/{domain}/feature.ts`) исключены; расширения конфигов (`.yml`, `.properties`) намеренно не проверяются, потому что их обычно приводят как иллюстративные имена профилей. |
 | `STALE_SKILL_ENTRY` | Каждый skill-путь, зарегистрированный в `claudeos-core/skills/00.shared/MANIFEST.md`, должен существовать на диске. |
 | `MANIFEST_DRIFT` | Каждый зарегистрированный skill должен быть упомянут в `CLAUDE.md` (с **исключением orchestrator/sub-skill**: Pass 3b пишет Section 6 до того, как Pass 3c создаст sub-skills, так что перечислять каждый sub-skill структурно невозможно). |
 

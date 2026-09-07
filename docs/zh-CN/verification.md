@@ -75,7 +75,7 @@ npx claudeos-core lint
 
 | 类 | 捕捉什么 |
 |---|---|
-| `STALE_PATH` | `.claude/rules/**` 或 `claudeos-core/standard/**` 里任何 `src/...\.(ts|tsx|js|jsx)` 引用都要能解析到真实文件。围栏代码块与占位路径(`src/{domain}/feature.ts`)排除在外。 |
+| `STALE_PATH` | `.claude/rules/**` 或 `claudeos-core/standard/**` 里任何以 `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` 结尾的 `src/...` 引用都要能解析到真实文件:要么直接在项目根下,要么在任意含 `src/` 的、最多三层深的模块目录下(JS workspace 的 `apps/*`、`packages/*`;`api/src/main/java/…` 这样的 Gradle/Maven 模块;`servers/query/<x>/src/…` 这样的嵌套布局)。围栏代码块与占位路径(`src/{domain}/feature.ts`)排除在外;配置类扩展名(`.yml`、`.properties`)刻意不检查,因为它们通常只是作为示例 profile 名被引用。 |
 | `STALE_SKILL_ENTRY` | `claudeos-core/skills/00.shared/MANIFEST.md` 里注册的每个 skill 路径都要在磁盘上存在。 |
 | `MANIFEST_DRIFT` | 每个注册的 skill 都要在 `CLAUDE.md` 里被提及(带 **orchestrator/sub-skill 例外**:Pass 3b 在 Pass 3c 创建子 skill 之前先写 Section 6,所以列出每个子 skill 结构上做不到)。 |
 

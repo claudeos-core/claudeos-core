@@ -32,6 +32,8 @@ Checks:
   - Section 6 has exactly 3 ### sub-sections
   - Section 8 has exactly 2 ### sub-sections + 2 #### headings
   - Each L4 memory file appears in exactly 1 table row (inside Section 8)
+  - Each \`## N.\` heading contains its English canonical token (T1)
+  - Each section has non-trivial body content (S2, warning)
 
 Exit codes:
   0 — structure valid

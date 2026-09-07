@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-736%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -25,7 +25,7 @@ npx claudeos-core init
 
 **ClaudeOS-Core 的做法是直接读源码,稳定地把这些文件重新生成出来。** 第一步,Node.js scanner 扫一遍项目,把技术栈、ORM、包结构、文件路径都摸清楚。第二步,4-pass Claude 流水线产出完整的内容:`CLAUDE.md`、自动加载的 `.claude/rules/`、standards、skills,全部限定在一份明确的路径白名单里,LLM 越不出这个范围。最后,5 个 validator 在交付前再把结果过一遍。
 
-这样一来,同样的输入永远得到同样的输出。10 种语言里随便选一种,产物在字节层面也完全一致,代码里没有的路径绝不会出现。(细节看下面[有什么不同](#有什么不同)。)
+这样一来,同样的输入永远得到同样的 8 段式 `CLAUDE.md` 结构。10 种语言里随便选一种,都要通过同样的 25 项结构检查,引用的每一条源码路径都会核对磁盘上是否真实存在。(细节看下面[有什么不同](#有什么不同)。)
 
 长期维护的项目,还会顺带生成一份 [Memory Layer](#memory-layer-可选用于长期项目)。
 
@@ -115,7 +115,7 @@ npx claudeos-core init
 </details>
 
 <details>
-<summary><strong>实际写进 <code>CLAUDE.md</code> 的内容 (真实片段 — Section 1 + 2)</strong></summary>
+<summary><strong>实际写进 <code>CLAUDE.md</code> 的内容 (真实片段 — Section 1 + 2;为了 README 渲染把标题降为 <code>####</code>,真实文件用的是 <code>## N.</code>)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-表里的每一项 —— 精确的依赖坐标、`dev.db` 文件名、`V1__create_tables.sql` 迁移名,乃至 "no JPA" 这种判断 —— 都是 Claude 动笔前,scanner 从 `build.gradle`、`application.properties` 和源码目录里实打实读出来的,没有一处靠猜。
+技术栈那几行 (Java 11、Spring Boot 2.6.3、Gradle、MyBatis、SQLite、端口 8080) 来自确定性的 scanner。更细的信息 —— 精确的依赖坐标、`dev.db` 文件名、`V1__create_tables.sql` 迁移名,乃至 "no JPA" 这种判断 —— 由 Pass 1 以 scanner 确认的事实为约束,从 `build.gradle`、`application.properties` 和源码目录里读出来,再由 validator 交叉核验。没有一处取自框架默认值。
 
 </details>
 
@@ -309,7 +309,7 @@ your-project/
 | 你是... | 它能帮你解决什么 |
 |---|---|
 | **打算用 Claude Code 启动新项目的独立开发者** | 不用每个会话都把规范从头讲一遍。`CLAUDE.md` 加上 8 大类的 `.claude/rules/`,一次跑完就有了。 |
-| **要在多个仓库之间维护共享标准的技术负责人** | 重命名包、换 ORM、改响应包装器之后,`.claude/rules/` 总是慢半拍跟不上。ClaudeOS-Core 用一致的方式重新对齐:同样的输入产出字节级一致的结果,diff 里不会有多余噪音。 |
+| **要在多个仓库之间维护共享标准的技术负责人** | 重命名包、换 ORM、改响应包装器之后,`.claude/rules/` 总是慢半拍跟不上。ClaudeOS-Core 按固定的 8 段式 scaffold 重新生成:每个仓库结构相同、validator 判定相同,diff 里看到的是约定的变化,而不是版式噪音。 |
 | **已经在用 Claude Code,却被生成代码搞得头大的人** | 包装器写错、包结构不对、明明用 MyBatis 却生成 JPA、明明有统一中间件却到处 `try/catch`。Scanner 把项目真实的规范抽出来,每一次 Claude pass 都在明确的路径白名单内运行。 |
 | **刚加入一个新仓库的人** (老项目、新团队) | 在仓库里跑一下 `init`,就能拿到一张活的架构地图:CLAUDE.md 里的栈表格、按层划分的规则配 ✅/❌ 示例,加上预先写好"为什么"的 decision log (JPA vs MyBatis、REST vs GraphQL 等)。读 5 份文件,胜过翻 5,000 个源文件。 |
 | **要用中文 / 韩语 / 日语等英语以外的语言工作的人** | 大多数 Claude Code 规则生成器只支持英语。ClaudeOS-Core 把整套产物以 **10 种语言** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) 输出,而结构校验在所有语言下完全一致 —— `claude-md-validator` 的判定不受输出语言影响。 |
@@ -331,7 +331,7 @@ ClaudeOS-Core 把常见的 Claude Code 流程倒过来跑:
 
 整条流水线分**三个阶段**,LLM 调用的两端都有代码把关。
 
-**1. Step A — Scanner (确定性,不调用 LLM)。** Node.js scanner 遍历项目根目录,读取 `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml`,解析 `.env*` 文件 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 这类敏感变量自动脱敏)。接着归类架构模式 (Java 的 5 种 A/B/C/D/E、Kotlin 的 CQRS / 多模块、Next.js 的 App vs Pages Router、FSD、components-pattern),识别业务域,再为每一个真实存在的源文件路径生成一份明确的白名单。结果汇总到 `project-analysis.json`,后续所有步骤都以它为唯一事实来源。
+**1. Step A — Scanner (确定性,不调用 LLM)。** Node.js scanner 遍历项目根目录,读取 `package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml`,解析 `.env*` 文件 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 这类敏感变量自动脱敏)。接着归类架构模式 (Java 的 5 种 A/B/C/D/E、Kotlin 的 CQRS / 多模块、Next.js 的 App vs Pages Router、FSD、components-pattern),识别业务域,再为每一个真实存在的源文件路径生成一份明确的白名单。结果汇总到 `project-analysis.json`,后续所有步骤都以它为唯一事实来源。
 
 **2. Step B — 4-Pass Claude 流水线 (受 Step A 的事实约束)。**
 - **Pass 1** 按域分组读取代表性文件,从每个域里提炼大约 50–100 条规范:响应包装器、日志库、错误处理、命名约定、测试模式等。每个域分组只跑一次 (`max 4 domains, 40 files per group`),所以 context 不会爆。
@@ -393,7 +393,7 @@ npx claudeos-core health
 
 具体落到三件事上:
 
-1. **栈识别可复现。** 同样的项目 + 同样的代码 = 同样的输出,不会出现"这次 Claude 又写得不一样"的情况。
+1. **栈识别和结构可复现。** 同样的项目 + 同样的代码 = 同样的扫描结果,同样的 8 段式 `CLAUDE.md` 版式。各段里的措辞仍由 LLM 撰写,固定下来的是交给它的事实和它必须填满的框架。
 2. **不编造路径。** Pass 3 prompt 里写明了所有允许的源码路径,Claude 没法引用不存在的路径。
 3. **多栈感知。** 同一次执行里,后端域和前端域走不同的分析 prompt。
 
@@ -429,7 +429,7 @@ npx claudeos-core health
 
 一共 4 个文件,全部由 Pass 4 写入:
 
-- `decision-log.md` —— append-only 的"为什么选 X 不选 Y",从 `pass2-merged.json` 取种子。
+- `decision-log.md` —— append-only 的"为什么选 X 不选 Y",从 `pass2-merged.json` 取种子。(从不压缩)
 - `failure-patterns.md` —— 反复出现的错误,带 frequency / importance 分数。
 - `compaction.md` —— 记忆随时间自动压缩的方式。
 - `auto-rule-update.md` —— 应当晋升为新规则的模式。
@@ -437,7 +437,7 @@ npx claudeos-core health
 项目持续推进时,这两条命令负责维护这一层:
 
 ```bash
-# 压缩 failure-patterns 日志 (定期执行)
+# 压缩 failure-patterns 日志 (定期执行;不会动 decision-log.md)
 npx claudeos-core memory compact
 
 # 把高频 failure pattern 提为候选规则

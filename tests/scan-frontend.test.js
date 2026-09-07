@@ -1133,3 +1133,77 @@ describe("scanFrontendDomains — no frontend", () => {
     assert.equal(frontendDomains.length, 0);
   });
 });
+
+// ─── v2.5.0: Next.js App Router route groups ─────────────────
+describe("scanFrontendDomains — Next.js route groups (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("routes under (group)/ folders become domains named after the child, not skipped", async () => {
+    touch(path.join(tmp, "app/(marketing)/about/page.tsx"));
+    touch(path.join(tmp, "app/(marketing)/pricing/page.tsx"));
+    touch(path.join(tmp, "app/(shop)/cart/page.tsx"));
+    touch(path.join(tmp, "app/(shop)/cart/client.tsx"));
+    touch(path.join(tmp, "app/(shop)/(nested)/checkout/page.tsx"));
+    touch(path.join(tmp, "app/layout.tsx"));
+
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "nextjs", language: "typescript" }, tmp);
+    const names = frontendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["about", "cart", "checkout", "pricing"]);
+    const cart = frontendDomains.find(d => d.name === "cart");
+    assert.equal(cart.rscPattern, "RSC+Client split");
+  });
+});
+
+describe("scanFrontendDomains — same leaf under different route groups (v2.5.0 review follow-up)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("qualifies colliding leaves with their group path so domain names stay unique", async () => {
+    touch(path.join(tmp, "app/(shop)/settings/page.tsx"));
+    touch(path.join(tmp, "app/(shop)/cart/page.tsx"));
+    touch(path.join(tmp, "app/(admin)/settings/page.tsx"));
+    touch(path.join(tmp, "app/layout.tsx"));
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "nextjs", language: "typescript" }, tmp);
+    const names = frontendDomains.map(d => d.name).sort();
+    assert.deepEqual(names, ["admin-settings", "cart", "shop-settings"]);
+    assert.equal(new Set(names).size, names.length, "no duplicate domain names");
+  });
+});
+
+describe("scanFrontendDomains — leaves that collide before `pages` (review follow-up 2)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("src/admin/pages/home + src/shop/pages/home → admin-home / shop-home (unique names)", async () => {
+    touch(path.join(tmp, "src/admin/pages/home/index.tsx"));
+    touch(path.join(tmp, "src/shop/pages/home/index.tsx"));
+    touch(path.join(tmp, "src/shop/pages/settings/index.tsx"));
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react", language: "typescript" }, tmp);
+    const names = frontendDomains.map(d => d.name).sort();
+    assert.equal(new Set(names).size, names.length, "no duplicate domain names: " + names.join(","));
+    assert.ok(names.includes("admin-home") && names.includes("shop-home"), names.join(","));
+    assert.ok(names.includes("settings"), "non-colliding leaf keeps its bare name");
+  });
+});
+
+describe("scanFrontendDomains — colliding leaves without an app/pages anchor (review follow-up 4)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("src/pages/home + src/views/home → pages-home / views-home, never the whole path", async () => {
+    touch(path.join(tmp, "src/pages/home/index.tsx"));
+    touch(path.join(tmp, "src/views/home/Home.tsx"));
+    touch(path.join(tmp, "src/views/about/About.tsx"));
+    const { frontendDomains } = await scanFrontendDomains({ frontend: "react", language: "typescript" }, tmp);
+    const names = frontendDomains.map(d => d.name).sort();
+    assert.equal(new Set(names).size, names.length, "unique: " + names.join(","));
+    assert.ok(!names.some(n => n.startsWith("src-")), "no whole-path junk names: " + names.join(","));
+    assert.ok(names.includes("pages-home") && names.includes("views-home"), names.join(","));
+    assert.ok(names.includes("about"));
+  });
+});

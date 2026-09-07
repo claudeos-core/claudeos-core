@@ -265,7 +265,7 @@ scanner 读 `.env*` 文件里的运行时配置,这样生成的文档能反映�
 7. `.env.local`
 8. `.env.development`
 
-**敏感变量脱敏:** 匹配 `PASSWORD`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。**例外:** `DATABASE_URL` 在白名单里,因为 scanner 需要协议来检测 DB 类型。
+**敏感变量脱敏:** 匹配 `PASSWORD`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。
 
 **端口解析优先级:**
 1. Spring Boot `application.yml` 的 `server.port`

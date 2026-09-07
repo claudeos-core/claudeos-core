@@ -86,13 +86,14 @@ Với Pass 3 dở dang (split mode bị gián đoạn giữa các stage), cơ ch
 `--force` xóa:
 - Mọi tệp `.json` và `.md` dưới `claudeos-core/generated/` (gồm cả 4 marker pass)
 - Thư mục `claudeos-core/generated/.staged-rules/` còn sót nếu lần chạy trước crash giữa lúc move
-- Mọi thứ dưới `.claude/rules/` (để guard "zero-rules detection" của Pass 3 không false-negative trên rule cũ)
+- Các category do claudeos-core quản lý dưới `.claude/rules/`, tức mọi mục có tiền tố `NN.` (`00.core/`, `10.backend/`, … `90.optional/`), để guard "zero-rules detection" của Pass 3 không false-negative trên rule cũ
 
 `--force` **không** xóa:
 - Tệp `claudeos-core/memory/` (decision log và failure pattern vẫn còn)
+- Tệp hoặc thư mục bạn tự đặt dưới `.claude/rules/` mà không có tiền tố `NN.` (ví dụ `.claude/rules/my-team-conventions.md`), vì công cụ này chưa bao giờ sinh ra chúng
 - Tệp ngoài `claudeos-core/` và `.claude/`
 
-**Sửa tay lên rule sẽ mất khi chạy `--force`.** Đây là đánh đổi: `--force` dành cho lúc "muốn slate sạch." Nếu muốn giữ phần sửa, chạy lại không kèm `--force`.
+**Sửa tay lên các tệp rule đã sinh sẽ mất khi chạy `--force`.** Đây là đánh đổi: `--force` dành cho lúc "muốn slate sạch." Nếu muốn giữ phần sửa, chạy lại không kèm `--force`.
 
 ### Interactive vs non-interactive
 
@@ -211,7 +212,7 @@ Chi tiết về mô hình memory xem [memory-layer.md](memory-layer.md).
 npx claudeos-core memory compact
 ```
 
-Áp dụng compaction 4-stage lên `decision-log.md` và `failure-patterns.md`:
+Áp dụng compaction 4-stage lên `failure-patterns.md` (`decision-log.md` là append-only và không bao giờ bị compact):
 
 | Stage | Trigger | Hành động |
 |---|---|---|

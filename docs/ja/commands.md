@@ -86,13 +86,14 @@ marker が malformed のとき (例: 書き込み中にクラッシュして `{"
 `--force` は次を削除します。
 - `claudeos-core/generated/` 配下のすべての `.json` と `.md` ファイル (4 つの pass marker すべて含む)
 - 前回実行が移動途中でクラッシュした場合の残骸 `claudeos-core/generated/.staged-rules/` ディレクトリ
-- `.claude/rules/` 配下のすべて (Pass 3 の「ゼロルール検出」が古いルールで誤検知しないように)
+- `.claude/rules/` 配下で claudeos-core が管理しているカテゴリ、つまり `NN.` プレフィックス付きのエントリすべて (`00.core/`、`10.backend/`、… `90.optional/`) (Pass 3 の「ゼロルール検出」が古いルールで誤検知しないように)
 
 `--force` は次を **削除しません**。
 - `claudeos-core/memory/` ファイル (decision log と failure patterns は保持)
+- `NN.` プレフィックスなしで `.claude/rules/` 配下に自分で置いたファイルやフォルダ (例: `.claude/rules/my-team-conventions.md`)。このツールが生成したものではないためです
 - `claudeos-core/` と `.claude/` の外にあるファイル
 
-**`--force` ではルールへの手動編集が失われます。** これがトレードオフです。`--force` は「クリーンスレートにしたい」ときの脱出口なので、編集を残したいなら `--force` を付けずに再実行してください。
+**`--force` では生成済みルールファイルへの手動編集が失われます。** これがトレードオフです。`--force` は「クリーンスレートにしたい」ときの脱出口なので、編集を残したいなら `--force` を付けずに再実行してください。
 
 ### 対話 vs 非対話
 
@@ -211,7 +212,7 @@ memory モデルの詳細は [memory-layer.md](memory-layer.md) を参照して�
 npx claudeos-core memory compact
 ```
 
-`decision-log.md` と `failure-patterns.md` に 4 ステージのコンパクションを適用します。
+`failure-patterns.md` に 4 ステージのコンパクションを適用します (`decision-log.md` は append-only で、コンパクションの対象には決してなりません)。
 
 | Stage | トリガ | アクション |
 |---|---|---|

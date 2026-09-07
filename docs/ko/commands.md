@@ -86,13 +86,14 @@ Pass 3가 split 모드 stage 사이에서 중단된 부분 완료 상태라면 r
 `--force`는 다음을 삭제합니다:
 - `claudeos-core/generated/` 아래의 모든 `.json`과 `.md` (pass marker 4개 포함)
 - 이전 실행이 move 도중 충돌해 남은 `claudeos-core/generated/.staged-rules/` 디렉토리
-- `.claude/rules/` 아래의 모든 것. Pass 3의 "zero-rules detection" guard가 오래된 rule에 속아 false-negative를 내지 않도록 하기 위해서입니다.
+- `.claude/rules/` 아래에서 claudeos-core가 관리하는 카테고리, 즉 `NN.` 접두사가 붙은 항목 전부 (`00.core/`, `10.backend/`, … `90.optional/`). Pass 3의 "zero-rules detection" guard가 오래된 rule에 속아 false-negative를 내지 않도록 하기 위해서입니다.
 
 반대로 `--force`가 **건드리지 않는 것**은 다음과 같습니다:
 - `claudeos-core/memory/` 파일 (decision log와 failure pattern은 보존)
+- `NN.` 접두사 없이 `.claude/rules/` 아래에 직접 넣은 파일이나 폴더 (예: `.claude/rules/my-team-conventions.md`). 이 도구가 만든 적이 없는 파일이기 때문입니다.
 - `claudeos-core/`와 `.claude/` 바깥의 파일
 
-**Rule에 손으로 한 편집은 `--force`로 사라집니다.** 그게 트레이드오프입니다. `--force`는 "깔끔하게 새로 시작하고 싶다"는 용도이기 때문입니다. 편집을 유지하려면 `--force` 없이 재실행하세요.
+**생성된 rule 파일에 손으로 한 편집은 `--force`로 사라집니다.** 그게 트레이드오프입니다. `--force`는 "깔끔하게 새로 시작하고 싶다"는 용도이기 때문입니다. 편집을 유지하려면 `--force` 없이 재실행하세요.
 
 ### Interactive vs non-interactive
 
@@ -211,7 +212,7 @@ memory 모델에 대한 자세한 내용은 [memory-layer.md](memory-layer.md) �
 npx claudeos-core memory compact
 ```
 
-`decision-log.md`와 `failure-patterns.md`에 4단계 compaction을 적용합니다:
+`failure-patterns.md`에 4단계 compaction을 적용합니다 (`decision-log.md`는 append-only이며 절대 compaction하지 않습니다):
 
 | Stage | Trigger | Action |
 |---|---|---|

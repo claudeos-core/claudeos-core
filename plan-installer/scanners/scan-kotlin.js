@@ -184,10 +184,12 @@ async function scanKotlinDomains(stack, ROOT) {
     const ktDomains = {};
     const skipNames = ["common", "config", "util", "utils", "base", "shared", "global", "framework", "infra", "main", "generated", "build"];
     const layerKw = ["controller", "service", "repository", "mapper", "dao", "dto", "vo", "entity", "aggregate", "adapter"];
+    const handledByLayerDir = new Set();
     for (const f of ktFiles) {
       const parts = f.replace(/\\/g, "/").split("/");
       for (let i = 0; i < parts.length - 1; i++) {
         if (layerKw.includes(parts[i].toLowerCase())) {
+          handledByLayerDir.add(f);
           // domain/layer/ pattern
           if (i > 0) {
             const d = parts[i - 1].toLowerCase();
@@ -204,10 +206,73 @@ async function scanKotlinDomains(stack, ROOT) {
         }
       }
     }
-    for (const [d, data] of Object.entries(ktDomains)) {
-      if (data.totalFiles > 0) {
-        backendDomains.push({ name: d, type: "backend", ...data, pattern: "kotlin-single" });
+    // v2.5.0 — Package-by-feature without layer sub-directories:
+    //   com/acme/user/UserController.kt, com/acme/user/UserService.kt
+    // (the idiomatic Kotlin/Spring layout — no controller/ or service/ folder).
+    // The loop above needs a layer folder name in the path; before v2.5.0 a
+    // project with none aborted `init` with "invalid totalGroups: 0".
+    // Derive the domain from the directory that directly holds layer-suffixed
+    // classes; if that directory is the root package itself (flat), use the
+    // class-name stem instead (UserController → user).
+    //
+    // Runs for every file the layer-dir loop did NOT handle, so a MIXED layout
+    // (`user/controller/UserController.kt` + `order/OrderController.kt`) keeps
+    // both domains. In that mixed case only feature packages (parent named
+    // after its classes) are accepted; the class-name-stem fallback is reserved
+    // for projects with no layer dirs at all, so a stray `SomeHandler.kt` in
+    // the root package never becomes a domain of an otherwise structured tree.
+    {
+      // The layer-dir loop registers a domain named after the ROOT package
+      // whenever a layer folder (dto/, vo/, entity/…) sits directly under it
+      // (`com/acme/dto/UserDto.kt` → "acme"). That is a flat-root artifact,
+      // not a feature: it must neither switch this fallback into strict mode
+      // nor survive next to real domains.
+      // "Root" here is the longest package prefix shared by ALL .kt files
+      // (`rootPackage` above stops at the first layer dir and may include a
+      // domain segment, so it cannot be used for this). The artifact is the
+      // entry named after that root tail that carries no controllers and no
+      // services — only dto/mapper counts.
+      const pkgDirs = ktFiles.map(f => (f.match(/src\/main\/kotlin\/(.+)\/[^/]+\.kt$/) || [])[1]).filter(Boolean).map(d => d.split("/"));
+      let common = pkgDirs.length ? pkgDirs[0].slice() : [];
+      for (const d of pkgDirs) { let i = 0; while (i < common.length && i < d.length && common[i] === d[i]) i++; common = common.slice(0, i); }
+      const rootTail = common.length ? common[common.length - 1].toLowerCase() : null;
+      const isFlatRootArtifact = (d) => d === rootTail && ktDomains[d] && ktDomains[d].controllers === 0 && ktDomains[d].services === 0;
+      const strict = Object.keys(ktDomains).some(d => !isFlatRootArtifact(d));
+      const suffixRe = /([A-Za-z0-9]+?)(Controller|Service|Repository|Handler|UseCase|Mapper|Dao|Router|Resource)\.kt$/;
+      const bucket = (m) => (m === "Controller" || m === "Router" || m === "Resource") ? "controllers"
+        : (m === "Service" || m === "Handler" || m === "UseCase") ? "services" : "mappers";
+      // Group layer-suffixed classes by the directory that directly holds them.
+      const byParent = {};
+      for (const f of ktFiles) {
+        if (handledByLayerDir.has(f)) continue;
+        const m = f.match(suffixRe);
+        if (!m) continue;
+        const parts = f.split("/");
+        const parent = parts.length >= 2 ? parts[parts.length - 2].toLowerCase() : "";
+        (byParent[parent] = byParent[parent] || []).push({ stem: m[1], kind: m[2] });
       }
+      const add = (d, kind) => {
+        if (!ktDomains[d]) ktDomains[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, totalFiles: 0 };
+        ktDomains[d][bucket(kind)]++;
+        ktDomains[d].totalFiles++;
+      };
+      for (const [parent, files] of Object.entries(byParent)) {
+        // A feature package is one whose classes are named after it (user/UserController.kt).
+        // Otherwise the directory is a flat root/app package (app/UserController.kt,
+        // app/OrderController.kt) and each class-name stem is its own domain.
+        const stems = files.map(x => x.stem.toLowerCase());
+        const featurePkg = parent.length > 1 && !skipNames.includes(parent) && !layerKw.includes(parent)
+          && parent !== "kotlin" && parent !== "app" && stems.some(st => st.startsWith(parent.replace(/-/g, "")));
+        if (strict && !featurePkg) continue;
+        for (const x of files) {
+          const d = featurePkg ? parent : x.stem.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+          if (d.length > 1 && !skipNames.includes(d)) add(d, x.kind);
+        }
+      }
+      if (rootTail && isFlatRootArtifact(rootTail) && Object.keys(ktDomains).length > 1) delete ktDomains[rootTail];
+    }
+    for (const [d, data] of Object.entries(ktDomains)) {
+      if (data.totalFiles > 0) backendDomains.push({ name: d, type: "backend", ...data, pattern: "kotlin-single" });
     }
   }
 

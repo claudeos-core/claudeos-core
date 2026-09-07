@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-736%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -25,7 +25,7 @@ Claude Code हर नए session पर framework के generic defaults प�
 
 **ClaudeOS-Core यही काम deterministically करता है, सीधे आपके actual source code से।** पहले एक Node.js scanner project को पढ़ता है, यानी stack, ORM, package layout और file paths सब निकाल लेता है। उसके बाद 4-pass Claude pipeline पूरा set generate करती है। `CLAUDE.md`, auto-load होने वाले `.claude/rules/`, standards, skills — ये सब एक explicit path allowlist के अंदर ही बनते हैं, और LLM इस दायरे से बाहर नहीं जा सकता। आखिर में 5 validators output को ship होने से पहले verify कर लेते हैं।
 
-नतीजा यह है कि same input के लिए हमेशा byte-identical output मिलता है, चाहे 10 भाषाओं में से कोई भी चुनी जाए, और कभी invented path नहीं आएगा। (विस्तार से नीचे [क्या इसे अलग बनाता है](#क्या-इसे-अलग-बनाता-है) में।)
+नतीजा यह है कि same input के लिए हमेशा वही 8-section वाला `CLAUDE.md` structure मिलता है, जो चाहे 10 भाषाओं में से कोई भी चुनी जाए, उन्हीं 25 structural checks से validate होता है, और cite किया गया हर source path disk पर verify होता है। (विस्तार से नीचे [क्या इसे अलग बनाता है](#क्या-इसे-अलग-बनाता-है) में।)
 
 लंबे चलने वाले projects के लिए एक अलग [Memory Layer](#memory-layer-वैकल्पिक-दीर्घकालिक-प्रोजेक्ट्स-के-लिए) भी seed होता है।
 
@@ -115,7 +115,7 @@ Claude Code हर नए session पर framework के generic defaults प�
 </details>
 
 <details>
-<summary><strong>असली <code>CLAUDE.md</code> में आखिर क्या लिखा जाता है (वास्तविक excerpt — Section 1 + 2)</strong></summary>
+<summary><strong>असली <code>CLAUDE.md</code> में आखिर क्या लिखा जाता है (वास्तविक excerpt — Section 1 + 2; README rendering के लिए headings को <code>####</code> पर demote किया गया है, असली file में <code>## N.</code> होता है)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-ऊपर table में जो भी value है — exact dependency coordinates, `dev.db` filename, `V1__create_tables.sql` migration नाम, "no JPA" तक — वो सब Claude के file लिखने से पहले scanner ने `build.gradle`, `application.properties` और source tree से सीधे निकाला है। एक भी value guess नहीं की गई।
+Stack वाली rows (Java 11, Spring Boot 2.6.3, Gradle, MyBatis, SQLite, port 8080) deterministic scanner से आती हैं। बारीक details — exact dependency coordinates, `dev.db` filename, `V1__create_tables.sql` migration नाम, "no JPA" — Pass 1 scanner के facts को constraint मानकर `build.gradle`, `application.properties` और source tree से पढ़ता है, और फिर validators उन्हें cross-check करते हैं। एक भी value framework defaults से नहीं ली गई।
 
 </details>
 
@@ -309,7 +309,7 @@ your-project/
 | आप कौन हैं... | यह जो pain हटाता है |
 |---|---|
 | **Solo dev जो Claude Code से नया project शुरू कर रहा है** | "हर session में Claude को conventions फिर से सिखाओ" — यह झंझट खत्म। `CLAUDE.md` और 8-category `.claude/rules/` एक ही pass में बन जाते हैं। |
-| **Team lead जो कई repos में shared standards maintain करता है** | जब लोग packages rename करते हैं, ORMs बदलते हैं, या response wrappers switch करते हैं, तब `.claude/rules/` drift करने लगते हैं। ClaudeOS-Core इन्हें deterministically फिर से sync कर देता है। Same input = byte-identical output, कोई diff noise नहीं। |
+| **Team lead जो कई repos में shared standards maintain करता है** | जब लोग packages rename करते हैं, ORMs बदलते हैं, या response wrappers switch करते हैं, तब `.claude/rules/` drift करने लगते हैं। ClaudeOS-Core इन्हें एक fixed 8-section scaffold के हिसाब से फिर से generate करता है। हर repo में same structure, same validator verdict, इसलिए diff में layout noise नहीं बल्कि convention के बदलाव दिखते हैं। |
 | **पहले से Claude Code use कर रहे हैं लेकिन generated code ठीक करते-करते थक चुके हैं** | गलत response wrapper, गलत package layout, MyBatis project में JPA code, centralized middleware के बावजूद बिखरा हुआ `try/catch` — यह सब scanner आपके असली conventions निकालकर रोकता है, और हर Claude pass एक explicit path allowlist पर ही चलता है। |
 | **नए repo पर onboarding कर रहे हैं** (existing project, team join कर रहे हैं) | Repo पर `init` चलाइए, एक living architecture map मिल जाता है — CLAUDE.md में stack table, ✅/❌ examples के साथ per-layer rules, और बड़े decisions के पीछे "why" से seed किया हुआ decision log (JPA vs MyBatis, REST vs GraphQL, वगैरह)। 5 files पढ़ना 5,000 source files पढ़ने से कहीं तेज़ है। |
 | **हिन्दी / कोरियाई / जापानी / चीनी समेत 7 अन्य भाषाओं में काम कर रहे हैं** | अधिकांश Claude Code rule generators सिर्फ English में लिखते हैं। ClaudeOS-Core पूरा set **10 भाषाओं** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) में लिखता है, और structural validation **byte-identical** रहता है — output language कोई भी हो, `claude-md-validator` का verdict same रहता है। |
@@ -331,7 +331,7 @@ ClaudeOS-Core typical Claude Code workflow को उल्टा करके �
 
 Pipeline **तीन stages** में चलती है, और LLM call के दोनों तरफ code रहता है।
 
-**1. Step A — Scanner (deterministic, कोई LLM नहीं)।** एक Node.js scanner project root को walk करता है, `package.json` / `build.gradle` / `pom.xml` / `pyproject.toml` पढ़ता है, `.env*` files parse करता है (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` जैसी sensitive variables को redact करते हुए), architecture pattern classify करता है (Java के 5 patterns A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs Pages Router, FSD, components-pattern), domains discover करता है, और मौजूदा हर source file path का explicit allowlist बनाता है। इसका output है `project-analysis.json`, जो आगे की हर चीज़ के लिए single source of truth बन जाता है।
+**1. Step A — Scanner (deterministic, कोई LLM नहीं)।** एक Node.js scanner project root को walk करता है, `package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml` पढ़ता है, `.env*` files parse करता है (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` जैसी sensitive variables को redact करते हुए), architecture pattern classify करता है (Java के 5 patterns A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs Pages Router, FSD, components-pattern), domains discover करता है, और मौजूदा हर source file path का explicit allowlist बनाता है। इसका output है `project-analysis.json`, जो आगे की हर चीज़ के लिए single source of truth बन जाता है।
 
 **2. Step B — 4-Pass Claude pipeline (Step A के facts के दायरे में)।**
 - **Pass 1** हर domain group के representative files पढ़ता है और प्रति domain करीब 50–100 conventions निकालता है — response wrappers, logging libraries, error handling, naming conventions, test patterns वगैरह। यह domain group पर एक बार चलता है (`max 4 domains, 40 files per group`), इसलिए context कभी overflow नहीं होता।
@@ -393,7 +393,7 @@ npx claudeos-core health
 
 इसके तीन ठोस नतीजे हैं।
 
-1. **Deterministic stack detection.** Same project + same code = same output। "इस बार Claude थोड़ा अलग roll हो गया" वाली बात नहीं होती।
+1. **Deterministic stack detection और structure.** Same project + same code = same scan result और वही 8-section `CLAUDE.md` layout। Sections के अंदर की wording अब भी LLM लिखता है; fixed सिर्फ वे facts हैं जो उसे दिए जाते हैं और वह shape जो उसे भरनी है।
 2. **No invented paths.** Pass 3 prompt में हर allowed source path explicitly listed होता है, इसलिए Claude ऐसे paths cite ही नहीं कर सकता जो मौजूद नहीं हैं।
 3. **Multi-stack aware.** एक ही run में backend और frontend domains अलग-अलग analysis prompts use करते हैं।
 
@@ -429,7 +429,7 @@ npx claudeos-core health
 
 चार files हैं, और सब Pass 4 लिखता है।
 
-- `decision-log.md` — append-only "हमने X की जगह Y क्यों चुना", `pass2-merged.json` से seed होता है
+- `decision-log.md` — append-only "हमने X की जगह Y क्यों चुना", `pass2-merged.json` से seed होता है (कभी compact नहीं होता)
 - `failure-patterns.md` — frequency / importance scores के साथ बार-बार आने वाली errors
 - `compaction.md` — समय के साथ memory कैसे auto-compact होती है
 - `auto-rule-update.md` — वो patterns जिन्हें नए rules बनना चाहिए
@@ -437,7 +437,7 @@ npx claudeos-core health
 इस layer को समय के साथ maintain करने के लिए दो commands हैं।
 
 ```bash
-# Failure-patterns log compact करें (समय-समय पर चलाएँ)
+# Failure-patterns log compact करें (समय-समय पर चलाएँ; decision-log.md को छुआ नहीं जाता)
 npx claudeos-core memory compact
 
 # बार-बार आने वाले failure patterns को proposed rules में promote करें

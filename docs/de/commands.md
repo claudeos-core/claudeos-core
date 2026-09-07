@@ -86,13 +86,14 @@ Bei partiell ausgeführtem Pass 3 (Split-Modus zwischen zwei Stages unterbrochen
 `--force` löscht:
 - Jede `.json`- und `.md`-Datei unter `claudeos-core/generated/` (inklusive aller vier Pass-Marker)
 - Das übriggebliebene Verzeichnis `claudeos-core/generated/.staged-rules/`, falls ein vorheriger Lauf beim Move abgestürzt ist
-- Alles unter `.claude/rules/` (damit die „zero-rules detection" in Pass 3 nicht wegen veralteter Regeln false-negative ausfällt)
+- Die von claudeos-core verwalteten Kategorien unter `.claude/rules/`, also jeden Eintrag mit `NN.`-Präfix (`00.core/`, `10.backend/`, … `90.optional/`), damit die „zero-rules detection" in Pass 3 nicht wegen veralteter Regeln false-negative ausfällt
 
 `--force` löscht **nicht**:
 - Dateien in `claudeos-core/memory/` (Decision Log und Failure Patterns bleiben erhalten)
+- Dateien oder Ordner, die Sie selbst ohne `NN.`-Präfix unter `.claude/rules/` abgelegt haben (z. B. `.claude/rules/my-team-conventions.md`), denn die hat dieses Tool nie erzeugt
 - Dateien außerhalb von `claudeos-core/` und `.claude/`
 
-**Manuelle Änderungen an Regeln gehen unter `--force` verloren.** Das ist der Trade-off: `--force` existiert für den Fall „saubere Tafel". Wer Änderungen erhalten will, startet einfach ohne `--force` neu.
+**Manuelle Änderungen an generierten Regeldateien gehen unter `--force` verloren.** Das ist der Trade-off: `--force` existiert für den Fall „saubere Tafel". Wer Änderungen erhalten will, startet einfach ohne `--force` neu.
 
 ### Interaktiv vs. nicht-interaktiv
 
@@ -211,7 +212,7 @@ Details zum Memory-Modell stehen in [memory-layer.md](memory-layer.md).
 npx claudeos-core memory compact
 ```
 
-Verdichtet `decision-log.md` und `failure-patterns.md` in vier Stufen:
+Verdichtet `failure-patterns.md` in vier Stufen (`decision-log.md` ist append-only und wird nie verdichtet):
 
 | Stufe | Trigger | Aktion |
 |---|---|---|

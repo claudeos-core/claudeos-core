@@ -121,11 +121,13 @@ Proposals review करें, जो चाहिए वो actual rule files �
 
 ## Compaction algorithm
 
-Memory grow होती है, पर फूलती नहीं. Four-stage compaction तब चलता है जब call करते हैं:
+Memory grow होती है, पर फूलती नहीं. Four-stage compaction `failure-patterns.md` पर तब चलता है जब call करते हैं:
 
 ```bash
 npx claudeos-core memory compact
 ```
+
+`decision-log.md` **कभी** compact नहीं होता: contract के हिसाब से यह append-only है (हर decision के पीछे का "क्यों" ही तो वह चीज़ है जो बची रहनी चाहिए), इसलिए नीचे के stages सिर्फ़ `failure-patterns.md` पर लागू होते हैं.
 
 | Stage | Trigger | Action |
 |---|---|---|

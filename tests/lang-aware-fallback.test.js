@@ -236,3 +236,78 @@ describe("appendClaudeMdL4Memory — retired v2.3.0, invariant under repeated ca
     } finally { cleanup(d); }
   });
 });
+
+// ─── v2.5.0: translation cache is keyed by content hash ─────────────────
+describe("translation cache keyed by content hash (v2.5.0)", () => {
+  const { translateIfNeeded, _cacheKeyFor } = require("../lib/memory-scaffold");
+
+  it("a cached translation for the SAME English text is served without calling claude (even under CLAUDEOS_SKIP_TRANSLATION=1)", () => {
+    const d = makeTmp();
+    try {
+      const cacheFile = path.join(d, "claudeos-core", "generated", "fallback-cache-ko.json");
+      fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+      const english = "# Compaction Strategy\n\n_failure-patterns.md only._\n";
+      fs.writeFileSync(cacheFile, JSON.stringify({ [_cacheKeyFor("MEMORY_FILES.compaction.md", english)]: "# 압축 전략\n\n_failure-patterns.md만._\n" }));
+      const out = translateIfNeeded(english, "ko", "MEMORY_FILES.compaction.md", cacheFile);
+      assert.equal(out, "# 압축 전략\n\n_failure-patterns.md만._\n");
+    } finally { cleanup(d); }
+  });
+
+  it("a pre-v2.5.0 entry keyed by bare name is NOT reused (stale translation of changed text)", () => {
+    const d = makeTmp();
+    try {
+      const cacheFile = path.join(d, "claudeos-core", "generated", "fallback-cache-ko.json");
+      fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+      fs.writeFileSync(cacheFile, JSON.stringify({ "MEMORY_FILES.compaction.md": "# 옛 번역 (decision-log.md도 압축)" }));
+      assert.throws(
+        () => translateIfNeeded("# Compaction Strategy (new text)\n", "ko", "MEMORY_FILES.compaction.md", cacheFile),
+        /CLAUDEOS_SKIP_TRANSLATION=1/,
+        "legacy key must miss so the changed English text gets re-translated"
+      );
+    } finally { cleanup(d); }
+  });
+
+  it("changing the English text changes the key (old translation misses)", () => {
+    const d = makeTmp();
+    try {
+      const cacheFile = path.join(d, "claudeos-core", "generated", "fallback-cache-ja.json");
+      fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+      fs.writeFileSync(cacheFile, JSON.stringify({ [_cacheKeyFor("K", "old english")]: "古い" }));
+      assert.equal(translateIfNeeded("old english", "ja", "K", cacheFile), "古い");
+      assert.throws(() => translateIfNeeded("new english", "ja", "K", cacheFile), /CLAUDEOS_SKIP_TRANSLATION=1/);
+      assert.notEqual(_cacheKeyFor("K", "old english"), _cacheKeyFor("K", "new english"));
+      assert.match(_cacheKeyFor("K", "x"), /^K@[0-9a-f]{12}$/);
+    } finally { cleanup(d); }
+  });
+});
+
+describe("translation cache is WRITTEN after a successful real translation (v2.5.0 review follow-up)", () => {
+  it("performTranslation stores the result under the content-hashed key (no ReferenceError)", () => {
+    const { translateIfNeeded, _cacheKeyFor } = require("../lib/memory-scaffold");
+    const cliUtils = require("../bin/lib/cli-utils");
+    const origRun = cliUtils.runClaudeCapture;
+    const priorSkip = process.env.CLAUDEOS_SKIP_TRANSLATION;
+    delete process.env.CLAUDEOS_SKIP_TRANSLATION;
+    const d = makeTmp();
+    try {
+      const english = "# Compaction Strategy\n\n## Rules\n\n- Only `failure-patterns.md` is compacted.\n- `decision-log.md` is append-only.\n\n## Last Compaction\n\n(never)\n";
+      const fake = english.replace("Compaction Strategy", "압축 전략").replace("Rules", "규칙").replace("is compacted", "만 압축됩니다").replace("is append-only", "는 추가 전용입니다");
+      let calls = 0;
+      cliUtils.runClaudeCapture = () => { calls++; return fake; };
+      const cacheFile = path.join(d, "claudeos-core", "generated", "fallback-cache-ko.json");
+      const out = translateIfNeeded(english, "ko", "MEMORY_FILES.compaction.md", cacheFile);
+      assert.equal(out, fake.trim());
+      assert.equal(calls, 1);
+      const cache = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
+      assert.equal(cache[_cacheKeyFor("MEMORY_FILES.compaction.md", english)], fake.trim(), "written under the hashed key");
+      assert.equal(cache["MEMORY_FILES.compaction.md"], undefined, "legacy bare key is not written");
+      // Second call is served from the cache — claude is not invoked again.
+      assert.equal(translateIfNeeded(english, "ko", "MEMORY_FILES.compaction.md", cacheFile), fake.trim());
+      assert.equal(calls, 1);
+    } finally {
+      cliUtils.runClaudeCapture = origRun;
+      if (priorSkip === undefined) delete process.env.CLAUDEOS_SKIP_TRANSLATION; else process.env.CLAUDEOS_SKIP_TRANSLATION = priorSkip;
+      cleanup(d);
+    }
+  });
+});

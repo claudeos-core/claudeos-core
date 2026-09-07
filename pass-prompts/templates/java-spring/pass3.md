@@ -89,7 +89,7 @@ Generation targets:
    - 30.security-db/01.security-auth.md — Authentication, authorization, CORS
    - 30.security-db/02.database-schema.md — DDL, migrations, audit columns
    - 30.security-db/03.common-utilities.md — Common utilities, constants, Base classes
-   - 40.infra/01.environment-config.md — Profiles, environment variables, configuration management
+   - 40.infra/01.environment-config.md — Profiles, environment variables, configuration management, build scripts (`build.gradle` / `build.gradle.kts` / `pom.xml`) and the Gradle version catalog
    - 40.infra/02.logging-monitoring.md — Logging standards, monitoring, alerts
    - 40.infra/03.cicd-deployment.md — CI/CD pipeline, deployment strategy
    - 80.verification/01.development-verification.md — Build, startup, API testing
@@ -113,7 +113,7 @@ Generation targets:
      - `00.core/*` rules: `paths: ["**/*"]` — always loaded (architecture, naming are universally needed)
      - `10.backend/*` rules: `paths: ["**/*"]` — always loaded (backend rules needed for any source editing)
      - `30.security-db/*` rules: `paths: ["**/*"]` — always loaded (cross-cutting concerns)
-     - `40.infra/01.environment-config-rules.md` paths: `["**/*.properties", "**/*.yml", "**/*.yaml", "**/.env*", "**/config/**", "**/application*.properties"]` — Spring config files
+     - `40.infra/01.environment-config-rules.md` paths: `["**/*.properties", "**/*.yml", "**/*.yaml", "**/.env*", "**/config/**", "**/application*.properties", "**/*.gradle", "**/*.gradle.kts", "**/gradle/libs.versions.toml", "**/pom.xml"]` — Spring config files + build scripts (Groovy and Kotlin DSL) + version catalog
      - `40.infra/02.logging-monitoring-rules.md` paths: `["**/*.java", "**/logback*.xml", "**/logback*.groovy", "**/log4j*.xml", "**/log4j*.properties", "**/log4jdbc*.properties"]` — source code where logs live + log config (covers Logback XML/Groovy DSL, Log4j/Log4j2 XML/properties, and log4jdbc JDBC-logging adapter properties)
      - `40.infra/03.cicd-deployment-rules.md` paths: `["**/*.yml", "**/*.yaml", "**/Dockerfile*", "**/*.gradle*", "**/pom.xml", "**/*.java"]` — CI / build config + source
      - `50.sync/*` rules: `paths: ["**/claudeos-core/**", "**/.claude/**"]` — loaded only when editing claudeos-core files
@@ -155,7 +155,7 @@ Generation targets:
      List only the standard files that were actually generated above. Include frontend standards only if frontend was detected. NOTE: `00.core/04.doc-writing-guide.md` is a FORWARD REFERENCE — Pass 4 will generate it; include it anyway. Do NOT add a "DO NOT Read" section here — that information lives in CLAUDE.md Section 7 (the single source of truth).
 
 4. .claude/rules/50.sync/ (2 sync rules — AI fallback reminders)
-   - NOTE: These rules remind AI to run `npx claudeos-core refresh` after modifying standard/rules/skills files.
+   - NOTE: These rules remind AI to keep standard ↔ rules ↔ MANIFEST in sync when it edits any of them (`npx claudeos-core health` reports drift). Do NOT reference `npx claudeos-core refresh` — it is a no-op since v2.1.0.
    - 01.doc-sync.md — Bidirectional standard ↔ rules sync reminder (both directions in ONE rule).
      Do NOT generate a separate 02.rules-sync.md mirror file — redundant.
      Express the mapping as a naming convention (standard/<N>.<dir>/<M>.<n>.md ↔

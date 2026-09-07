@@ -277,7 +277,7 @@ Unlike rules that auto-load via `paths` glob, this layer is referenced **on-dema
 2. **Skim recent decisions**: Skim recent entries in `decision-log.md` to avoid overwriting architectural decisions that have already been agreed upon.
 3. **Record new decisions**: When making a significant design decision (choosing between competing patterns, adopting or rejecting a library, fixing a convention, etc.), append to `decision-log.md`.
 4. **Record repeated errors**: If the same error occurs ≥2 times and the root cause is non-obvious, register it in `failure-patterns.md` with a new pattern-id.
-5. **Periodic compaction**: When a memory file approaches 400 lines or has not been tidied up for over a month, run `npx claudeos-core memory compact`.
+5. **Periodic compaction**: When `failure-patterns.md` approaches 400 lines or has not been tidied up for over a month, run `npx claudeos-core memory compact` (`decision-log.md` is append-only and is never compacted).
 6. **Review rule-update proposals**: Review proposals in `auto-rule-update.md` with confidence ≥ 0.70. When accepting, edit the corresponding rule file and log the decision in `decision-log.md`.
 
 **Session Resume (after auto-compact or restart)**: Claude Code's auto-compact feature may truncate session context mid-work, and a restarted session starts with a fresh context window. When resuming work:

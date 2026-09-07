@@ -159,6 +159,16 @@ function buildPass3Context(generatedDir) {
       orm: stack.orm || null,
       frontend: stack.frontend || null,
       frontendVersion: stack.frontendVersion || null,
+      // v2.5.0 — sub-directory SPA (`frontend/`, `client/`, …). Pass 3 must
+      // cite frontend paths under this prefix; null when the SPA is at root.
+      frontendRoot: stack.frontendRoot || null,
+      frontendBundler: stack.frontendBundler || null,
+      // Sub-directory SPA's own .env facts (port / API target); null when
+      // the SPA is at root or declares no env file.
+      frontendPort: stack.frontendPort || null,
+      frontendEnvInfo: stack.frontendEnvInfo
+        ? { source: stack.frontendEnvInfo.source || null, port: stack.frontendEnvInfo.port || null, apiTarget: stack.frontendEnvInfo.apiTarget || null }
+        : null,
       port: extractPort(analysis),
     },
 

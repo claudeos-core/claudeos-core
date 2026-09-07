@@ -265,7 +265,7 @@ src/
 7. `.env.local`
 8. `.env.development`
 
-**Маскирование чувствительных переменных:** ключи, совпадающие с `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` и т.п., автоматически меняются на `***REDACTED***` перед копированием в `project-analysis.json`. **Исключение:** `DATABASE_URL` в whitelist, потому что сканеру нужен протокол для определения типа DB.
+**Маскирование чувствительных переменных:** ключи, совпадающие с `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` и т.п., автоматически меняются на `***REDACTED***` перед копированием в `project-analysis.json`. У любого другого значения в форме URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) маскируются только учётные данные — они заменяются на `***:***`, а схема, хост, порт и путь сохраняются (`postgres://***:***@db.internal:5432/app`). Тип DB по-прежнему различим, пароль в файл не попадает. Собственное определение типа DB сканером читает сырой текст `.env` напрямую и не затрагивается.
 
 **Приоритет разрешения порта:**
 1. `application.yml` Spring Boot — `server.port`.

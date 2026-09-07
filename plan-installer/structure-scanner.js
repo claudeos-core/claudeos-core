@@ -17,6 +17,7 @@ const { scanKotlinDomains, resolveSharedQueryDomains } = require("./scanners/sca
 const { scanNodeDomains } = require("./scanners/scan-node");
 const { scanPythonDomains } = require("./scanners/scan-python");
 const { scanFrontendDomains, countFrontendStats } = require("./scanners/scan-frontend");
+const path = require("path");
 
 async function scanStructure(stack, ROOT) {
   let backendDomains = [];
@@ -36,22 +37,32 @@ async function scanStructure(stack, ROOT) {
     if (r.rootPackage) rootPackage = r.rootPackage;
   }
 
-  if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework && stack.framework !== "vite") {
+  // v2.5.0 — dispatch is framework-aware for Python. A Django/FastAPI/Flask
+  // repo may carry a package.json (tailwind/postcss tooling, or a SPA in a
+  // sub-directory) that sets `language` to typescript/javascript; the backend
+  // is still Python and must be scanned by the Python scanner, never by the
+  // Node scanner.
+  const PY_FRAMEWORKS = ["django", "fastapi", "flask"];
+  const isPythonBackend = stack.language === "python" || PY_FRAMEWORKS.includes(stack.framework);
+
+  if ((stack.language === "typescript" || stack.language === "javascript") && stack.framework && stack.framework !== "vite" && !isPythonBackend) {
     const r = await scanNodeDomains(stack, ROOT);
     backendDomains.push(...r.backendDomains);
   }
 
-  if (stack.language === "python") {
+  if (isPythonBackend) {
     const r = await scanPythonDomains(stack, ROOT);
     backendDomains.push(...r.backendDomains);
   }
 
   // ── Frontend scanner ──
-  const fe = await scanFrontendDomains(stack, ROOT);
+  // v2.5.0: when the SPA lives in frontend/ (stack.frontendRoot), scan there.
+  const FE_ROOT = stack.frontendRoot ? path.join(ROOT, stack.frontendRoot) : ROOT;
+  const fe = await scanFrontendDomains(stack, FE_ROOT, { projectRoot: ROOT });
   frontendDomains.push(...fe.frontendDomains);
 
   // ── Frontend stats ──
-  const frontend = await countFrontendStats(stack, ROOT);
+  const frontend = await countFrontendStats(stack, FE_ROOT);
 
   // ── Aggregate ──
   const allDomains = [

@@ -317,23 +317,28 @@ describe("init — resume/fresh detection", () => {
     assert.ok(fs.existsSync(path.join(genDir, "project-analysis.json")), "non-pass files should survive");
   });
 
-  it("--force and fresh wipe .claude/rules/ so Guard 2 sees a clean slate", () => {
-    // Regression guard for risk #8: Without this, Claude ignoring the
-    // staging-override directive during a --force re-run would leave OLD
-    // rule files in .claude/rules/. Guard 2 would then count those stale
-    // files, think Pass 3 succeeded, and write the marker — hiding the
-    // silent failure.
+  it("--force and fresh wipe only claudeos-core-managed rule categories (NN. prefix)", () => {
+    // Mirrors wipeManagedRuleCategories() in init.js: generated categories
+    // (00.core, 10.backend, 60.memory, …) are removed so Guard 2 sees a clean
+    // slate, but rule files the user authored outside the numbered
+    // categories are preserved — they were never claudeos-core output.
     const rulesDir = path.join(tmp, ".claude/rules");
     writeFile(path.join(rulesDir, "00.core/00.standard-reference.md"), "# old ref\n");
     writeFile(path.join(rulesDir, "10.backend/01.controller-rules.md"), "# old rules\n");
     writeFile(path.join(rulesDir, "60.memory/01.decision-log.md"), "# old decision\n");
+    writeFile(path.join(rulesDir, "my-team-conventions.md"), "# user-owned\n");
+    writeFile(path.join(rulesDir, "security/pii.md"), "# user-owned dir\n");
 
-    // Simulate --force / fresh cleanup (matching init.js)
-    if (fs.existsSync(rulesDir)) fs.rmSync(rulesDir, { recursive: true, force: true });
+    for (const e of fs.readdirSync(rulesDir, { withFileTypes: true })) {
+      if (!/^\d{2}\./.test(e.name)) continue;
+      fs.rmSync(path.join(rulesDir, e.name), { recursive: true, force: true });
+    }
 
-    assert.ok(!fs.existsSync(rulesDir), ".claude/rules/ must be gone after --force/fresh");
-    assert.ok(!fs.existsSync(path.join(rulesDir, "00.core/00.standard-reference.md")));
-    assert.ok(!fs.existsSync(path.join(rulesDir, "10.backend/01.controller-rules.md")));
+    assert.ok(!fs.existsSync(path.join(rulesDir, "00.core")), "00.core must be wiped");
+    assert.ok(!fs.existsSync(path.join(rulesDir, "10.backend")), "10.backend must be wiped");
+    assert.ok(!fs.existsSync(path.join(rulesDir, "60.memory")), "60.memory must be wiped");
+    assert.ok(fs.existsSync(path.join(rulesDir, "my-team-conventions.md")), "user file must survive");
+    assert.ok(fs.existsSync(path.join(rulesDir, "security/pii.md")), "user dir must survive");
   });
 
   it("continue mode skips existing pass1 files", () => {
@@ -618,5 +623,51 @@ describe("init.js source-parity (v2.1.0)", () => {
       "ensureDirectories must pre-create .claude/rules/70.domains/backend");
     assert.match(INIT_SRC, /"\.claude\/rules\/70\.domains\/frontend"/,
       "ensureDirectories must pre-create .claude/rules/70.domains/frontend");
+  });
+});
+
+// ─── v2.5.0: wipeManagedRuleCategories (real function, not an inline copy) ──
+describe("wipeManagedRuleCategories (v2.5.0)", () => {
+  const { wipeManagedRuleCategories } = require("../bin/commands/init");
+  it("removes NN. categories and preserves user-owned entries", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wipe-"));
+    const rulesDir = path.join(tmp, ".claude/rules");
+    for (const f of ["00.core/a.md", "10.backend/b.md", "70.domains/backend/c-rules.md", "90.optional/d.md", "mine.md", "security/pii.md", "README.md"]) {
+      fs.mkdirSync(path.dirname(path.join(rulesDir, f)), { recursive: true });
+      fs.writeFileSync(path.join(rulesDir, f), "x\n");
+    }
+    const removed = wipeManagedRuleCategories(rulesDir);
+    assert.equal(removed, 4);
+    assert.deepEqual(fs.readdirSync(rulesDir).sort(), ["README.md", "mine.md", "security"]);
+    assert.ok(fs.existsSync(path.join(rulesDir, "security/pii.md")));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+  it("returns 0 on a missing directory", () => {
+    assert.equal(wipeManagedRuleCategories(path.join(os.tmpdir(), "does-not-exist-" + Date.now())), 0);
+  });
+});
+
+describe("wipeManagedRuleCategories — NN.-prefixed FILES at the rules root are user-owned (review follow-up 2)", () => {
+  const { wipeManagedRuleCategories } = require("../bin/commands/init");
+  it("removes only NN. directories; a root-level 01.team-style.md survives", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wipe2-"));
+    const rulesDir = path.join(tmp, ".claude/rules");
+    for (const f of ["00.core/a.md", "10.backend/b.md", "01.team-style.md", "99.notes.md", "mine.md"]) {
+      fs.mkdirSync(path.dirname(path.join(rulesDir, f)), { recursive: true });
+      fs.writeFileSync(path.join(rulesDir, f), "x\n");
+    }
+    const removed = wipeManagedRuleCategories(rulesDir);
+    assert.equal(removed, 2);
+    assert.deepEqual(fs.readdirSync(rulesDir).sort(), ["01.team-style.md", "99.notes.md", "mine.md"]);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
+describe("init — zero-domain error message under --force (review follow-up 3)", () => {
+  it("source: the fresh/--force variant of the message does not claim nothing was touched", () => {
+    const src = fs.readFileSync(path.join(__dirname, "..", "bin/commands/init.js"), "utf-8");
+    assert.match(src, /function loadDomainGroups\(\{ wasFreshClean = false \} = \{\}\)/);
+    assert.match(src, /had already removed the previously generated/);
+    assert.match(src, /loadDomainGroups\(\{ wasFreshClean \}\)/, "call site passes the fresh flag");
   });
 });

@@ -86,13 +86,14 @@ Pass 3 部分完成时(split mode 在 stage 之间被打断),resume 会检查 ma
 `--force` 删除:
 - `claudeos-core/generated/` 下所有 `.json` 与 `.md` 文件(含 4 个 pass marker)
 - 上次 move 崩溃留下的 `claudeos-core/generated/.staged-rules/` 目录(如有)
-- `.claude/rules/` 下所有内容(避免 Pass 3 的 "zero-rules detection" 在残留 rules 上误判)
+- `.claude/rules/` 下由 claudeos-core 管理的分类,即所有带 `NN.` 前缀的条目(`00.core/`、`10.backend/`、… `90.optional/`)(避免 Pass 3 的 "zero-rules detection" 在残留 rules 上误判)
 
 `--force` **不会**删除:
 - `claudeos-core/memory/` 文件(decision log 与 failure pattern 都保留)
+- 你自己放在 `.claude/rules/` 下、没有 `NN.` 前缀的文件或文件夹(例如 `.claude/rules/my-team-conventions.md`),它们从来不是这个工具生成的
 - `claudeos-core/` 与 `.claude/` 之外的文件
 
-**rule 的手动修改在 `--force` 下会丢失。** 这是 trade-off,`--force` 就是为"我想从头来过"准备的。想保留修改,直接不带 `--force` 重跑。
+**对生成的 rule 文件的手动修改在 `--force` 下会丢失。** 这是 trade-off,`--force` 就是为"我想从头来过"准备的。想保留修改,直接不带 `--force` 重跑。
 
 ### Interactive vs non-interactive
 
@@ -211,7 +212,7 @@ memory 模型详情见 [memory-layer.md](memory-layer.md)。
 npx claudeos-core memory compact
 ```
 
-对 `decision-log.md` 与 `failure-patterns.md` 应用 4 阶段压缩:
+对 `failure-patterns.md` 应用 4 阶段压缩(`decision-log.md` 是 append-only 的,永远不会被压缩):
 
 | Stage | 触发 | 动作 |
 |---|---|---|

@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-736%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -25,7 +25,7 @@ Cada vez que abres una sesión nueva, Claude Code vuelve a los valores genérico
 
 **ClaudeOS-Core las regenera de forma reproducible a partir del código real.** Primero entra un scanner en Node.js que reconoce el stack, el ORM, la organización de paquetes y las rutas de archivos. A continuación, la pipeline de 4 pasos sobre Claude escribe el conjunto completo: `CLAUDE.md`, las reglas auto-cargadas en `.claude/rules/`, los estándares y las skills. Todo queda acotado por una lista explícita de rutas permitidas que el modelo no puede saltarse. Y para cerrar, cinco validators revisan el resultado antes de darlo por bueno.
 
-De este modo, la misma entrada produce siempre la misma salida, byte a byte, en cualquiera de los 10 idiomas disponibles, y sin que aparezca jamás una ruta inexistente. Más abajo se entra en detalle en [Qué lo hace diferente](#qué-lo-hace-diferente).
+De este modo, la misma entrada produce siempre la misma estructura de `CLAUDE.md` en 8 secciones, validada por las mismas 25 comprobaciones estructurales en cualquiera de los 10 idiomas disponibles, y cada ruta de código citada se verifica contra el disco. Más abajo se entra en detalle en [Qué lo hace diferente](#qué-lo-hace-diferente).
 
 Para proyectos de larga duración, además se prepara una [Memory Layer](#memory-layer-opcional-para-proyectos-de-larga-duración) aparte.
 
@@ -115,7 +115,7 @@ Lo ejecutamos sobre [`spring-boot-realworld-example-app`](https://github.com/got
 </details>
 
 <details>
-<summary><strong>Lo que acaba en tu <code>CLAUDE.md</code> (extracto real, secciones 1 y 2)</strong></summary>
+<summary><strong>Lo que acaba en tu <code>CLAUDE.md</code> (extracto real, secciones 1 y 2; los encabezados se rebajan a <code>####</code> para que se rendericen en el README, el archivo real usa <code>## N.</code>)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-Cada valor de la tabla anterior, desde las coordenadas exactas de cada dependencia hasta el nombre del archivo `dev.db`, el de la migración `V1__create_tables.sql` o ese «no JPA», sale del scanner. Lo extrae directamente de `build.gradle`, `application.properties` y el árbol de fuentes antes de que Claude empiece a escribir. Nada se adivina.
+Las filas del stack (Java 11, Spring Boot 2.6.3, Gradle, MyBatis, SQLite, puerto 8080) salen del scanner determinista. Los detalles más finos, desde las coordenadas exactas de cada dependencia hasta el nombre del archivo `dev.db`, el de la migración `V1__create_tables.sql` o ese «no JPA», los lee Pass 1 en `build.gradle`, `application.properties` y el árbol de fuentes, tomando los hechos del scanner como restricción, y después los validators los contrastan. Nada sale de los valores por defecto del framework.
 
 </details>
 
@@ -309,7 +309,7 @@ Las categorías que comparten prefijo numérico entre `rules/` y `standard/` rep
 | Si eres... | El dolor que quita |
 |---|---|
 | **Dev en solitario** que arranca un proyecto con Claude Code | Se acabó lo de explicarle a Claude las convenciones del proyecto en cada sesión. Generas `CLAUDE.md` y las 8 categorías de `.claude/rules/` de una sola pasada. |
-| **Tech lead** manteniendo estándares compartidos entre repos | Cuando alguien renombra paquetes, cambia de ORM o retoca el wrapper de respuesta, `.claude/rules/` deja de cuadrar. ClaudeOS-Core lo resincroniza siempre igual: misma entrada, misma salida byte a byte y sin ruido en el diff. |
+| **Tech lead** manteniendo estándares compartidos entre repos | Cuando alguien renombra paquetes, cambia de ORM o retoca el wrapper de respuesta, `.claude/rules/` deja de cuadrar. ClaudeOS-Core lo regenera contra un scaffold fijo de 8 secciones: misma estructura en todos los repos y mismo veredicto del validator, así que el diff muestra cambios de convención y no ruido de maquetación. |
 | **Ya usas Claude Code** y estás cansado de corregir lo que genera | Wrapper equivocado, paquetes mal organizados, JPA cuando se usa MyBatis, `try/catch` esparcidos cuando ya hay middleware central. El scanner extrae las convenciones reales y cada paso de Claude se ejecuta contra una lista explícita de rutas permitidas. |
 | **Te incorporas a un repo nuevo** (proyecto existente, llegada al equipo) | Lanzas `init` sobre el repo y obtienes un mapa vivo de la arquitectura: tabla de stack en CLAUDE.md, reglas por capa con ejemplos ✅/❌ y un decision log sembrado con el «por qué» de las decisiones grandes (JPA frente a MyBatis, REST frente a GraphQL, etc.). Leer 5 archivos sale más a cuenta que leer 5.000 fuentes. |
 | **Trabajas en coreano, japonés, chino o 7 idiomas más** | La mayoría de generadores de reglas para Claude Code solo hablan inglés. ClaudeOS-Core escribe el conjunto completo en **10 idiomas** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) con **validación estructural byte-identical**: el veredicto de `claude-md-validator` no varía según el idioma de salida. |
@@ -331,7 +331,7 @@ Esto:     El código lee tu stack    → El código pasa hechos confirmados a Cl
 
 La pipeline avanza en **tres etapas**, con código tanto antes como después de la llamada al LLM:
 
-**1. Etapa A — Scanner (reproducible, sin LLM).** Un scanner en Node.js recorre la raíz del proyecto, lee `package.json`, `build.gradle`, `pom.xml` o `pyproject.toml`, parsea los archivos `.env*` (con redacción automática de variables sensibles como `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), clasifica el patrón de arquitectura (los 5 patrones A/B/C/D/E de Java, CQRS o multi-módulo en Kotlin, App Router o Pages Router en Next.js, FSD, components-pattern), descubre los dominios y compone una lista explícita con todas las rutas de archivos fuente que existen. El resultado se vuelca en `project-analysis.json`, la única fuente de verdad para lo que viene después.
+**1. Etapa A — Scanner (reproducible, sin LLM).** Un scanner en Node.js recorre la raíz del proyecto, lee `package.json`, `build.gradle`, `build.gradle.kts`, `pom.xml` o `pyproject.toml`, parsea los archivos `.env*` (con redacción automática de variables sensibles como `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), clasifica el patrón de arquitectura (los 5 patrones A/B/C/D/E de Java, CQRS o multi-módulo en Kotlin, App Router o Pages Router en Next.js, FSD, components-pattern), descubre los dominios y compone una lista explícita con todas las rutas de archivos fuente que existen. El resultado se vuelca en `project-analysis.json`, la única fuente de verdad para lo que viene después.
 
 **2. Etapa B — Pipeline de 4 pasos sobre Claude (limitada por los hechos de la etapa A).**
 - **Pass 1** lee archivos representativos por grupo de dominios y extrae unas 50–100 convenciones por dominio: wrappers de respuesta, librería de logging, manejo de errores, convenciones de nombrado, patrones de tests. Se ejecuta una vez por grupo (`max 4 domains, 40 files per group`) para que el contexto nunca se desborde.
@@ -393,7 +393,7 @@ La mayoría de herramientas de documentación para Claude Code parten de una des
 
 Esto se traduce en tres consecuencias concretas:
 
-1. **Detección reproducible del stack.** Mismo proyecto y mismo código equivalen a la misma salida. Nada de «esta vez Claude lo ha hecho distinto».
+1. **Detección reproducible del stack y de la estructura.** Mismo proyecto y mismo código equivalen al mismo resultado de escaneo y a la misma disposición de `CLAUDE.md` en 8 secciones. La redacción dentro de cada sección sigue siendo del LLM; lo que está fijado son los hechos que recibe y la forma que debe rellenar.
 2. **Sin rutas inventadas.** El prompt de Pass 3 lleva listadas todas las rutas fuente permitidas; Claude no puede citar nada que no exista.
 3. **Consciente del multi-stack.** En la misma ejecución, los dominios de backend y de frontend usan prompts de análisis distintos.
 
@@ -429,7 +429,7 @@ Más allá de la pipeline de scaffolding, ClaudeOS-Core también prepara la carp
 
 Son cuatro archivos y los escribe Pass 4:
 
-- `decision-log.md`: bitácora append-only de «por qué elegimos X en lugar de Y», sembrada desde `pass2-merged.json`.
+- `decision-log.md`: bitácora append-only de «por qué elegimos X en lugar de Y», sembrada desde `pass2-merged.json` (nunca se compacta).
 - `failure-patterns.md`: errores recurrentes con puntuaciones de frecuencia e importancia.
 - `compaction.md`: cómo se compacta la memoria automáticamente con el tiempo.
 - `auto-rule-update.md`: patrones que merecen convertirse en reglas nuevas.
@@ -437,7 +437,7 @@ Son cuatro archivos y los escribe Pass 4:
 Dos comandos mantienen viva esta capa:
 
 ```bash
-# Compactar el log de failure-patterns (ejecuta de vez en cuando)
+# Compactar el log de failure-patterns (ejecuta de vez en cuando; decision-log.md no se toca)
 npx claudeos-core memory compact
 
 # Promover los failure patterns frecuentes a propuestas de regla

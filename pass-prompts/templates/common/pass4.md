@@ -191,7 +191,7 @@ Baseline template (translate per above, then append the project-specific section
 ```markdown
 # Compaction Strategy
 
-_4-stage compaction rules for `decision-log.md` and `failure-patterns.md`._
+_4-stage compaction rules for `failure-patterns.md`. `decision-log.md` is append-only and never compacted._
 _Run via `npx claudeos-core memory compact`._
 
 ## Preservation Priority
@@ -266,7 +266,7 @@ Body (write in **{{LANG_NAME}}**) must cover:
 Frontmatter: `name: AI Work Rules`, `paths: ["**/*"]`
 Body (write in **{{LANG_NAME}}**) must cover:
 - Accuracy over token saving; verify before claiming
-- 13 hallucination prevention patterns (see memory-scaffold static fallback for reference list)
+- 17 hallucination prevention patterns (see memory-scaffold static fallback `RULE_FILES_00["52.ai-work-rules.md"]` for the reference table)
 - No unsolicited suggestions; ask when unsure
 - Memory vs Rules — no duplication judgment (Memory is on-demand, Rules are auto-loaded)
 - Planned references — no "missing" judgment
@@ -374,7 +374,7 @@ After all files are written, create:
   "standardFiles": [
     "claudeos-core/standard/00.core/XX.doc-writing-guide.md"
   ],
-  "claudeMdAppended": true,
+  "claudeMdAppended": false,
   "seededDecisions": <integer count of seed entries written to decision-log.md>
 }
 ```

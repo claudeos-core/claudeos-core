@@ -35,7 +35,7 @@ npx claudeos-core init --force
 `--force` क्या delete करता है:
 - `claudeos-core/generated/` की सभी `.json` और `.md` files (चारों pass markers + scanner output)
 - `claudeos-core/generated/.staged-rules/` directory अगर कोई पिछली run mid-move crash हुई हो
-- `.claude/rules/` के नीचे सब कुछ
+- `.claude/rules/` के नीचे claudeos-core द्वारा manage की जाने वाली categories, यानी `NN.` prefix वाली हर entry (`00.core/`, `10.backend/`, … `90.optional/`). जो files या folders आपने वहाँ ख़ुद बिना इस prefix के रखे हैं (जैसे `.claude/rules/my-team-conventions.md`), वे **छुए नहीं जाते**, क्योंकि इन्हें इस tool ने कभी generate नहीं किया.
 
 `--force` क्या **नहीं** delete करता:
 - `claudeos-core/memory/` files (decision log और failure patterns safe हैं)
@@ -43,7 +43,7 @@ npx claudeos-core init --force
 - `claudeos-core/` और `.claude/` के बाहर की files
 - आपकी CLAUDE.md (Pass 3 इसे normal generation के हिस्से के तौर पर overwrite करता है)
 
-**`--force` के under `.claude/rules/` wipe क्यों होती है लेकिन बाक़ी directories नहीं:** Pass 3 में "zero-rules detection" guard है जो तब fire होता है जब `.claude/rules/` empty हो. यह तय करता है कि per-domain rules stage skip करना है या नहीं. किसी पिछली run के stale rules मौजूद हों तो guard false-negative देगा और नए rules generate नहीं होंगे.
+**`--force` के under managed `.claude/rules/NN.*` categories wipe क्यों होती हैं लेकिन बाक़ी directories नहीं:** Pass 3 में "zero-rules detection" guard है जो तब fire होता है जब `.claude/rules/` empty हो. यह तय करता है कि per-domain rules stage skip करना है या नहीं. किसी पिछली run के stale rules मौजूद हों तो guard false-negative देगा और नए rules generate नहीं होंगे.
 
 ---
 
@@ -70,7 +70,8 @@ Mover `lib/staged-rules.js` में है. पहले `fs.renameSync` use �
 
 | File category | `--force` के बिना | `--force` के साथ |
 |---|---|---|
-| `.claude/rules/` में manual edits | ✅ Preserved (कोई pass फिर से नहीं चलता) | ❌ चले जाते हैं (directory wipe होती है) |
+| Generate की गई `.claude/rules/NN.*/` files में manual edits | ✅ Preserved (कोई pass फिर से नहीं चलता) | ❌ चले जाते हैं (managed categories wipe होती हैं) |
+| `.claude/rules/` के नीचे बिना `NN.` prefix वाली आपकी अपनी files | ✅ Preserved | ✅ Preserved (कभी छुई नहीं जातीं) |
 | `claudeos-core/standard/` में manual edits | ✅ Preserved (कोई pass फिर से नहीं चलता) | ❌ Pass 3 overwrite करता है अगर वही files regenerate हों |
 | `claudeos-core/skills/` में manual edits | ✅ Preserved | ❌ Pass 3 overwrite करता है |
 | `claudeos-core/guide/` में manual edits | ✅ Preserved | ❌ Pass 3 overwrite करता है |

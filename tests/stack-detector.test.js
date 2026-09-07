@@ -98,6 +98,30 @@ describe("detectStack — Java/Gradle", () => {
     assert.equal(s.database, "postgresql");
   });
 
+  it("a Java project that only pins kotlin-stdlib in the catalog stays Java (v2.5.0)", async () => {
+    // Java projects commonly pin the Kotlin stdlib to settle transitive
+    // version conflicts. A library coordinate is not evidence of Kotlin source.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `plugins { id 'org.springframework.boot' version '3.3.1' }\ndependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }`);
+    fs.mkdirSync(path.join(tmp, "gradle"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "gradle/libs.versions.toml"), `
+[versions]
+spring-boot = "3.3.1"
+kotlin-stdlib = "1.9.24"
+[libraries]
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin-stdlib" }
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.ok(!s.detected.includes("kotlin (catalog)"));
+    // A plugin coordinate IS decisive.
+    fs.writeFileSync(path.join(tmp, "gradle/libs.versions.toml"), `
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.0.0" }
+    `);
+    const s2 = await detectStack(tmp);
+    assert.equal(s2.language, "kotlin");
+  });
+
   it("detects Kotlin from version catalog", async () => {
     fs.writeFileSync(path.join(tmp, "build.gradle.kts"), `plugins { id("org.springframework.boot") }`);
     fs.mkdirSync(path.join(tmp, "gradle"), { recursive: true });
@@ -130,6 +154,25 @@ exposed-core = { module = "org.jetbrains.exposed:exposed-core" }
     `);
     const s = await detectStack(tmp);
     assert.equal(s.languageVersion, "21");
+  });
+
+  it("extracts Java 8 from legacy dotted literal sourceCompatibility = '1.8' (Gradle)", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '2.7.18' }
+      sourceCompatibility = '1.8'
+      dependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.languageVersion, "8");
+  });
+
+  it("extracts Java 8 from legacy dotted <java.version>1.8</java.version> (Maven)", async () => {
+    fs.writeFileSync(path.join(tmp, "pom.xml"), `<project>
+      <properties><java.version>1.8</java.version></properties>
+      <dependencies><dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter</artifactId></dependency></dependencies>
+    </project>`);
+    const s = await detectStack(tmp);
+    assert.equal(s.languageVersion, "8");
   });
 
   it("extracts Java 8 from JavaVersion.VERSION_1_8 legacy form", async () => {
@@ -1078,5 +1121,204 @@ spring:
       `server.port=3030\n`);
     const s = await detectStack(tmp);
     assert.equal(s.port, 3030);
+  });
+});
+
+// ─── v2.5.0: Java multi-module Gradle ──────────────────────────
+describe("detectStack — Java multi-module Gradle (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("root build.gradle with `org.springframework.boot` plugin `apply false` is Java/Spring Boot", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '3.2.5' apply false }
+      allprojects { repositories { mavenCentral() } }
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.equal(s.framework, "spring-boot");
+    assert.equal(s.frameworkVersion, "3.2.5");
+  });
+
+  it("root build.gradle with no framework coords falls back to sub-module build files", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `allprojects { repositories { mavenCentral() } }`);
+    fs.writeFileSync(path.join(tmp, "settings.gradle"), `include 'api', 'core'`);
+    fs.mkdirSync(path.join(tmp, "api"), { recursive: true });
+    fs.mkdirSync(path.join(tmp, "core"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "core/build.gradle"), `apply plugin: 'java-library'\nsourceCompatibility = '1.8'`);
+    fs.writeFileSync(path.join(tmp, "api/build.gradle"), `
+      apply plugin: 'java'
+      dependencies { implementation 'org.springframework.boot:spring-boot-starter-web:2.7.18' }
+    `);
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.equal(s.framework, "spring-boot");
+    assert.ok(s.detected.includes("java (submodule)"));
+    assert.equal(s.frameworkVersion, "2.7.18", "version from starter coordinate in the sub-module");
+    assert.equal(s.languageVersion, "8");
+  });
+});
+
+// ─── v2.5.0: Python framework keywords are case-insensitive ─────
+describe("detectStack — Python canonical-case requirements (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("recognizes Django / SQLAlchemy from a pip-freeze style requirements.txt", async () => {
+    fs.writeFileSync(path.join(tmp, "requirements.txt"), "Django==5.0.6\nSQLAlchemy==2.0.30\npsycopg[binary]==3.1\n");
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "python");
+    assert.equal(s.framework, "django");
+    assert.equal(s.orm, "sqlalchemy");
+    assert.equal(s.database, "postgresql");
+  });
+
+  it("recognizes Flask from capitalized pyproject dependency", async () => {
+    fs.writeFileSync(path.join(tmp, "pyproject.toml"), '[project]\ndependencies = ["Flask>=3.0", "SQLAlchemy"]\nrequires-python = ">=3.11"\n');
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "flask");
+    assert.equal(s.orm, "sqlalchemy");
+  });
+});
+
+describe("detectStack — frontend in a sub-directory (v2.5.0)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("Spring repo with frontend/package.json (React + Vite) records frontend + frontendRoot", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `plugins { id 'org.springframework.boot' version '3.2.0' }\ndependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }`);
+    fs.mkdirSync(path.join(tmp, "frontend"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "frontend/package.json"), JSON.stringify({ dependencies: { react: "^18.2.0" }, devDependencies: { vite: "^5.0.0" } }));
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.equal(s.framework, "spring-boot", "backend keeps `framework`");
+    assert.equal(s.frontend, "react");
+    assert.equal(s.frontendRoot, "frontend");
+    assert.equal(s.frontendVersion, "18.2.0");
+    assert.equal(s.frontendBundler, "vite", "bundler recorded separately so selectTemplates can pick node-vite");
+  });
+
+  it("sub-directory with only vite.config.ts (no framework dep in package.json) falls back to react + vite", async () => {
+    fs.writeFileSync(path.join(tmp, "pom.xml"), `<project><dependencies><dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter</artifactId></dependency></dependencies></project>`);
+    fs.mkdirSync(path.join(tmp, "client"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "client/package.json"), JSON.stringify({ devDependencies: { typescript: "^5.0.0" } }));
+    fs.writeFileSync(path.join(tmp, "client/vite.config.ts"), "export default {};\n");
+    const s = await detectStack(tmp);
+    assert.equal(s.frontend, "react");
+    assert.equal(s.frontendRoot, "client");
+    assert.equal(s.frontendBundler, "vite");
+  });
+
+  it("sub-directory Nuxt app (nuxt dep, vue only transitive) is detected as vue", async () => {
+    fs.writeFileSync(path.join(tmp, "requirements.txt"), "Django==5.0\n");
+    fs.mkdirSync(path.join(tmp, "web"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "web/package.json"), JSON.stringify({ dependencies: { nuxt: "^3.11.0" } }));
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "django");
+    assert.equal(s.frontend, "vue");
+    assert.equal(s.frontendRoot, "web");
+    assert.equal(s.frontendVersion, null, "nuxt's own version must not be reported as the Vue version");
+    fs.writeFileSync(path.join(tmp, "web/package.json"), JSON.stringify({ dependencies: { nuxt: "^3.11.0", vue: "^3.4.21" } }));
+    assert.equal((await detectStack(tmp)).frontendVersion, "3.4.21");
+  });
+
+  it("root React + Vite next to a Java backend records frontendBundler (framework stays spring-boot)", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `plugins { id 'org.springframework.boot' version '3.2.0' }\ndependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }`);
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: { react: "^18.2.0" }, devDependencies: { vite: "^5.0.0" } }));
+    const s = await detectStack(tmp);
+    assert.equal(s.framework, "spring-boot");
+    assert.equal(s.frontend, "react");
+    assert.equal(s.frontendBundler, "vite");
+    assert.equal(s.frontendRoot, undefined);
+  });
+
+  it("root package.json frontend wins over a sub-directory one (no frontendRoot)", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: { next: "14.0.0" } }));
+    fs.mkdirSync(path.join(tmp, "client"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "client/package.json"), JSON.stringify({ dependencies: { vue: "3.0.0" } }));
+    const s = await detectStack(tmp);
+    assert.equal(s.frontend, "nextjs");
+    assert.equal(s.frontendRoot, undefined);
+  });
+});
+
+// ─── v2.5.0 (review follow-up): "kotlin" keywords never override a Java-only source tree ──
+describe("detectStack — Java-only sources beat kotlin build-file keywords", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("catalog kotlin version pin in a Java project with .java sources stays java", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), "plugins { id 'java'; id 'org.springframework.boot' version '3.3.1' }\ndependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }");
+    fs.mkdirSync(path.join(tmp, "gradle"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "gradle/libs.versions.toml"), '[versions]\nkotlin = "1.9.22"\n[libraries]\nkotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }\n');
+    fs.mkdirSync(path.join(tmp, "src/main/java/com/acme/user/controller"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "src/main/java/com/acme/user/controller/UserController.java"), "class X {}\n");
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.ok(!s.detected.includes("kotlin (catalog)"));
+  });
+
+  it("pure-Java multi-module Gradle repo with buildSrc kotlin-dsl stays java", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), "allprojects { repositories { mavenCentral() } }");
+    fs.writeFileSync(path.join(tmp, "settings.gradle"), "include 'api'");
+    fs.mkdirSync(path.join(tmp, "api/src/main/java/com/acme/user/controller"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "api/build.gradle"), "apply plugin: 'java'\ndependencies { implementation 'org.springframework.boot:spring-boot-starter-web:3.3.1' }");
+    fs.writeFileSync(path.join(tmp, "api/src/main/java/com/acme/user/controller/UserController.java"), "class X {}\n");
+    fs.mkdirSync(path.join(tmp, "buildSrc"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "buildSrc/build.gradle.kts"), "plugins { `kotlin-dsl` }\n");
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.equal(s.framework, "spring-boot");
+    assert.ok(!s.detected.includes("kotlin (submodule)"), s.detected.join(","));
+  });
+
+  it("build.gradle.kts with kotlin(\"jvm\") and .kt sources is still kotlin", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle.kts"), 'plugins { kotlin("jvm") version "2.0.0"; id("org.springframework.boot") version "3.3.1" }');
+    fs.mkdirSync(path.join(tmp, "src/main/kotlin/com/acme/user"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "src/main/kotlin/com/acme/user/UserController.kt"), "class X\n");
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "kotlin");
+    assert.equal(s.languageVersion, "2.0.0");
+  });
+});
+
+describe("detectStack — SPA-only repo in a sub-directory (review follow-up 2)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  it("frontend/ React+Vite with no root files gets language / package manager / env facts", async () => {
+    fs.mkdirSync(path.join(tmp, "frontend/src"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "frontend/package.json"), JSON.stringify({ dependencies: { react: "^18.2.0" }, devDependencies: { vite: "^5.0.0", typescript: "^5.4.5" } }));
+    fs.writeFileSync(path.join(tmp, "frontend/vite.config.ts"), "export default {};\n");
+    fs.writeFileSync(path.join(tmp, "frontend/pnpm-lock.yaml"), "lockfileVersion: 9\n");
+    fs.writeFileSync(path.join(tmp, "frontend/.env.example"), "PORT=3000\nVITE_API_URL=http://localhost:8080\nVITE_API_KEY=abc\n");
+    const s = await detectStack(tmp);
+    assert.equal(s.frontend, "react");
+    assert.equal(s.frontendRoot, "frontend");
+    assert.equal(s.frontendBundler, "vite");
+    assert.equal(s.language, "typescript", "must not be reported as 'no language detected'");
+    assert.equal(s.languageVersion, "5.4.5");
+    assert.equal(s.packageManager, "pnpm");
+    assert.ok(s.frontendEnvInfo, "frontend/.env.example is read");
+    assert.equal(s.frontendEnvInfo.source, "frontend/.env.example");
+    assert.equal(s.frontendEnvInfo.vars.VITE_API_KEY, "***REDACTED***", "sub-directory env is redacted like the root one");
+    assert.equal(s.frontendPort, 3000);
+    assert.equal(s.port, undefined, "frontend PORT must not leak into the backend port");
+  });
+
+  it("backend + frontend/ keeps the backend language and package manager", async () => {
+    fs.writeFileSync(path.join(tmp, "build.gradle"), "plugins { id 'org.springframework.boot' version '3.2.0' }\ndependencies { implementation 'org.springframework.boot:spring-boot-starter-web' }");
+    fs.mkdirSync(path.join(tmp, "frontend"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "frontend/package.json"), JSON.stringify({ dependencies: { react: "^18.2.0" }, devDependencies: { typescript: "^5.0.0" } }));
+    fs.writeFileSync(path.join(tmp, "frontend/yarn.lock"), "");
+    const s = await detectStack(tmp);
+    assert.equal(s.language, "java");
+    assert.equal(s.packageManager, "gradle");
+    assert.equal(s.frontendRoot, "frontend");
   });
 });

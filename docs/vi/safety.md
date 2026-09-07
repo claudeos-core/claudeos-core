@@ -35,7 +35,7 @@ npx claudeos-core init --force
 `--force` xóa:
 - Mọi tệp `.json` và `.md` dưới `claudeos-core/generated/` (4 marker pass + output scanner)
 - Thư mục `claudeos-core/generated/.staged-rules/` còn sót nếu lần chạy trước crash giữa lúc move
-- Mọi thứ dưới `.claude/rules/`
+- Các category do claudeos-core quản lý dưới `.claude/rules/`, tức mọi mục có tiền tố `NN.` (`00.core/`, `10.backend/`, … `90.optional/`). Tệp hoặc thư mục bạn tự đặt ở đó mà không có tiền tố này (ví dụ `.claude/rules/my-team-conventions.md`) được **giữ nguyên**, vì công cụ này chưa bao giờ sinh ra chúng.
 
 `--force` **không** xóa:
 - Tệp `claudeos-core/memory/` (decision log và failure pattern giữ nguyên)
@@ -43,7 +43,7 @@ npx claudeos-core init --force
 - Tệp ngoài `claudeos-core/` và `.claude/`
 - CLAUDE.md (Pass 3 ghi đè như một phần của sinh tài liệu thông thường)
 
-**Vì sao `.claude/rules/` bị wipe dưới `--force` còn các thư mục khác thì không:** Pass 3 có guard "zero-rules detection" kích hoạt khi `.claude/rules/` rỗng, dùng để quyết định có skip stage rule theo domain hay không. Nếu rule cũ từ lần chạy trước còn đó, guard sẽ false-negative và rule mới không sinh.
+**Vì sao các category được quản lý `.claude/rules/NN.*` bị wipe dưới `--force` còn các thư mục khác thì không:** Pass 3 có guard "zero-rules detection" kích hoạt khi `.claude/rules/` rỗng, dùng để quyết định có skip stage rule theo domain hay không. Nếu rule cũ từ lần chạy trước còn đó, guard sẽ false-negative và rule mới không sinh.
 
 ---
 
@@ -70,7 +70,8 @@ Trình move ở `lib/staged-rules.js`. Nó dùng `fs.renameSync` trước, rơi 
 
 | Loại tệp | Không có `--force` | Có `--force` |
 |---|---|---|
-| Chỉnh sửa thủ công lên `.claude/rules/` | ✅ Giữ (không pass nào chạy lại) | ❌ Mất (thư mục bị wipe) |
+| Chỉnh sửa thủ công lên các tệp đã sinh trong `.claude/rules/NN.*/` | ✅ Giữ (không pass nào chạy lại) | ❌ Mất (các category được quản lý bị wipe) |
+| Tệp của riêng bạn dưới `.claude/rules/` không có tiền tố `NN.` | ✅ Giữ | ✅ Giữ (không bao giờ bị đụng tới) |
 | Chỉnh sửa thủ công lên `claudeos-core/standard/` | ✅ Giữ (không pass nào chạy lại) | ❌ Pass 3 ghi đè nếu sinh lại cùng tệp |
 | Chỉnh sửa thủ công lên `claudeos-core/skills/` | ✅ Giữ | ❌ Pass 3 ghi đè |
 | Chỉnh sửa thủ công lên `claudeos-core/guide/` | ✅ Giữ | ❌ Pass 3 ghi đè |

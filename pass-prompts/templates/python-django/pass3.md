@@ -131,7 +131,7 @@ Generation targets:
      List only the standard files that were actually generated above. NOTE: `00.core/04.doc-writing-guide.md` is a FORWARD REFERENCE — Pass 4 will generate it; include it anyway. Do NOT add a "DO NOT Read" section here — that information lives in CLAUDE.md Section 7 (the single source of truth).
 
 4. .claude/rules/50.sync/ (2 sync rules — AI fallback reminders)
-   - NOTE: These rules remind AI to run `npx claudeos-core refresh` after modifying standard/rules/skills files.
+   - NOTE: These rules remind AI to keep standard ↔ rules ↔ MANIFEST in sync when it edits any of them (`npx claudeos-core health` reports drift). Do NOT reference `npx claudeos-core refresh` — it is a no-op since v2.1.0.
    - 01.doc-sync.md — Bidirectional standard ↔ rules sync reminder (both directions in ONE rule).
      Do NOT generate a separate 02.rules-sync.md mirror file — redundant.
      Express the mapping as a naming convention (standard/<N>.<dir>/<M>.<n>.md ↔

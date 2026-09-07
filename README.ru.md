@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-736%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -25,7 +25,7 @@ npx claudeos-core init
 
 **ClaudeOS-Core пересобирает их предсказуемо, прямо из исходного кода проекта.** Сначала сканер на Node.js разбирает проект и вытаскивает стек, ORM, раскладку пакетов, реальные пути к файлам. Затем четырёхпроходный пайплайн на Claude пишет полный комплект документации: `CLAUDE.md`, автоматически подгружаемые `.claude/rules/`, стандарты, навыки. Всё это происходит строго внутри явного allowlist путей — за его пределы LLM выйти не может. И прежде чем результат окажется у вас, его проверяют пять валидаторов.
 
-В итоге одинаковый вход даёт побайтово одинаковый выход на любом из 10 языков, а пути, которых нет в коде, в документации не появляются. Подробности — ниже, в разделе [В чём отличие](#в-чём-отличие).
+В итоге одинаковый вход даёт один и тот же `CLAUDE.md` из 8 фиксированных секций, проверенный одними и теми же 25 структурными проверками на любом из 10 языков, а каждый упомянутый путь к исходникам сверяется с диском. Подробности — ниже, в разделе [В чём отличие](#в-чём-отличие).
 
 Для долгоживущих проектов рядом разворачивается [Memory Layer](#memory-layer-опционально-для-долгосрочных-проектов).
 
@@ -115,7 +115,7 @@ npx claudeos-core init
 </details>
 
 <details>
-<summary><strong>Что в итоге попадает в ваш <code>CLAUDE.md</code> (реальный фрагмент — Section 1 + 2)</strong></summary>
+<summary><strong>Что в итоге попадает в ваш <code>CLAUDE.md</code> (реальный фрагмент — Section 1 + 2; заголовки понижены до <code>####</code> ради отображения в README, в настоящем файле используется <code>## N.</code>)</strong></summary>
 
 ```markdown
 # CLAUDE.md — spring-boot-realworld-example-app
@@ -148,7 +148,7 @@ an XML-driven MyBatis persistence layer and JWT-based authentication.
 | Test Stack | JUnit Jupiter 5, Mockito, AssertJ, rest-assured, spring-mock-mvc |
 ```
 
-Каждое значение в этой таблице — точные координаты зависимостей, имя файла `dev.db`, название миграции `V1__create_tables.sql`, пометка «no JPA» — сканер вычитал из `build.gradle`, `application.properties` и дерева исходников ещё до того, как Claude взялся за файл. Ничего не угадано.
+Строки о стеке (Java 11, Spring Boot 2.6.3, Gradle, MyBatis, SQLite, порт 8080) даёт детерминированный сканер. Более тонкие детали — точные координаты зависимостей, имя файла `dev.db`, название миграции `V1__create_tables.sql`, пометка «no JPA» — Pass 1 вычитывает из `build.gradle`, `application.properties` и дерева исходников, опираясь на факты сканера как на ограничения, а затем валидаторы перепроверяют их. Из умолчаний фреймворка не взято ничего.
 
 </details>
 
@@ -309,7 +309,7 @@ your-project/
 | Вы... | Какую боль это снимает |
 |---|---|
 | **Соло-разработчик**, начинающий новый проект на Claude Code | «Объяснять Claude свои соглашения каждую сессию» — больше не надо. `CLAUDE.md` и `.claude/rules/` из 8 категорий собираются за один проход. |
-| **Тимлид**, отвечающий за общие стандарты в нескольких репозиториях | Правила в `.claude/rules/` устаревают, как только переименовываются пакеты, меняются ORM или обёртки ответов. ClaudeOS-Core пересобирает их детерминированно: на одном входе всегда побайтово одинаковый выход, поэтому в diff нет шума. |
+| **Тимлид**, отвечающий за общие стандарты в нескольких репозиториях | Правила в `.claude/rules/` устаревают, как только переименовываются пакеты, меняются ORM или обёртки ответов. ClaudeOS-Core пересобирает их по фиксированному scaffold из 8 секций: одна и та же структура в каждом репозитории, один и тот же вердикт валидатора, поэтому в diff видны изменения конвенций, а не шум раскладки. |
 | **Уже использует Claude Code**, но устал чинить сгенерированный код | Не та обёртка ответа, не та раскладка пакетов, JPA вместо MyBatis, `try/catch` россыпью при том, что в проекте есть централизованный middleware. Сканер достаёт ваши настоящие соглашения, а каждый проход Claude работает только в рамках явного allowlist путей. |
 | **Подключается к новому репозиторию** (готовый проект, выход в команду) | Запустите `init` — и получите живую карту архитектуры: таблицу стека в CLAUDE.md, правила по слоям с примерами ✅/❌, decision log с ответом на вопрос «почему» по ключевым решениям (JPA vs MyBatis, REST vs GraphQL и т. д.). Прочитать пять файлов быстрее, чем пять тысяч исходников. |
 | **Пишет на корейском, японском, китайском или ещё на 7 языках** | Большинство генераторов правил для Claude Code умеют только в английский. ClaudeOS-Core выпускает полный комплект на **10 языках** (`en/ko/ja/zh-CN/es/vi/hi/ru/fr/de`) и применяет одинаковую структурную проверку независимо от языка вывода — `claude-md-validator` выдаёт один и тот же вердикт на всех. |
@@ -331,7 +331,7 @@ ClaudeOS-Core переворачивает привычный сценарий �
 
 Пайплайн состоит из **трёх стадий**: детерминированный код стоит и до LLM, и после неё.
 
-**1. Step A — Scanner (детерминированно, без LLM).** Сканер на Node.js обходит корень проекта, читает `package.json`, `build.gradle`, `pom.xml`, `pyproject.toml`, разбирает файлы `.env*` (чувствительные переменные `PASSWORD/SECRET/TOKEN/JWT_SECRET/...` при этом редактируются), классифицирует архитектурный паттерн (5 паттернов Java A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs Pages Router, FSD, components-pattern), находит домены и собирает явный allowlist путей всех существующих исходных файлов. На выходе — `project-analysis.json`, единый источник истины для всех последующих шагов.
+**1. Step A — Scanner (детерминированно, без LLM).** Сканер на Node.js обходит корень проекта, читает `package.json`, `build.gradle`, `build.gradle.kts`, `pom.xml`, `pyproject.toml`, разбирает файлы `.env*` (чувствительные переменные `PASSWORD/SECRET/TOKEN/JWT_SECRET/...` при этом редактируются), классифицирует архитектурный паттерн (5 паттернов Java A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs Pages Router, FSD, components-pattern), находит домены и собирает явный allowlist путей всех существующих исходных файлов. На выходе — `project-analysis.json`, единый источник истины для всех последующих шагов.
 
 **2. Step B — четырёхпроходный пайплайн на Claude (опирается на факты из Step A).**
 - **Pass 1** читает по группе доменов представительные файлы и достаёт по 50–100 соглашений на домен: обёртки ответов, библиотеки логирования, обработку ошибок, нейминг, паттерны тестов. Запускается по разу на каждую группу доменов (`max 4 domains, 40 files per group`), поэтому контекст не переполняется.
@@ -393,7 +393,7 @@ npx claudeos-core health
 
 На практике это даёт три конкретных эффекта:
 
-1. **Детерминированная детекция стека.** Тот же проект и тот же код всегда дают тот же результат. Никаких «в этот раз Claude как-то иначе всё интерпретировал».
+1. **Детерминированная детекция стека и структуры.** Тот же проект и тот же код всегда дают тот же результат сканирования и ту же раскладку `CLAUDE.md` из 8 секций. Формулировки внутри секций по-прежнему пишет LLM; зафиксированы факты, которые он получает, и форма, которую он обязан заполнить.
 2. **Выдуманных путей не появляется.** В промпте Pass 3 явно перечислены все разрешённые пути в исходниках, поэтому Claude не может сослаться на то, чего нет.
 3. **Учёт нескольких стеков сразу.** В рамках одного запуска бэкенд- и фронтенд-домены анализируются разными промптами.
 
@@ -429,7 +429,7 @@ npx claudeos-core health
 
 Внутри четыре файла, и все их пишет Pass 4:
 
-- `decision-log.md` — append-only журнал «почему выбрали X, а не Y»; засевается из `pass2-merged.json`.
+- `decision-log.md` — append-only журнал «почему выбрали X, а не Y»; засевается из `pass2-merged.json` (никогда не уплотняется).
 - `failure-patterns.md` — повторяющиеся ошибки с оценками frequency / importance.
 - `compaction.md` — описание того, как память автоматически уплотняется со временем.
 - `auto-rule-update.md` — паттерны, которые стоит превратить в новые правила.
@@ -437,7 +437,7 @@ npx claudeos-core health
 Поддерживать слой со временем помогают две команды:
 
 ```bash
-# Уплотнить лог failure-patterns (запускайте периодически)
+# Уплотнить лог failure-patterns (запускайте периодически; decision-log.md не трогается)
 npx claudeos-core memory compact
 
 # Превратить часто встречающиеся failure-паттерны в предложенные правила

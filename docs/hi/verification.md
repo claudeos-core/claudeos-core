@@ -75,7 +75,7 @@ Generated files का **content** verify करता है (CLAUDE.md का 
 
 | Class | क्या पकड़ता है |
 |---|---|
-| `STALE_PATH` | `.claude/rules/**` या `claudeos-core/standard/**` में कोई भी `src/...\.(ts|tsx|js|jsx)` reference एक real file पर resolve होना चाहिए. Fenced code blocks और placeholder paths (`src/{domain}/feature.ts`) exclude हैं. |
+| `STALE_PATH` | `.claude/rules/**` या `claudeos-core/standard/**` में `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` पर ख़त्म होने वाला कोई भी `src/...` reference एक real file पर resolve होना चाहिए: सीधे project root के नीचे, या `src/` रखने वाली किसी भी module directory के नीचे जो तीन level तक गहरी हो (JS workspaces `apps/*`, `packages/*`; `api/src/main/java/…` जैसे Gradle/Maven modules; `servers/query/<x>/src/…` जैसे nested layouts). Fenced code blocks और placeholder paths (`src/{domain}/feature.ts`) exclude हैं; config extensions (`.yml`, `.properties`) जान-बूझकर check नहीं किए जाते, क्योंकि वे आमतौर पर उदाहरण के तौर पर profile names की तरह cite होते हैं. |
 | `STALE_SKILL_ENTRY` | `claudeos-core/skills/00.shared/MANIFEST.md` में registered हर skill path disk पर मौजूद हो. |
 | `MANIFEST_DRIFT` | हर registered skill का `CLAUDE.md` में mention हो (**orchestrator/sub-skill exception** के साथ. Pass 3b Section 6 तब लिखता है जब Pass 3c sub-skills बनाता है उससे पहले, तो हर sub-skill list करना structurally impossible है). |
 

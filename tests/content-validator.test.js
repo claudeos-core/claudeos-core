@@ -763,3 +763,118 @@ describe("content-validator [10/10] — orchestrator/sub-skill exception (v2.3.0
     cleanup(root);
   });
 });
+
+// ─── v2.5.0: multi-module `src/...` claims resolve against module dirs ──
+test("a src/ path that exists under a Gradle module dir is NOT reported as STALE_PATH", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `src/main/java/com/acme/user/UserController.java` for the pattern.\n",
+  });
+  fs.mkdirSync(path.join(root, "api/src/main/java/com/acme/user"), { recursive: true });
+  fs.writeFileSync(path.join(root, "api/src/main/java/com/acme/user/UserController.java"), "class X {}\n");
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});
+
+test("a fabricated .java path is reported as STALE_PATH (extension widening)", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `src/main/java/com/acme/ghost/GhostController.java`.\n",
+  });
+  const result = runValidator(root);
+  assert.match(result.stdout, /STALE_PATH/);
+  assert.match(result.stdout, /GhostController\.java/);
+  cleanup(root);
+});
+
+test("a src/ path under a 3-level module dir (servers/query/x/src) is NOT reported as STALE_PATH", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `src/main/kotlin/com/acme/query/QueryHandler.kt`.\n",
+  });
+  fs.mkdirSync(path.join(root, "servers/query/reservation/src/main/kotlin/com/acme/query"), { recursive: true });
+  fs.writeFileSync(path.join(root, "servers/query/reservation/src/main/kotlin/com/acme/query/QueryHandler.kt"), "class X\n");
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});
+
+test("a module-qualified claim (core/src/...) is checked at that module only — wrong-module citation is STALE_PATH", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `core/src/main/java/com/acme/user/UserController.java`.\n",
+  });
+  fs.mkdirSync(path.join(root, "api/src/main/java/com/acme/user"), { recursive: true });
+  fs.writeFileSync(path.join(root, "api/src/main/java/com/acme/user/UserController.java"), "class X {}\n");
+  fs.mkdirSync(path.join(root, "core/src/main/java"), { recursive: true });
+  const result = runValidator(root);
+  assert.match(result.stdout, /STALE_PATH/, "file exists only under api/, the claim names core/");
+  assert.match(result.stdout, /core\/src\/main\/java\/com\/acme\/user\/UserController\.java/);
+  cleanup(root);
+});
+
+test("a correct module-qualified claim (api/src/...) is not STALE_PATH", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `api/src/main/java/com/acme/user/UserController.java`.\n",
+  });
+  fs.mkdirSync(path.join(root, "api/src/main/java/com/acme/user"), { recursive: true });
+  fs.writeFileSync(path.join(root, "api/src/main/java/com/acme/user/UserController.java"), "class X {}\n");
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});
+
+test("a bare src/ claim that only exists under venv/src or vendor/*/src is still STALE_PATH", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `src/somepkg/hallucinated.py` and `src/thing.ts`.\n",
+  });
+  fs.mkdirSync(path.join(root, "venv/src/somepkg"), { recursive: true });
+  fs.writeFileSync(path.join(root, "venv/src/somepkg/hallucinated.py"), "x = 1\n");
+  fs.mkdirSync(path.join(root, "vendor/lib/src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "vendor/lib/src/thing.ts"), "export {}\n");
+  const result = runValidator(root);
+  assert.match(result.stdout, /hallucinated\.py/);
+  assert.match(result.stdout, /thing\.ts/);
+  cleanup(root);
+});
+
+test("a package import path (`@acme/ui/src/Button.tsx`) is not a wrong-module claim; its src/ tail resolves via workspaces", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nImport Button from `@acme/ui/src/Button.tsx`. Do not touch `node_modules/some-lib/src/index.js`.\n",
+  });
+  fs.mkdirSync(path.join(root, "packages/ui/src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "packages/ui/src/Button.tsx"), "export {}\n");
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});
+
+test("`libsrc/x.ts` is not mistaken for a `src/x.ts` claim", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nThe legacy folder `libsrc/x.ts` is untouched.\n",
+  });
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});
+
+test("Turborepo workspaces named docs/ and tools/ still resolve bare src/ claims (not STALE_PATH)", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nSee `src/app/blog/page.tsx` and `src/cli.ts`.\n",
+  });
+  fs.mkdirSync(path.join(root, "apps/docs/src/app/blog"), { recursive: true });
+  fs.writeFileSync(path.join(root, "apps/docs/src/app/blog/page.tsx"), "export {}\n");
+  fs.mkdirSync(path.join(root, "packages/tools/src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "packages/tools/src/cli.ts"), "export {}\n");
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});
+
+test("a dev-server URL (`localhost:5173/src/main.tsx`) does not yield a `5173/src/...` module claim", () => {
+  const root = buildTree({
+    ruleBody: "---\npaths: ['**/*']\n---\n\n# Test rule\n\nOpen http://localhost:5173/src/main.tsx in the browser.\n",
+  });
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src/main.tsx"), "export {}\n");
+  const result = runValidator(root);
+  assert.ok(!result.stdout.includes("STALE_PATH"), result.stdout);
+  cleanup(root);
+});

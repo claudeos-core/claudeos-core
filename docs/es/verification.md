@@ -75,7 +75,7 @@ Valida el **contenido** de los archivos generados (no la estructura de CLAUDE.md
 
 | Clase | Lo que detecta |
 |---|---|
-| `STALE_PATH` | Cualquier referencia `src/...\.(ts|tsx|js|jsx)` en `.claude/rules/**` o `claudeos-core/standard/**` debe resolver a un archivo real. Bloques de código entre fences y rutas placeholder (`src/{domain}/feature.ts`) quedan excluidos. |
+| `STALE_PATH` | Cualquier referencia `src/...` que termine en `.ts .tsx .js .jsx .mjs .cjs .vue .svelte .java .kt .kts .py .xml .sql` en `.claude/rules/**` o `claudeos-core/standard/**` debe resolver a un archivo real: directamente bajo la raíz del proyecto, o bajo cualquier directorio de módulo de hasta tres niveles de profundidad que contenga `src/` (workspaces JS `apps/*`, `packages/*`; módulos Gradle/Maven como `api/src/main/java/…`; layouts anidados como `servers/query/<x>/src/…`). Los bloques de código con fence y las rutas placeholder (`src/{domain}/feature.ts`) se excluyen; las extensiones de configuración (`.yml`, `.properties`) deliberadamente no se comprueban porque suelen citarse como nombres de perfil ilustrativos. |
 | `STALE_SKILL_ENTRY` | Cada ruta de skill registrada en `claudeos-core/skills/00.shared/MANIFEST.md` debe existir en disco. |
 | `MANIFEST_DRIFT` | Cada skill registrado debe mencionarse en `CLAUDE.md` (con **excepción orchestrator/sub-skill**: Pass 3b escribe Section 6 antes de que Pass 3c cree sub-skills, así que listar cada sub-skill es estructuralmente imposible). |
 

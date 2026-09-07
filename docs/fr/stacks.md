@@ -265,7 +265,7 @@ Le scanner lit les fichiers `.env*` pour la configuration runtime, histoire que 
 7. `.env.local`
 8. `.env.development`
 
-**Redaction des variables sensibles :** les clés matchant `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, etc. sont auto-redacted en `***REDACTED***` avant copie dans `project-analysis.json`. **Exception :** `DATABASE_URL` est whitelisté car le scanner a besoin du protocole pour détecter le type de DB.
+**Redaction des variables sensibles :** les clés matchant `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, etc. sont auto-redacted en `***REDACTED***` avant copie dans `project-analysis.json`. Toute autre valeur en forme d'URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) voit ses identifiants masqués en `***:***`, en conservant le schéma, l'hôte, le port et le chemin (`postgres://***:***@db.internal:5432/app`) : le type de DB reste reconnaissable et le mot de passe n'atteint jamais le fichier. La détection du type de DB par le scanner lui-même lit le texte brut de `.env` directement et n'est pas affectée.
 
 **Précédence de résolution du port :**
 1. `server.port` de `application.yml` Spring Boot

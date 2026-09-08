@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ severity 分三档 (`fail` / `warn` / `advisory`),这样用户能手动修掉的
 
 12 种技术栈,从项目文件里自动识别:
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (以及不用 Boot 的 Spring Framework，见下文) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 多栈项目 (例如 Spring Boot 后端 + Next.js 前端) 也能直接跑。
+
+**遗留 Java 是一等目标 (v2.5.1)。** 可识别不使用 Boot 的 Spring 1.x–6.x：Gradle (`apply plugin:` 时代、顺序任意的 `group:/name:/version:` 写法、通过 `gradle.properties` / `apply from:` / buildSrc 解析变量、版本目录、只有 `settings.gradle` 的根目录)、Maven (Maven 2 时代的 POM、`${spring.version}` 属性、`spring-framework-bom`、多模块根、没有根 POM 的同级项目)、**Ant + Ivy**、**Eclipse / IntelliJ / NetBeans 元数据** (`.classpath`，包括指向未提交 JAR 的引用、`.settings` 中的 compliance 级别、`.idea/misc.xml`、`nbproject`)、`WebContent/WEB-INF/lib/**/*.jar`、`WEB-INF/web.xml`、Spring XSD 架构版本，以及 **eGovFrame** — 连同框架、Spring Framework 版本、Java 级别、`war`/`ear` 打包方式、JDBC 驱动和 ORM 一并给出。以 `src/` 为根的源码树也会用与 `src/main/java` 相同的 domain 模式扫描。报告的每个版本都来自构建文件、JAR 文件名或项目内定义的属性；不会依据框架默认值推测。完全不用 Spring 的 JVM 项目 (`java-library`、`application`、仅有 servlet 的 `war`) 会被报告为 `framework: null` 的 Java，绝不会当成 Spring。
 
 具体的识别规则、每个 scanner 抽取了什么内容,详见 [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md)。
 

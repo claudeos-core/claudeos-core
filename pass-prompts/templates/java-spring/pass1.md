@@ -21,8 +21,16 @@ Required reads (if the file exists):
      the variable inside `ext { ... }` or `<properties>`. Record the
      ACTUAL Java version — do NOT infer "Java 17+" from the Spring
      Boot version.
-   - Spring Boot version: verify it matches `project-analysis.json`'s
-     frameworkVersion field; if they disagree, trust the build file.
+   - Spring version: verify it matches `project-analysis.json`'s
+     frameworkVersion field (Spring Boot, or the Spring Framework line when
+     `framework` is `"spring-framework"` — a pre-Boot project); if they
+     disagree, trust the build file. For a non-Boot project, also read
+     `WEB-INF/web.xml` and the Spring XML configs it references
+     (`applicationContext*.xml`, `*-servlet.xml`, `*.properties`) — they
+     hold what `application.yml` holds in a Boot project, and step 2 below
+     will find no `application.yml`. Do NOT describe Boot features
+     (auto-configuration, starters, actuator, `@SpringBootApplication`)
+     for a project that does not declare Boot.
    - Dependencies that indicate specific patterns (MyBatis/iBatis/JPA,
      multiple DB drivers, Jasypt, JWT library, Logback extras).
 

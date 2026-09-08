@@ -63,6 +63,40 @@ scanner は `plan-installer/scanners/scan-java.js` にあります。
 
 ---
 
+### Java / Spring Framework (Boot なし) とレガシー JVM (v2.5.1 以降) — 上の Java スタックの変種、テンプレートは同じ
+
+**検出条件:** ビルドが JVM プラグインを宣言しているか、グループが**厳密に** `org.springframework` (Spring 1.x では `springframework`) の依存関係を宣言している場合。Spring Boot の有無は問いません。`org.springframework.boot` / `.security` / `.data` / `.cloud` は別プロジェクトであり、Spring Framework として報告されることはありません。
+
+| ビルドの形 | 読み取る根拠 |
+|---|---|
+| Gradle、`apply plugin:` 時代 | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`; `compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`; `group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`; `org.springframework:spring:2.5.6` (2.x 時代の単一 jar) |
+| Gradle、`plugins { }` / Kotlin DSL | `id 'java'`、裸の `java` / `war` / `` `java-library` ``、`apply(plugin = "war")`; `platform()` / `mavenBom` 経由の `spring-framework-bom`; バージョンカタログ `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle、変数 | `ext { springVersion = '…' }`、`def` / `val`、**`gradle.properties`** (同一ファイル内の定義が優先)、`${project.x}` / `${rootProject.ext.x}`、Groovy マップ `${versions.spring}`、buildSrc `${Versions.spring}`、`apply from:` スクリプト; Boot 1.x/2.x の `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`; `options.release = 17` |
+| Spring 1.x | `org.` の付かないグループ `springframework` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`; `<groupId>org.springframework</groupId>` の依存関係 (コメント除去後); `spring-framework-bom` の import; `<spring.version>` / `<spring.maven.version>` プロパティ; `spring-boot-starter-parent` の `<version>`; `spring-boot-dependencies` BOM; `<maven.compiler.release>`; Maven 2 時代の `maven-compiler-plugin` の `<source>1.5</source>`; **マルチモジュール** の `<modules>` 子 (≤30) |
+| リポジトリの形 | `settings.gradle` だけのルート; ルートにビルドファイルがなく `*/pom.xml` の兄弟プロジェクトがある場合 (深さ 1、≤30) |
+| IDE メタデータ | `.settings/org.eclipse.jdt.core.prefs` の compliance; `.classpath` の JRE 名 (`jdk1.6.0_45`) と `kind="lib"/"var"` の jar パス (jar がコミットされていなくてよい); `.idea/misc.xml` の `languageLevel`; `nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`)、`ivy.xml` (`org="org.springframework"` 厳密一致、`rev="…"`) |
+| Eclipse WTP / ビルドツールなし | `.classpath` の JRE コンテナ (`JavaSE-1.7`)、`.project` の `javanature`; `**/{WEB-INF/lib,lib,libs}/**/*.jar` のファイル名 → Spring バージョン (`spring-webmvc-3.0.5.RELEASE.jar`)、JDBC ドライバ (`ojdbc*`、`mysql-connector`、`mariadb-java-client`、`postgresql-`、`h2-`、`sqlite-jdbc`、`mssql-jdbc` / `jtds`、`db2jcc`、Tibero / Altibase / Cubrid)、ORM (`ibatis-*`、`mybatis-*`、`hibernate-*`) — `*.java` ソースが並んでいる場合のみ |
+| デプロイ記述子 | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC、`war`)、Struts フィルタ (タグ)、`<web-app version>`; Spring XML の `spring-*-3.0.xsd` → major.minor バージョン、優先度は最下位 |
+| eGovFrame | `egovframework.rte[.*]` の座標 → `spring-framework` と `detected` の `egovframe <version>` タグ |
+
+**抽出される事実 (上の Spring Boot の一覧に加えて):** `frameworkVersion` を伴う `framework: "spring-framework"`、`packaging` (`war` / `ear` / `jar` / `pom` — 宣言されている場合のみ)、`springFrameworkVersion` (Framework のバージョンを明示的に固定している Boot プロジェクトでも埋まります)、ソースルートが `src/main/java` でない場合の `sourceLayout: "legacy"`。
+
+**バージョンの方針.** すべてのバージョン文字列は、ビルドファイル・jar 名・同じプロジェクト内で定義された変数やプロパティの部分文字列です。解決できない `${var}` はリテラルではなく `null` になり、バージョンの付かない Spring 2.0 時代の `spring.jar` は `frameworkVersion: null` としてフレームワークのみを報告します。フレームワークのデフォルトから取る値は一つもありません。
+
+**優先順位.** まずビルドファイル (Gradle / Maven)、次に Node / Python のマニフェスト、最後に上記のレガシー根拠です。レガシー根拠ができるのは、誰も主張していない言語を埋めることか、*暫定的な* Node 言語 (フレームワークもフロントエンドフレームワークも検出されなかったルートの `package.json` — アセットツール用) を取り戻すことだけで、それも強い根拠 (`build.xml`、`.project` の javanature、兄弟のビルドファイル、`WEB-INF/web.xml`) がある場合に限られます。Next.js / Django のプロジェクトが、紛れ込んだ `.idea/` やベンダリングされた jar のせいで Java に切り替わることはなく、`*.java` ソースのない jar ディレクトリは何も主張しません。
+
+**誤検出の防止.** Spring をまったく使わない JVM プロジェクト (`java-library`、`application`、サーブレットのみの `war`、Struts 1/2 単独) は `framework: null` の Java として報告されます。`com.android.application` は JVM の `application` プラグインではありません。Spring Framework を使う Kotlin プロジェクトは `language: kotlin` のままです。
+
+**ソースルート.** `scan-java` は `src/main/java` / `src/main/resources` のパターンを、発見したルートに合わせて書き換えます。`[<module>/]src/main/java` が一つでもあればそれだけを使います。なければ順に、`.classpath` の `kind="src"` エントリ (テストフォルダは除外)、`build.xml` の `<javac srcdir>` (`<property>` の解決込み)、そして `*.java` を含む `src/java`、`src`、`JavaSource`、`java`、`WebContent/WEB-INF/src` です。その後は同じ 5 つのドメインパターンが適用されるので、`src/com/acme/erp/controller/*.java` は `src/main/java` の下にある場合とまったく同じく Pattern C になります。
+
+**既知の制限.** Gradle ファイルはコメントを除去しません (`//` でコメントアウトされた座標も数えられます — Boot でも従来からそうです)。リポジトリ外の親 pom からの継承は解決しません。eGovFrame の `web/` コントローラ層は、まだ Pattern A/B のレイヤ名として認識されません。
+
+ヘルパーは `plan-installer/jvm-detect.js` にあります (純粋なテキスト関数、単体テストで分離して検証)。
+
+---
+
 ### Kotlin / Spring Boot
 
 **検出条件:** `build.gradle.kts` が存在し、Kotlin プラグインが Spring Boot と並んで適用されている。Java とは完全に別のコードパスを持ち、Java のパターンを再利用しません。
@@ -265,7 +299,7 @@ scanner は `.env*` ファイルを読んで実行時設定を取得し、生成
 7. `.env.local`
 8. `.env.development`
 
-**機密変数の redaction:** `PASSWORD`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。
+**機密変数の redaction:** `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。
 
 **Port 解決の優先順位:**
 1. Spring Boot の `application.yml` の `server.port`

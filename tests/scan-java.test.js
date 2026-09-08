@@ -626,3 +626,67 @@ describe("scanJavaDomains — flat controllers next to domain-first packages are
     assert.ok(!("demo" in byName), "no package-named pseudo-domain");
   });
 });
+
+// ─── v2.5.1: legacy source roots (Ant / Eclipse WTP / bare src) ─────────
+
+describe("scanJavaDomains — legacy source roots", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+
+  const write = (rel, content) => { const p = path.join(tmp, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, content); };
+
+  it("Ant: <javac srcdir=\"${src}\"> resolves the property and roots the scan there (Pattern C)", async () => {
+    write("build.xml", `<project><property name="src" value="src"/><target name="compile"><javac srcdir="\${src}" source="1.6"/></target></project>`);
+    for (const n of ["User", "Order", "Product"]) {
+      touch(path.join(tmp, `src/com/acme/erp/controller/${n}Controller.java`));
+      touch(path.join(tmp, `src/com/acme/erp/service/${n}Service.java`));
+    }
+    const stack = { language: "java", buildTool: "ant" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name).sort(), ["order", "product", "user"]);
+    assert.equal(backendDomains[0].pattern, "C");
+    assert.equal(stack.sourceLayout, "legacy");
+  });
+
+  it("Eclipse: <classpathentry kind=\"src\"> is authoritative; a `test` folder outside src/test is NOT a root", async () => {
+    // `test/` is not under src/test/, so JAVA_ROOT_IGNORE alone would not
+    // exclude it — the .classpath test-folder filter must.
+    write(".classpath", `<classpath><classpathentry kind="src" path="JavaSource"/><classpathentry kind="src" path="test"/></classpath>`);
+    touch(path.join(tmp, "JavaSource/com/acme/app/controller/UserController.java"));
+    touch(path.join(tmp, "JavaSource/com/acme/app/service/UserService.java"));
+    touch(path.join(tmp, "test/com/acme/app/controller/BogusController.java"));
+    const stack = { language: "java" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name), ["user"], "test/ must not contribute a domain");
+  });
+
+  it("legacy roots are consulted ONLY when no src/main/java exists anywhere", async () => {
+    // A modern tree plus a stray top-level src/legacy/ holding *.java: the
+    // scan must stay rooted at src/main/java and never pick up src/legacy.
+    touch(path.join(tmp, "src/main/java/com/ex/controller/UserController.java"));
+    touch(path.join(tmp, "src/main/java/com/ex/service/UserService.java"));
+    touch(path.join(tmp, "src/legacy/com/old/controller/GhostController.java"));
+    const stack = { language: "java", buildTool: "gradle" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name), ["user"]);
+    assert.equal(stack.sourceLayout, undefined, "modern layout must not be flagged legacy");
+  });
+
+  it("bare src/ with no build file at all is scanned (Pattern B domain-first)", async () => {
+    touch(path.join(tmp, "src/kr/co/acme/user/controller/UserController.java"));
+    touch(path.join(tmp, "src/kr/co/acme/user/service/UserService.java"));
+    touch(path.join(tmp, "src/kr/co/acme/board/controller/BoardController.java"));
+    const stack = { language: "java" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name).sort(), ["board", "user"]);
+    assert.equal(backendDomains.find(d => d.name === "user").pattern, "B");
+  });
+
+  it("src/ and src/java/ both present → the deeper one wins, no duplicate domains", async () => {
+    touch(path.join(tmp, "src/java/com/acme/controller/UserController.java"));
+    const stack = { language: "java" };
+    const { backendDomains } = await scanJavaDomains(stack, tmp);
+    assert.deepEqual(backendDomains.map(d => d.name), ["user"]);
+  });
+});

@@ -68,7 +68,8 @@ Generation targets:
    Content within each section adapts to this project based on pass2-merged.json.
    The scaffold's validation checklist MUST pass.
 
-   Stack-specific hints for this project (Java Spring Boot):
+   Stack-specific hints for this project (Java Spring — Boot, or Spring Framework
+   without Boot when `project-analysis.json` says `framework: "spring-framework"`):
    - Project type for Section 1 PROJECT_CONTEXT: "Backend Application" or "REST API Server"
    - Architecture diagram (Section 4): layered architecture (Controller → Service → Mapper/Repository)
    - Section 2 should include: JDK version, Gradle/Maven, DB, session/cache, server port

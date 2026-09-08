@@ -63,6 +63,40 @@
 
 ---
 
+### Java / Spring Framework (без Boot) и legacy-JVM (v2.5.1+) — вариант Java-стека выше, тот же шаблон
+
+**Определяется, когда:** сборка объявляет JVM-плагин либо зависимость, группа которой **в точности** `org.springframework` (или `springframework` для Spring 1.x) — с Spring Boot или без него. `org.springframework.boot` / `.security` / `.data` / `.cloud` — отдельные проекты и никогда не выводятся как Spring Framework.
+
+| Форма сборки | Что читается |
+|---|---|
+| Gradle, эпоха `apply plugin:` | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`; `compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`; `group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`; `org.springframework:spring:2.5.6` (единый jar эпохи 2.x) |
+| Gradle, `plugins { }` / Kotlin DSL | `id 'java'`, голые `java` / `war` / `` `java-library` ``, `apply(plugin = "war")`; `spring-framework-bom` через `platform()` / `mavenBom`; каталог версий `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle, переменные | `ext { springVersion = '…' }`, `def` / `val`, **`gradle.properties`** (определение в самом файле важнее), `${project.x}` / `${rootProject.ext.x}`, Groovy-карты `${versions.spring}`, buildSrc `${Versions.spring}`, скрипты `apply from:`; Boot 1.x/2.x `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`; `options.release = 17` |
+| Spring 1.x | группа `springframework` без `org.` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`; зависимости с `<groupId>org.springframework</groupId>` (комментарии вырезаны); импорт `spring-framework-bom`; свойства `<spring.version>` / `<spring.maven.version>`; `<version>` у `spring-boot-starter-parent`; BOM `spring-boot-dependencies`; `<maven.compiler.release>`; `<source>1.5</source>` в `maven-compiler-plugin` времён Maven 2; **многомодульность**: дети `<modules>` (≤30) |
+| Формы репозитория | корень только с `settings.gradle`; в корне нет файла сборки, но есть соседние проекты `*/pom.xml` (глубина 1, ≤30) |
+| Метаданные IDE | compliance из `.settings/org.eclipse.jdt.core.prefs`; имя JRE в `.classpath` (`jdk1.6.0_45`) и пути к jar с `kind="lib"/"var"` (сами jar могут отсутствовать в репозитории); `languageLevel` в `.idea/misc.xml`; `nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`), `ivy.xml` (`org="org.springframework"` точное совпадение, `rev="…"`) |
+| Eclipse WTP / без сборщика | контейнер JRE в `.classpath` (`JavaSE-1.7`), `javanature` в `.project`; имена jar из `**/{WEB-INF/lib,lib,libs}/**/*.jar` → версия Spring (`spring-webmvc-3.0.5.RELEASE.jar`), JDBC-драйвер (`ojdbc*`, `mysql-connector`, `mariadb-java-client`, `postgresql-`, `h2-`, `sqlite-jdbc`, `mssql-jdbc` / `jtds`, `db2jcc`, Tibero / Altibase / Cubrid), ORM (`ibatis-*`, `mybatis-*`, `hibernate-*`) — только если рядом есть исходники `*.java` |
+| Дескриптор развёртывания | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC, `war`), фильтры Struts (метка), `<web-app version>`; в Spring XML `spring-*-3.0.xsd` → версия major.minor, самый низкий приоритет |
+| eGovFrame | координаты `egovframework.rte[.*]` → `spring-framework` плюс метка `egovframe <version>` в `detected` |
+
+**Извлекаемые факты (в дополнение к списку Spring Boot выше):** `framework: "spring-framework"` вместе с `frameworkVersion`, `packaging` (`war` / `ear` / `jar` / `pom` — только если объявлен), `springFrameworkVersion` (заполняется и для Boot-проектов, явно фиксирующих версию Framework), `sourceLayout: "legacy"`, когда корень исходников не `src/main/java`.
+
+**Политика версий.** Любая строка версии — подстрока файла сборки, имени jar либо переменной или свойства, определённых в том же проекте. Неразрешимый `${var}` даёт `null`, а не литерал; `spring.jar` эпохи Spring 2.0 без версии в имени сообщает только фреймворк с `frameworkVersion: null`. Ничто не берётся из значений по умолчанию фреймворка.
+
+**Приоритет.** Сначала файлы сборки (Gradle / Maven), затем манифесты Node / Python, и только потом перечисленные выше legacy-признаки. Они могут лишь заполнить язык, который никто не занял, либо вернуть *предварительный* Node-язык (корневой `package.json` без обнаруженного фреймворка и фронтенд-фреймворка — инструменты для ассетов), и только при сильных признаках: `build.xml`, `.project` с javanature, файл сборки в соседнем каталоге или `WEB-INF/web.xml`. Проект на Next.js или Django никогда не станет Java из-за случайного `.idea/` или вендоренного jar; каталог с jar без исходников `*.java` не заявляет ничего.
+
+**Защита от ложных срабатываний.** JVM-проект вовсе без Spring (`java-library`, `application`, чисто сервлетный `war`, Struts 1/2 сам по себе) выводится как Java с `framework: null`. `com.android.application` — не JVM-плагин `application`. Проект на Kotlin, использующий Spring Framework, остаётся `language: kotlin`.
+
+**Корни исходников.** `scan-java` переписывает свои шаблоны `src/main/java` / `src/main/resources` под найденный корень. Если существует хотя бы один `[<module>/]src/main/java`, используются только они. Иначе по порядку: записи `kind="src"` из `.classpath` (тестовые каталоги исключаются), `<javac srcdir>` из `build.xml` (с разрешением `<property>`), затем `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src`, если в них есть `*.java`. Дальше применяются те же пять доменных шаблонов, поэтому `src/com/acme/erp/controller/*.java` — это Pattern C ровно так же, как под `src/main/java`.
+
+**Известные ограничения.** Файлы Gradle не очищаются от комментариев (координата, закомментированная через `//`, по-прежнему учитывается — для Boot так было всегда). Наследование от родительского pom вне репозитория не разрешается. Слой контроллеров `web/` в eGovFrame пока не распознаётся как имя слоя для Pattern A/B.
+
+Вспомогательные функции — в `plan-installer/jvm-detect.js` (чистые текстовые функции, покрытые отдельными юнит-тестами).
+
+---
+
 ### Kotlin / Spring Boot
 
 **Определяется, когда:** присутствует `build.gradle.kts` и Kotlin plugin применён вместе со Spring Boot. Имеет полностью отдельный code path от Java и не переиспользует Java-паттерны.
@@ -265,7 +299,7 @@ src/
 7. `.env.local`
 8. `.env.development`
 
-**Маскирование чувствительных переменных:** ключи, совпадающие с `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` и т.п., автоматически меняются на `***REDACTED***` перед копированием в `project-analysis.json`. У любого другого значения в форме URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) маскируются только учётные данные — они заменяются на `***:***`, а схема, хост, порт и путь сохраняются (`postgres://***:***@db.internal:5432/app`). Тип DB по-прежнему различим, пароль в файл не попадает. Собственное определение типа DB сканером читает сырой текст `.env` напрямую и не затрагивается.
+**Маскирование чувствительных переменных:** ключи, совпадающие с `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` и т.п., автоматически меняются на `***REDACTED***` перед копированием в `project-analysis.json`. У любого другого значения в форме URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) маскируются только учётные данные — они заменяются на `***:***`, а схема, хост, порт и путь сохраняются (`postgres://***:***@db.internal:5432/app`). Тип DB по-прежнему различим, пароль в файл не попадает. Собственное определение типа DB сканером читает сырой текст `.env` напрямую и не затрагивается.
 
 **Приоритет разрешения порта:**
 1. `application.yml` Spring Boot — `server.port`.

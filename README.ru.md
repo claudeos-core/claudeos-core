@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ ClaudeOS-Core переворачивает привычный сценарий �
 
 12 стеков, которые определяются автоматически по файлам проекта:
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (а также Spring Framework без Boot, см. ниже) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 Многостековые проекты (например, Spring Boot на бэкенде и Next.js на фронтенде) поддерживаются из коробки.
+
+**Legacy-Java — полноценная цель (v2.5.1).** Распознаётся Spring 1.x–6.x без Boot: Gradle (эпоха `apply plugin:`, нотация `group:/name:/version:` в любом порядке, разрешение переменных через `gradle.properties` / `apply from:` / buildSrc, каталоги версий, корни только с `settings.gradle`), Maven (POM времён Maven 2, свойства `${spring.version}`, `spring-framework-bom`, многомодульные корни, соседние проекты без корневого POM), **Ant + Ivy**, **метаданные Eclipse / IntelliJ / NetBeans** (`.classpath`, включая ссылки на JAR, которых нет в репозитории, уровень compliance из `.settings`, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, версии XSD-схем Spring и **eGovFrame** — вместе с фреймворком, версией Spring Framework, уровнем Java, упаковкой `war`/`ear`, JDBC-драйвером и ORM. Деревья исходников с корнем `src/` сканируются теми же доменными шаблонами, что и `src/main/java`. Любая выводимая версия прочитана из файла сборки, имени JAR или свойства, определённого в самом проекте; ничего не берётся из значений по умолчанию фреймворка. JVM-проекты вовсе без Spring (`java-library`, `application`, чисто сервлетный `war`) выводятся как Java с `framework: null` и никогда как Spring.
 
 Правила детекции и то, что вытаскивает каждый сканер, описаны в [docs/ru/stacks.md](docs/ru/stacks.md).
 

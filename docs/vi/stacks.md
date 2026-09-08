@@ -63,6 +63,40 @@ Scanner ở `plan-installer/scanners/scan-java.js`.
 
 ---
 
+### Java / Spring Framework (không dùng Boot) và JVM cũ (v2.5.1+) — biến thể của stack Java ở trên, cùng template
+
+**Nhận diện khi:** build khai báo một JVM plugin, hoặc một dependency có group **đúng bằng** `org.springframework` (hoặc `springframework` với Spring 1.x) — có hay không có Spring Boot. `org.springframework.boot` / `.security` / `.data` / `.cloud` là các project riêng và không bao giờ bị báo là Spring Framework.
+
+| Dạng build | Bằng chứng được đọc |
+|---|---|
+| Gradle, thời `apply plugin:` | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`; `compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`; `group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`; `org.springframework:spring:2.5.6` (jar đơn thời 2.x) |
+| Gradle, `plugins { }` / Kotlin DSL | `id 'java'`, `java` / `war` / `` `java-library` `` viết trần, `apply(plugin = "war")`; `spring-framework-bom` qua `platform()` / `mavenBom`; version catalog `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle, biến | `ext { springVersion = '…' }`, `def` / `val`, **`gradle.properties`** (định nghĩa trong chính file thắng), `${project.x}` / `${rootProject.ext.x}`, map Groovy `${versions.spring}`, buildSrc `${Versions.spring}`, script `apply from:`; Boot 1.x/2.x `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`; `options.release = 17` |
+| Spring 1.x | group `springframework` không có `org.` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`; dependency có `<groupId>org.springframework</groupId>` (đã bỏ comment); import `spring-framework-bom`; property `<spring.version>` / `<spring.maven.version>`; `<version>` của `spring-boot-starter-parent`; BOM `spring-boot-dependencies`; `<maven.compiler.release>`; `<source>1.5</source>` trong `maven-compiler-plugin` thời Maven 2; **multi-module**: các con của `<modules>` (≤30) |
+| Hình dạng repository | root chỉ có `settings.gradle`; root không có build file nhưng có các project anh em `*/pom.xml` (độ sâu 1, ≤30) |
+| Metadata của IDE | compliance trong `.settings/org.eclipse.jdt.core.prefs`; tên JRE trong `.classpath` (`jdk1.6.0_45`) và đường dẫn jar `kind="lib"/"var"` (jar không cần được commit); `languageLevel` trong `.idea/misc.xml`; `nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`), `ivy.xml` (`org="org.springframework"` khớp chính xác, `rev="…"`) |
+| Eclipse WTP / không build tool | JRE container trong `.classpath` (`JavaSE-1.7`), `javanature` trong `.project`; tên jar từ `**/{WEB-INF/lib,lib,libs}/**/*.jar` → version Spring (`spring-webmvc-3.0.5.RELEASE.jar`), driver JDBC (`ojdbc*`, `mysql-connector`, `mariadb-java-client`, `postgresql-`, `h2-`, `sqlite-jdbc`, `mssql-jdbc` / `jtds`, `db2jcc`, Tibero / Altibase / Cubrid), ORM (`ibatis-*`, `mybatis-*`, `hibernate-*`) — chỉ khi có source `*.java` bên cạnh |
+| Deployment descriptor | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC, `war`), filter Struts (nhãn), `<web-app version>`; XML của Spring `spring-*-3.0.xsd` → version major.minor, ưu tiên thấp nhất |
+| eGovFrame | toạ độ `egovframework.rte[.*]` → `spring-framework` kèm nhãn `egovframe <version>` trong `detected` |
+
+**Dữ kiện trích ra (ngoài danh sách Spring Boot ở trên):** `framework: "spring-framework"` cùng `frameworkVersion`, `packaging` (`war` / `ear` / `jar` / `pom` — chỉ khi được khai báo), `springFrameworkVersion` (cũng được điền cho project Boot ghim version Framework một cách tường minh), `sourceLayout: "legacy"` khi gốc source không phải `src/main/java`.
+
+**Nguyên tắc về version.** Mọi chuỗi version đều là một chuỗi con của file build, tên jar, hoặc biến/property định nghĩa trong chính project đó. `${var}` không phân giải được cho ra `null` chứ không phải chuỗi nguyên văn; `spring.jar` thời Spring 2.0 không có version trong tên chỉ báo framework với `frameworkVersion: null`. Không giá trị nào lấy từ mặc định của framework.
+
+**Thứ tự ưu tiên.** Trước hết là file build (Gradle / Maven), rồi tới manifest của Node / Python, cuối cùng mới tới các bằng chứng cũ ở trên. Chúng chỉ có thể điền vào một ngôn ngữ chưa ai nhận, hoặc lấy lại một ngôn ngữ Node *tạm thời* (`package.json` ở root không phát hiện framework lẫn framework frontend — tức là công cụ xử lý asset), và chỉ khi có bằng chứng mạnh: `build.xml`, `.project` có javanature, một build file anh em, hoặc `WEB-INF/web.xml`. Project Next.js hay Django không bao giờ bị lật sang Java vì một `.idea/` lạc hay một jar vendor; thư mục jar không có source `*.java` thì không nhận gì cả.
+
+**Chống nhận nhầm.** Project JVM hoàn toàn không có Spring (`java-library`, `application`, `war` chỉ dùng servlet, Struts 1/2 đứng riêng) được báo là Java với `framework: null`. `com.android.application` không phải plugin `application` của JVM. Project Kotlin dùng Spring Framework vẫn giữ `language: kotlin`.
+
+**Gốc source.** `scan-java` viết lại các pattern `src/main/java` / `src/main/resources` theo gốc tìm được. Nếu tồn tại bất kỳ `[<module>/]src/main/java` nào thì chỉ dùng chúng. Nếu không, theo thứ tự: các mục `kind="src"` trong `.classpath` (loại trừ thư mục test), `<javac srcdir>` trong `build.xml` (có phân giải `<property>`), rồi `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` nếu chứa `*.java`. Sau đó vẫn là năm domain pattern như cũ, nên `src/com/acme/erp/controller/*.java` là Pattern C y hệt như khi nằm dưới `src/main/java`.
+
+**Giới hạn đã biết.** File Gradle không được bóc comment (một toạ độ bị `//` vẫn được tính — với Boot xưa nay vẫn vậy). Không phân giải kế thừa từ pom cha nằm ngoài repository. Lớp controller `web/` của eGovFrame chưa được Pattern A/B nhận là tên lớp.
+
+Các helper nằm trong `plan-installer/jvm-detect.js` (hàm xử lý văn bản thuần, có unit test riêng).
+
+---
+
 ### Kotlin / Spring Boot
 
 **Phát hiện khi:** `build.gradle.kts` hiện diện và Kotlin plugin áp dụng cùng Spring Boot. Code path hoàn toàn riêng với Java, không tái sử dụng pattern Java.
@@ -265,7 +299,7 @@ Scanner đọc tệp `.env*` lấy cấu hình runtime, để tài liệu sinh r
 7. `.env.local`
 8. `.env.development`
 
-**Redact biến nhạy cảm:** key khớp `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng.
+**Redact biến nhạy cảm:** key khớp `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng.
 
 **Thứ tự ưu tiên xác định port:**
 1. `server.port` của Spring Boot `application.yml`

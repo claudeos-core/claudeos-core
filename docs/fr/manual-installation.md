@@ -58,7 +58,7 @@ Ajoutez au `package.json` du projet :
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.5.0"
+    "claudeos-core": "^2.5.1"
   }
 }
 ```
@@ -131,7 +131,7 @@ Pour les environnements sans accès internet :
 
 ```bash
 npm pack claudeos-core
-# Produces claudeos-core-2.5.0.tgz
+# Produces claudeos-core-2.5.1.tgz
 ```
 
 **Transférez le `.tgz` vers l'environnement air-gapped.**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **Installez depuis le fichier local :**
 
 ```bash
-npm install -g ./claudeos-core-2.5.0.tgz
+npm install -g ./claudeos-core-2.5.1.tgz
 ```
 
 Il faut aussi :
@@ -156,7 +156,7 @@ Pour bundler toutes les dépendances transitives, lancez `npm install --omit=dev
 Quelle que soit la méthode d'install, vérifiez les quatre prérequis :
 
 ```bash
-# Affiche la version (par ex. 2.5.0)
+# Affiche la version (par ex. 2.5.1)
 claudeos-core --version
 
 # Affiche la version Claude Code

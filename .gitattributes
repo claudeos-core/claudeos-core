@@ -1,0 +1,20 @@
+# Normalize line endings on commit. Without this, files edited on Windows
+# landed in the repo with CRLF (all 8 non-Korean docs/{lang}/ sets, plus
+# package.json, .gitignore and the CI workflow) while the English docs and
+# docs/ko/ stayed LF — noisy diffs and a needless barrier for contributors.
+#
+# After adding this file, run once:
+#   git add --renormalize .
+* text=auto eol=lf
+
+# Shell scripts must be LF regardless of platform — CRLF breaks the shebang.
+*.sh text eol=lf
+bootstrap.sh text eol=lf
+
+# Binary assets: never touch.
+*.gif binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary

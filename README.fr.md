@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ Pour les détails par passe, le mécanisme de reprise par marker, le contourneme
 
 12 stacks, détectés automatiquement à partir des fichiers de votre projet.
 
-**Backend :** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend :** Java/Spring Boot (ainsi que Spring Framework sans Boot, voir plus bas) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend :** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 Les projets multi-stack (par exemple un backend Spring Boot couplé à un frontend Next.js) fonctionnent sans configuration particulière.
+
+**Le Java hérité est une cible de premier plan (v2.5.1).** Spring 1.x–6.x sans Boot est détecté : Gradle (ère `apply plugin:`, notation `group:/name:/version:` dans n'importe quel ordre, résolution via `gradle.properties` / `apply from:` / buildSrc, catalogues de versions, racines ne contenant qu'un `settings.gradle`), Maven (POM Maven 2, propriétés `${spring.version}`, `spring-framework-bom`, racines multi-modules, projets frères sans POM racine), **Ant + Ivy**, **métadonnées Eclipse / IntelliJ / NetBeans** (`.classpath` y compris les références vers des JAR non versionnés, niveau de conformité de `.settings`, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, versions de schéma XSD Spring et **eGovFrame** — avec le framework, la version de Spring Framework, le niveau Java, le packaging `war`/`ear`, le driver JDBC et l'ORM. Les arborescences dont la racine est `src/` sont scannées avec les mêmes motifs de domaine que `src/main/java`. Chaque version rapportée provient d'un fichier de build, d'un nom de JAR ou d'une propriété définie dans le projet ; rien n'est déduit des valeurs par défaut d'un framework. Les projets JVM sans aucun Spring (`java-library`, `application`, `war` purement servlet) sont rapportés comme Java avec `framework: null`, jamais comme Spring.
 
 Pour les règles de détection et le contenu extrait par chaque scanner, voir [docs/fr/stacks.md](docs/fr/stacks.md).
 

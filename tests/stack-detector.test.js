@@ -341,6 +341,80 @@ describe("detectStack — Config fallbacks", () => {
     assert.equal(s.database, "postgresql");
   });
 
+  it("detects DB from .env.example when no runtime .env exists (fresh clone)", async () => {
+    // `.env` is gitignored in most repos, so a fresh clone only ships the
+    // committed template. lib/env-parser.js already treats `.env.example` as
+    // canonical (it heads ENV_FILE_ORDER) — DB detection now agrees.
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: {} }));
+    fs.writeFileSync(path.join(tmp, ".env.example"), "DATABASE_URL=postgres://user:pw@db:5432/app");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, "postgresql");
+  });
+
+  it("detects DB from .env.sample / .env.template too", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: {} }));
+    fs.writeFileSync(path.join(tmp, ".env.sample"), "DATABASE_URL=mysql://user:pw@db:3306/app");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, "mysql");
+  });
+
+  it("a placeholder DSN in .env.example never contradicts or pads a real .env", async () => {
+    // Templates are consulted ONLY when the runtime files yielded nothing,
+    // so a stale/example dialect cannot leak into stack.databases.
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: {} }));
+    fs.writeFileSync(path.join(tmp, ".env"), "DATABASE_URL=postgresql://localhost:5432/mydb");
+    fs.writeFileSync(path.join(tmp, ".env.example"), "DATABASE_URL=mysql://localhost:3306/mydb");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, "postgresql");
+    assert.ok(!s.databases.includes("mysql"), "example-only dialect must not be added");
+  });
+
+  it("an unrecognized dialect in a real .env still blocks the template fallback", async () => {
+    // The keyword list covers only postgres/mysql/mongodb/sqlite. A runtime
+    // .env carrying `jdbc:oracle:thin:@…` matches none of them — but the
+    // project HAS answered, so a placeholder in .env.example must not answer
+    // differently. Guard 1: presence of DATABASE_URL, not a keyword match.
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: {} }));
+    fs.writeFileSync(path.join(tmp, ".env"), "DATABASE_URL=jdbc:oracle:thin:@host:1521/orcl");
+    fs.writeFileSync(path.join(tmp, ".env.example"), "DATABASE_URL=postgres://localhost:5432/mydb");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, null);
+    assert.deepEqual(s.databases, []);
+  });
+
+  it("a template never pads a database already identified by the build file", async () => {
+    // Guard 2: build.gradle says oracle; a stale postgres placeholder in
+    // .env.example must not append a phantom second dialect.
+    fs.writeFileSync(path.join(tmp, "build.gradle"), `
+      plugins { id 'org.springframework.boot' version '3.2.0' }
+      dependencies { runtimeOnly 'com.oracle.database.jdbc:ojdbc11' }
+    `);
+    fs.writeFileSync(path.join(tmp, ".env.example"), "DATABASE_URL=postgres://localhost:5432/mydb");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, "oracle");
+    assert.ok(!s.databases.includes("postgresql"), "template must not pad a known answer");
+  });
+
+  it("schema.prisma beats an .env.example placeholder (ordering regression)", async () => {
+    // The template fallback must run AFTER every declarative source. If it
+    // were hoisted above the Prisma block, the placeholder would win the
+    // `if (!stack.database)` race and report mysql for a postgres project.
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: {} }));
+    fs.mkdirSync(path.join(tmp, "prisma"));
+    fs.writeFileSync(path.join(tmp, "prisma/schema.prisma"),
+      'datasource db {\n  provider = "postgresql"\n  url = env("DATABASE_URL")\n}\n');
+    fs.writeFileSync(path.join(tmp, ".env.example"), "DATABASE_URL=mysql://localhost:3306/placeholder");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, "postgresql");
+  });
+
+  it("the template fallback still fills a total blank when Prisma is absent", async () => {
+    fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ dependencies: {} }));
+    fs.writeFileSync(path.join(tmp, ".env.example"), "DATABASE_URL=mysql://localhost:3306/app");
+    const s = await detectStack(tmp);
+    assert.equal(s.database, "mysql");
+  });
+
   it("detects frontend from next.config.mjs when not in package.json", async () => {
     fs.writeFileSync(path.join(tmp, "next.config.mjs"), "export default {};");
     const s = await detectStack(tmp);

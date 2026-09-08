@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ severity は 3 段階 (`fail` / `warn` / `advisory`) に分かれており、ユ
 
 12 スタックを、プロジェクトのファイルから自動で検出します。
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (Boot なしの Spring Framework も。下記参照) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 マルチスタックのプロジェクト (例: Spring Boot バックエンド + Next.js フロントエンド) もそのまま動きます。
+
+**レガシー Java は第一級の対象です (v2.5.1)。** Boot なしの Spring 1.x–6.x を検出します。Gradle (`apply plugin:` 時代、順序を問わない `group:/name:/version:` 記法、`gradle.properties` / `apply from:` / buildSrc による解決、バージョンカタログ、`settings.gradle` だけのルート)、Maven (Maven 2 の POM、`${spring.version}` プロパティ、`spring-framework-bom`、マルチモジュールのルート、ルート POM のない兄弟プロジェクト)、**Ant + Ivy**、**Eclipse / IntelliJ / NetBeans のメタデータ** (コミットされていない JAR への参照を含む `.classpath`、`.settings` のコンプライアンスレベル、`.idea/misc.xml`、`nbproject`)、`WebContent/WEB-INF/lib/**/*.jar`、`WEB-INF/web.xml`、Spring XSD のスキーマバージョン、そして **eGovFrame** — フレームワーク、Spring Framework のバージョン、Java レベル、`war`/`ear` パッケージング、JDBC ドライバ、ORM まで取得します。`src/` をルートとするソースツリーも `src/main/java` と同じドメインパターンでスキャンされます。報告されるバージョンはすべてビルドファイル・JAR 名・プロジェクト内で定義されたプロパティから読み取ったもので、フレームワークのデフォルトから推測することはありません。Spring をまったく使わない JVM プロジェクト (`java-library`、`application`、サーブレットのみの `war`) は `framework: null` の Java として報告され、Spring とされることはありません。
 
 検出ルールと各スキャナが取り出す情報については [docs/ja/stacks.md](docs/ja/stacks.md) を参照してください。
 

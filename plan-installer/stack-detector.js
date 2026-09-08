@@ -10,6 +10,7 @@ const path = require("path");
 const { glob } = require("glob");
 const { readFileSafe, readJsonSafe, existsSafe } = require("../lib/safe-fs");
 const { readStackEnvInfo, extractPort } = require("../lib/env-parser");
+const JVM = require("./jvm-detect");
 
 // ─── Lookup tables ──────────────────────────────────────────────
 
@@ -60,6 +61,10 @@ const DB_KEYWORD_RULES = [
   ["oracle", "oracle"],
   ["mongodb", "mongodb"],
   ["sqlite", "sqlite"],
+  // v2.5.1 — JDBC coordinates common in enterprise / Korean-market deployments.
+  ["mssql-jdbc", "mssql"], ["sqljdbc", "mssql"], ["jtds", "mssql"], ["sqlserver", "mssql"],
+  ["com.ibm.db2", "db2"], ["db2jcc", "db2"],
+  ["tibero", "tibero"], ["altibase", "altibase"], ["cubrid", "cubrid"],
 ];
 
 // h2 needs word-boundary check (avoid oauth2, cache2k false positives)
@@ -296,6 +301,13 @@ async function detectStack(ROOT) {
     loggingFrameworks: [],
     frontend: null, frontendVersion: null,
     packageManager: null, monorepo: null, workspaces: null,
+    // v2.5.x — JVM legacy support. `packaging` is what the build file
+    // DECLARES (Gradle `war`/`ear` plugin, Maven `<packaging>`, or a
+    // `WEB-INF/lib` tree) — null when nothing is declared, never an
+    // invented "jar". `springFrameworkVersion` is the org.springframework
+    // line when it is pinned explicitly; for Boot projects it is normally
+    // null because Boot manages it.
+    packaging: null, springFrameworkVersion: null,
     detected: [],
   };
 
@@ -303,6 +315,12 @@ async function detectStack(ROOT) {
   const gradleFile = existsSafe(path.join(ROOT, "build.gradle.kts"))
     ? "build.gradle.kts"
     : existsSafe(path.join(ROOT, "build.gradle")) ? "build.gradle" : null;
+  // v2.5.1 — a root holding only settings.gradle{,.kts} (modules carry the
+  // build files) is still a Gradle project; the sub-module sweep does the rest.
+  if (!gradleFile) {
+    const sg = ["settings.gradle.kts", "settings.gradle"].find(f => existsSafe(path.join(ROOT, f)));
+    if (sg) { stack.buildTool = "gradle"; stack.detected.push(sg); if (!stack.packageManager) stack.packageManager = "gradle"; }
+  }
   if (gradleFile) {
     const g = readFileSafe(path.join(ROOT, gradleFile));
     if (g) {
@@ -311,12 +329,60 @@ async function detectStack(ROOT) {
       // and downstream tooling don't show "PackageMgr: none" for a build tool
       // that IS the package manager. Only set if not already detected.
       if (!stack.packageManager) stack.packageManager = "gradle";
+      // v2.5.x — JVM plugin evidence first, independent of Spring Boot.
+      // `apply plugin: 'java'` / `'war'` / `'application'` / `plugins { java }`
+      // is proof of a Java project on its own. Before this, a legacy
+      // `apply plugin: 'java'` + `spring-webmvc:4.3.30.RELEASE` build reported
+      // `language: null` and the Java scanner never ran.
+      // v2.5.1 — gradle.properties is a second variable source for
+      // `${springVersion}` / `${springBootVersion}` references.
+      const gProps = JVM.parseGradleProperties(readFileSafe(path.join(ROOT, "gradle.properties")));
+      // v2.5.1 — variable definitions may live outside build.gradle:
+      // `apply from: 'gradle/dependencies.gradle'` scripts and buildSrc
+      // Kotlin constants (`object Versions { const val spring = "…" }`).
+      // Appended to the RESOLUTION text only; detection still reads `g`.
+      let gResolve = g;
+      for (const rel of JVM.gradleAppliedScripts(g).slice(0, 10)) {
+        const t = readFileSafe(path.join(ROOT, rel)); if (t) gResolve += "\n" + t;
+      }
+      if (existsSafe(path.join(ROOT, "buildSrc"))) {
+        const kts = await glob("buildSrc/src/main/{kotlin,java,groovy}/**/*.{kt,groovy,java}", { cwd: ROOT, nodir: true });
+        for (const f of kts.slice(0, 20)) { const t = readFileSafe(path.join(ROOT, f)); if (t) gResolve += "\n" + t; }
+      }
+      const gPlugins = JVM.gradleJvmPlugins(g);
+      const jvmByPlugin = JVM.gradleIsJvm(gPlugins) && !stack.language;
+      if (jvmByPlugin) stack.language = "java";
+      const gPack = JVM.gradlePackaging(gPlugins);
+      if (gPack) stack.packaging = gPack;
       // `spring-boot` (starter coords) OR `org.springframework.boot` (plugin id —
       // the only spelling present in a multi-module root that declares
       // `id 'org.springframework.boot' version 'x' apply false`).
       if (g.includes("spring-boot") || g.includes("org.springframework.boot")) {
         stack.language = "java"; stack.framework = "spring-boot"; stack.detected.push("spring-boot");
+      } else if (jvmByPlugin) {
+        // Label the plugin evidence only when Boot is absent, so the
+        // `detected` array of every existing Boot project stays
+        // byte-identical to pre-v2.5.x output.
+        stack.detected.push("java (gradle plugin)");
       }
+      // v2.5.x — Spring Framework WITHOUT Boot (group exactly
+      // org.springframework: spring-webmvc / spring-context / the 2.x
+      // single `spring` jar / spring-framework-bom). Boot wins when both
+      // appear because Boot manages the Framework version.
+      if (!stack.framework && JVM.gradleHasSpringFramework(g)) {
+        stack.language = "java"; stack.framework = "spring-framework"; stack.detected.push("spring-framework");
+      }
+      if (JVM.hasEgovframe(g)) {
+        const ev = JVM.egovframeVersion(g);
+        stack.detected.push(ev ? `egovframe ${ev}` : "egovframe");
+        if (!stack.framework) { stack.language = "java"; stack.framework = "spring-framework"; stack.detected.push("spring-framework"); }
+      }
+      const gSfv = JVM.gradleSpringFrameworkVersion(gResolve, gProps);
+      if (gSfv) stack.springFrameworkVersion = gSfv;
+      if (stack.framework === "spring-framework" && gSfv) stack.frameworkVersion = gSfv;
+      // Struts / JSF tags are legacy evidence; not pushed for Boot projects
+      // (their `detected` array must stay byte-identical to v2.5.0 output).
+      if (stack.framework !== "spring-boot") for (const t of JVM.legacyFrameworkTags(g)) stack.detected.push(t.version ? `${t.tag} ${t.version}` : t.tag);
       const svPatterns = [
         /org\.springframework\.boot.*version\s*['"]([^'"]+)['"]/,
         /id\s*\(\s*["']org\.springframework\.boot["']\s*\)\s*version\s*["']([^"']+)["']/,
@@ -347,6 +413,15 @@ async function detectStack(ROOT) {
           const varVal = g.match(varDef);
           if (varVal) stack.frameworkVersion = varVal[1];
         }
+      }
+      // v2.5.x — Boot version. The helper covers every form the loop above
+      // covered PLUS the Boot 1.x/2.x buildscript-classpath form
+      // (`classpath("org.springframework.boot:spring-boot-gradle-plugin:1.5.22.RELEASE")`,
+      // optionally via `${springBootVersion}`), which had no `version`
+      // keyword for the old regexes to anchor on.
+      if (stack.framework === "spring-boot" && !stack.frameworkVersion) {
+        const bv = JVM.gradleSpringBootVersion(gResolve, gProps);
+        if (bv) stack.frameworkVersion = bv;
       }
       // Java version — Gradle writes this in several forms. Try each
       // pattern until one matches. Earlier patterns take precedence.
@@ -381,6 +456,8 @@ async function detectStack(ROOT) {
         /JavaVersion\.VERSION_(?:1_)?(\d+)/,
         // (3) toolchain block
         /JavaLanguageVersion\.of\s*\(\s*(\d+)\s*\)/,
+        // (3b) v2.5.1 — `options.release = 17` / `options.release.set(17)`
+        /options\.release(?:\.set)?\s*[=(]\s*(\d+)/,
       ];
       for (const pattern of javaVersionPatterns) {
         const m = g.match(pattern);
@@ -455,6 +532,22 @@ async function detectStack(ROOT) {
         const sbMatch = vc.match(/spring-boot\s*=\s*["']([^"']+)["']/);
         if (sbMatch) stack.frameworkVersion = sbMatch[1];
       }
+      // v2.5.x — Spring Framework declared through the catalog
+      // (`spring-webmvc = { module = "org.springframework:spring-webmvc",
+      // version.ref = "spring" }`). The build file only shows
+      // `libs.spring.webmvc`, so this is the one place the coordinate and
+      // its version are visible.
+      if (!stack.framework && JVM.catalogHasSpringFramework(vc)) {
+        if (!stack.language) stack.language = "java";
+        stack.framework = "spring-framework"; stack.detected.push("spring-framework (catalog)");
+      }
+      if (!stack.springFrameworkVersion) {
+        const cSfv = JVM.catalogSpringFrameworkVersion(vc);
+        if (cSfv) {
+          stack.springFrameworkVersion = cSfv;
+          if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = cSfv;
+        }
+      }
       // Version catalog ORM (labels include " (catalog)" suffix)
       if (!stack.orm && vc.includes("exposed")) { stack.orm = "exposed"; stack.detected.push("exposed (catalog)"); }
       else if (!stack.orm && vc.includes("jooq")) { stack.orm = "jooq"; stack.detected.push("jooq (catalog)"); }
@@ -497,23 +590,34 @@ async function detectStack(ROOT) {
       const sc = readFileSafe(path.join(ROOT, sbf));
       if (!sc) continue;
       if (sc.includes("kotlin") || sc.includes("org.jetbrains.kotlin")) continue; // handled by the Kotlin block
-      const isJava = /\bid\s*\(?\s*['"](java|java-library|org\.springframework\.boot)['"]/.test(sc)
-        || /apply\s+plugin:\s*['"](java|java-library)['"]/.test(sc)
-        || sc.includes("spring-boot");
+      // v2.5.x — any JVM plugin or an org.springframework coordinate counts,
+      // not only java/java-library/Boot.
+      const scPlugins = JVM.gradleJvmPlugins(sc);
+      const isJava = JVM.gradleIsJvm(scPlugins)
+        || sc.includes("spring-boot")
+        || JVM.gradleHasSpringFramework(sc);
       if (isJava) {
         // Do not `break` on the first Java module: a `core` library module
         // usually comes before the `api` module that actually declares
         // Spring Boot. Set language once, keep sweeping for framework/versions.
         if (stack.language !== "java") { stack.language = "java"; stack.detected.push("java (submodule)"); }
+        if (!stack.packaging) { const p = JVM.gradlePackaging(scPlugins); if (p) stack.packaging = p; }
         if (!stack.framework && (sc.includes("spring-boot") || sc.includes("org.springframework.boot"))) {
           stack.framework = "spring-boot"; stack.detected.push("spring-boot (submodule)");
         }
-        if (!stack.frameworkVersion) {
+        if (!stack.framework && JVM.gradleHasSpringFramework(sc)) {
+          stack.framework = "spring-framework"; stack.detected.push("spring-framework (submodule)");
+        }
+        if (!stack.springFrameworkVersion) {
+          const sfv = JVM.gradleSpringFrameworkVersion(sc);
+          if (sfv) { stack.springFrameworkVersion = sfv; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = sfv; }
+        }
+        if (!stack.frameworkVersion && stack.framework === "spring-boot") {
           // `spring-boot-starter-web:2.7.18`, `spring-boot-dependencies:3.2.0`,
           // or `id 'org.springframework.boot' version '3.2.5'` inside the module.
-          const sv = sc.match(/spring-boot[\w-]*[:\s'"]+(\d+\.\d+\.\d+)/)
-            || sc.match(/org\.springframework\.boot[^\n]*?version\s*\(?\s*['"](\d+\.\d+\.\d+)['"]/);
-          if (sv) stack.frameworkVersion = sv[1];
+          const sv = JVM.gradleSpringBootVersion(sc)
+            || (sc.match(/spring-boot[\w-]*[:\s'"]+(\d+\.\d+\.\d+)/) || [])[1];
+          if (sv) stack.frameworkVersion = sv;
         }
         if (!stack.languageVersion) {
           const jv = sc.match(/(?:sourceCompatibility|targetCompatibility)\s*=\s*['"]?(\d+(?:\.\d+)?)['"]?/)
@@ -577,6 +681,39 @@ async function detectStack(ROOT) {
     }
   }
 
+  // v2.5.1 — Fold one child pom (Maven <module> or a depth-1 sibling
+  // project) into `stack`, filling only what is still null. `${prop}` in the
+  // child resolves against the child first, then `rootPom` (may be "").
+  const absorbMavenPom = (cp, rootPom, mod) => {
+    const cpClean = stripComments(cp);
+    const propsText = cp + "\n" + rootPom;
+    if (!stack.framework && cpClean.includes("spring-boot")) { stack.framework = "spring-boot"; stack.detected.push(`spring-boot (${mod})`); }
+    if (stack.framework === "spring-boot" && !stack.frameworkVersion) { const bv = JVM.mavenSpringBootVersion(propsText, cpClean); if (bv) stack.frameworkVersion = bv; }
+    if (!stack.framework && JVM.mavenHasSpringFramework(cpClean)) { stack.framework = "spring-framework"; stack.detected.push(`spring-framework (${mod})`); }
+    // Root <properties> may already have yielded the Framework version
+    // before any module declared the framework itself — link them.
+    if (stack.framework === "spring-framework" && !stack.frameworkVersion && stack.springFrameworkVersion) stack.frameworkVersion = stack.springFrameworkVersion;
+    if (!stack.springFrameworkVersion) {
+      const v = JVM.mavenSpringFrameworkVersion(propsText, cpClean);
+      if (v) { stack.springFrameworkVersion = v; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = v; }
+    }
+    if (JVM.hasEgovframe(cpClean) && !stack.detected.some(d => d.startsWith("egovframe"))) {
+      const ev = JVM.egovframeVersion(cpClean, propsText);
+      stack.detected.push(ev ? `egovframe ${ev}` : "egovframe");
+      if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework"); }
+    }
+    if (!stack.orm) { if (IBATIS_REGEX.test(cpClean)) { stack.orm = "ibatis"; stack.detected.push(`ibatis (${mod})`); } else detectFirst(stack, "orm", cpClean, MAVEN_ORM_RULES); }
+    for (const [keyword, value] of DB_KEYWORD_RULES.filter(([kw]) => kw !== "postgres")) {
+      if (cpClean.includes(keyword)) { if (!stack.database) stack.database = value; if (!stack.databases.includes(value)) stack.databases.push(value); }
+    }
+    if (!stack.languageVersion) {
+      const jv = cp.match(/<java\.version>\s*(\d+(?:\.\d+)?)\s*<\/java\.version>/) || cp.match(/<maven\.compiler\.(?:source|release)>\s*(\d+(?:\.\d+)?)\s*</);
+      if (jv) stack.languageVersion = normalizeJavaVersion(jv[1]);
+    }
+    if (!stack.packaging) { const pk = JVM.mavenPackaging(cp); if (pk && pk !== "pom") stack.packaging = pk; }
+    if (stack.framework !== "spring-boot") for (const t of JVM.legacyFrameworkTags(cpClean)) { const tag = t.version ? `${t.tag} ${t.version}` : t.tag; if (!stack.detected.includes(tag)) stack.detected.push(tag); }
+  };
+
   // ── Java: Maven ──
   if (existsSafe(path.join(ROOT, "pom.xml"))) {
     const pom = readFileSafe(path.join(ROOT, "pom.xml"));
@@ -584,6 +721,13 @@ async function detectStack(ROOT) {
       if (!stack.buildTool) { stack.buildTool = "maven"; stack.language = "java"; stack.detected.push("pom.xml"); }
       // v2.4.0 — JVM package manager (parallel to Gradle case above).
       if (!stack.packageManager) stack.packageManager = "maven";
+      // v2.5.x — declared packaging (war / ear / jar / pom). Null when the
+      // pom is silent; Maven's implicit "jar" default is NOT written back.
+      const mPack = JVM.mavenPackaging(pom);
+      if (mPack && !stack.packaging) stack.packaging = mPack;
+      // Boot version: <spring-boot.version> property (the only form the
+      // old regex knew), the starter-parent <version>, or the
+      // spring-boot-dependencies BOM import.
       const sv = pom.match(/<spring-boot[^>]*version>([^<]+)/);
       if (sv) stack.frameworkVersion = sv[1];
       // Java version — Maven commonly uses three patterns:
@@ -608,6 +752,8 @@ async function detectStack(ROOT) {
         /<java\.version>\s*(\d+(?:\.\d+)?)\s*<\/java\.version>/,
         /<maven\.compiler\.source>\s*(\d+(?:\.\d+)?)\s*<\/maven\.compiler\.source>/,
         /<maven\.compiler\.target>\s*(\d+(?:\.\d+)?)\s*<\/maven\.compiler\.target>/,
+        // v2.5.1 — `<maven.compiler.release>17</maven.compiler.release>` (JEP 247 style)
+        /<maven\.compiler\.release>\s*(\d+)\s*<\/maven\.compiler\.release>/,
       ];
       for (const pattern of mvnJavaPatterns) {
         const m = pom.match(pattern);
@@ -625,6 +771,14 @@ async function detectStack(ROOT) {
           if (propVal) stack.languageVersion = normalizeJavaVersion(propVal[1]);
         }
       }
+      // v2.5.x — Pattern 4: pre-properties era. Maven 2 poms carried the
+      // level only inside the compiler plugin:
+      //   <plugin><artifactId>maven-compiler-plugin</artifactId>
+      //     <configuration><source>1.5</source><target>1.5</target></configuration>
+      if (!stack.languageVersion) {
+        const cps = JVM.mavenCompilerPluginSource(pom);
+        if (cps) stack.languageVersion = normalizeJavaVersion(cps);
+      }
       // For dependency detection (framework, ORM, DB, logging), strip
       // XML block comments first. A `<!-- <dependency>...</dependency> -->`
       // block is a standard Maven pattern for disabling a dep during
@@ -636,6 +790,40 @@ async function detectStack(ROOT) {
       // resolution already scopes itself to the declared property name.
       const pomClean = stripComments(pom);
       if (pomClean.includes("spring-boot") && !stack.framework) { stack.framework = "spring-boot"; stack.detected.push("spring-boot"); }
+      if (stack.framework === "spring-boot" && !stack.frameworkVersion) {
+        const bv = JVM.mavenSpringBootVersion(pom, pomClean);
+        if (bv) stack.frameworkVersion = bv;
+      }
+      // v2.5.x — Spring Framework without Boot. Only <dependency> blocks
+      // whose groupId is EXACTLY org.springframework count (comment-stripped
+      // text, so a `<!-- … -->`-disabled dependency is ignored). Version comes
+      // from spring-framework-bom, the first versioned Framework dependency,
+      // or a <spring.version>-style property — `${prop}` resolved in-file.
+      if (!stack.framework && JVM.mavenHasSpringFramework(pomClean)) {
+        stack.framework = "spring-framework"; stack.detected.push("spring-framework");
+      }
+      const mSfv = JVM.mavenSpringFrameworkVersion(pom, pomClean);
+      if (mSfv) {
+        stack.springFrameworkVersion = mSfv;
+        if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = mSfv;
+      }
+      // v2.5.1 — eGovFrame (전자정부 표준프레임워크): Spring MVC underneath.
+      if (JVM.hasEgovframe(pomClean)) {
+        const ev = JVM.egovframeVersion(pomClean, pom);
+        stack.detected.push(ev ? `egovframe ${ev}` : "egovframe");
+        if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework"); }
+      }
+      if (stack.framework !== "spring-boot") for (const t of JVM.legacyFrameworkTags(pomClean)) stack.detected.push(t.version ? `${t.tag} ${t.version}` : t.tag);
+      // v2.5.1 — Maven multi-module. A root `<packaging>pom</packaging>` with
+      // `<modules>` usually declares nothing but dependencyManagement; the
+      // Spring coordinates live in `web/pom.xml`. Sweep the listed modules
+      // (bounded) and fill only what the root left null. `${prop}` in a child
+      // resolves against the child first, then the root <properties>.
+      const moduleNames = [...pomClean.matchAll(/<module>\s*([^<]+?)\s*<\/module>/g)].map(m => m[1]);
+      for (const mod of moduleNames.slice(0, 30)) {
+        const cp = readFileSafe(path.join(ROOT, mod, "pom.xml"));
+        if (cp) absorbMavenPom(cp, pom, mod);
+      }
       if (IBATIS_REGEX.test(pomClean)) {
         stack.orm = "ibatis";
         stack.detected.push("ibatis");
@@ -647,14 +835,9 @@ async function detectStack(ROOT) {
       // (primary first-match → stack.database; every match →
       // stack.databases). Maven original did not push to `detected`
       // (unlike Gradle), so we preserve that omission here.
-      const mvnDbRules = [
-        ["postgresql", "postgresql"],
-        ["mariadb", "mariadb"],
-        ["mysql", "mysql"],
-        ["oracle", "oracle"],
-        ["mongodb", "mongodb"],
-        ["sqlite", "sqlite"],
-      ];
+      // "postgres" is excluded (substring of postgresql — Maven coords always
+      // spell it out) so the primary-DB race is identical to pre-v2.5.1.
+      const mvnDbRules = DB_KEYWORD_RULES.filter(([kw]) => kw !== "postgres");
       for (const [keyword, value] of mvnDbRules) {
         if (pomClean.includes(keyword)) {
           if (!stack.database) stack.database = value;
@@ -936,6 +1119,224 @@ async function detectStack(ROOT) {
     }
   }
 
+  // ── Java: legacy evidence (runs AFTER Node/Python) ──
+  // v2.5.1 — Everything below reads evidence weaker than a root build file:
+  // sibling-directory build files, Ant / Eclipse / IntelliJ / NetBeans
+  // metadata, jars on disk, `WEB-INF/web.xml`, Spring XSDs. It therefore runs
+  // last and may only (a) fill a language nobody claimed, or (b) reclaim a
+  // PROVISIONAL Node language — a root package.json that exists for gulp /
+  // jQuery / Tailwind asset tooling, with NO Node framework detected — and
+  // only on STRONG JVM evidence (build.xml, `.project` javanature, a sibling
+  // pom/gradle, a WEB-INF/web.xml, or Spring jars beside *.java sources).
+  // A Next.js / Express / Django project with a stray `.idea/misc.xml` or a
+  // vendored `tools/lib/*.jar` is never flipped to Java.
+  // `src/test/**` is excluded everywhere below: a test-resources `web.xml`
+  // or a test fixture jar is not deployment evidence for the application.
+  const jarIgnore = ["**/node_modules/**", "**/build/**", "**/target/**", "**/.git/**", "**/dist/**", "**/src/test/**"];
+  const referencedJars = [];
+  // Memoized: does the tree hold any *.java source at all? Shared by the
+  // Ant / jar / last-resort decisions below so the walk happens at most once.
+  let anyJavaMemo = null;
+  const anyJavaSources = async () => {
+    if (anyJavaMemo === null) anyJavaMemo = (await glob("**/*.java", { cwd: ROOT, ignore: jarIgnore, nodir: true })).length > 0;
+    return anyJavaMemo;
+  };
+  let jvmMayClaim = !stack.language;
+  // Provisional-language reclaim. The Node language is PARKED, not dropped:
+  // if none of the JVM blocks below actually claims the project (a `build.xml`
+  // that is not Ant — a Phing file or an empty stub — with no *.java anywhere),
+  // the parked values are restored at the end of this section. A gulp-only
+  // site therefore never ends up with `language: null`, and a reclaimed Java
+  // project does not keep `packageManager: "npm"` from the asset tooling.
+  let parked = null;
+  if (!jvmMayClaim && languageFromPackageJson && !stack.framework && !stack.frontend && !stack.buildTool) {
+    const strong =
+      existsSafe(path.join(ROOT, "build.xml")) ||
+      JVM.eclipseHasJavaNature(readFileSafe(path.join(ROOT, ".project"))) ||
+      (await glob("*/{pom.xml,build.gradle,build.gradle.kts}", { cwd: ROOT, ignore: ["node_modules/**"] })).length > 0 ||
+      (await glob("**/WEB-INF/web.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true })).length > 0;
+    if (strong) {
+      jvmMayClaim = true;
+      parked = { language: stack.language, languageVersion: stack.languageVersion, packageManager: stack.packageManager };
+      stack.language = null; stack.languageVersion = null; stack.packageManager = null;
+    }
+  }
+  // ── Java: build files one directory down (no root build file) ──
+  // v2.5.1 — SI repositories often hold sibling projects (`erp-web/pom.xml`,
+  // `erp-batch/pom.xml`) with no aggregator at the root. Depth-1 poms are
+  // absorbed with the same rules as Maven <modules>. Depth-1 Gradle files
+  // without a root `settings.gradle` / `build.gradle` are NOT swept — they
+  // count as strong evidence for the reclaim above and the `*.java` last
+  // resort then sets the language, but framework/version stay null (a root
+  // `settings.gradle` is what makes the Gradle sub-module sweep run).
+  if (!stack.buildTool && jvmMayClaim) {
+    const siblingPoms = (await glob("*/pom.xml", { cwd: ROOT, ignore: ["node_modules/**"] })).map(p => p.replace(/\\/g, "/")).sort();
+    if (siblingPoms.length) {
+      stack.buildTool = "maven"; stack.language = "java";
+      stack.detected.push(`pom.xml (${siblingPoms.length} sibling project${siblingPoms.length > 1 ? "s" : ""})`);
+      if (!stack.packageManager) stack.packageManager = "maven";
+      for (const sp of siblingPoms.slice(0, 30)) {
+        const cp = readFileSafe(path.join(ROOT, sp));
+        if (cp) absorbMavenPom(cp, "", path.dirname(sp));
+      }
+    }
+  }
+
+  // ── Java: Ant / Eclipse WTP / no build tool (legacy) ──
+  // v2.5.x — The shape of most pre-Maven enterprise code: a `build.xml`,
+  // an Eclipse `.classpath`/`.project`, `WebContent/WEB-INF/lib/*.jar`, and
+  // sources under `src/` (no `src/main/java`). Evidence, in order of
+  // strength:
+  //   1. build.xml            → buildTool "ant", Java level from <javac source="">
+  //   2. .classpath/.project  → Java level from the JRE container, javanature
+  //   3. **/WEB-INF/lib/*.jar → packaging "war"; Spring jars → framework +
+  //                             version parsed from the jar NAME
+  //                             (spring-webmvc-3.0.5.RELEASE.jar). An
+  //                             unversioned `spring.jar` (2.0 era) reports the
+  //                             framework with version null — never a guess.
+  //   4. **/*.java            → language "java" as a last resort
+  // Only runs when no Gradle/Maven build file claimed the project.
+  if (!stack.buildTool && jvmMayClaim) {
+    const buildXml = path.join(ROOT, "build.xml");
+    if (existsSafe(buildXml)) {
+      const bx = readFileSafe(buildXml);
+      // `<project>` alone is not Ant — Phing (PHP) and other XML build tools
+      // use the same root element. Require a `<javac>` task or *.java sources.
+      if (bx && /<project\b/.test(bx) && (/<javac\b/.test(bx) || await anyJavaSources())) {
+        stack.buildTool = "ant"; stack.language = "java"; stack.detected.push("build.xml");
+        if (!stack.packageManager) stack.packageManager = "ant";
+        const src = JVM.antJavacSource(bx);
+        if (src && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(src);
+        // v2.5.1 — Ant + Ivy: ivy.xml is the dependency manifest.
+        const ivy = readFileSafe(path.join(ROOT, "ivy.xml"));
+        if (ivy) {
+          stack.detected.push("ivy.xml");
+          if (!stack.framework && JVM.ivyHasSpringFramework(ivy)) { stack.framework = "spring-framework"; stack.detected.push("spring-framework (ivy)"); }
+          const iv = JVM.ivySpringFrameworkVersion(ivy);
+          if (iv) { stack.springFrameworkVersion = iv; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = iv; }
+          if (!stack.orm) { if (IBATIS_REGEX.test(ivy)) { stack.orm = "ibatis"; stack.detected.push("ibatis (ivy)"); } else detectFirst(stack, "orm", ivy, GRADLE_ORM_RULES); }
+          detectDb(stack, ivy, DB_KEYWORD_RULES.filter(([kw]) => !["postgres", "sqlite"].includes(kw)));
+        }
+      }
+    }
+    const classpathXml = readFileSafe(path.join(ROOT, ".classpath"));
+    const projectXml = readFileSafe(path.join(ROOT, ".project"));
+    const jdtPrefs = readFileSafe(path.join(ROOT, ".settings/org.eclipse.jdt.core.prefs"));
+    if (classpathXml || projectXml || jdtPrefs) {
+      if (JVM.eclipseHasJavaNature(projectXml) || (classpathXml && /JRE_CONTAINER|kind="src"/.test(classpathXml)) || jdtPrefs) {
+        if (!stack.language) { stack.language = "java"; stack.detected.push(".classpath/.project"); }
+        // `.settings/org.eclipse.jdt.core.prefs` compliance level is what the
+        // compiler actually used — it outranks the JRE container name.
+        const lvl = JVM.eclipseJdtPrefsLevel(jdtPrefs) || (classpathXml ? JVM.eclipseJreLevel(classpathXml) : null);
+        if (lvl && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(lvl);
+      }
+    }
+    // IntelliJ / NetBeans project metadata.
+    const ideaMisc = readFileSafe(path.join(ROOT, ".idea/misc.xml"));
+    if (ideaMisc) {
+      const lvl = JVM.intellijLanguageLevel(ideaMisc);
+      if (lvl) { if (!stack.language) { stack.language = "java"; stack.detected.push(".idea/misc.xml"); } if (!stack.languageVersion) stack.languageVersion = normalizeJavaVersion(lvl); }
+    }
+    const nbProps = readFileSafe(path.join(ROOT, "nbproject/project.properties"));
+    const nb = JVM.netbeansProject(nbProps);
+    if (nbProps && (nb.level || nb.jars.length)) {
+      if (!stack.language) { stack.language = "java"; stack.detected.push("nbproject"); }
+      if (nb.level && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(nb.level);
+    }
+    // Jar names referenced by IDE metadata even when the jars themselves are
+    // not committed (`.classpath kind="lib"/"var"`, NetBeans file.reference).
+    // Fed into the same classifier as jars on disk, below.
+    referencedJars.push(...JVM.eclipseClasspathJars(classpathXml), ...nb.jars);
+    if (referencedJars.some(j => /WEB-INF\/lib\//.test(j)) && !stack.packaging) stack.packaging = "war";
+    if (!stack.language && await anyJavaSources()) { stack.language = "java"; stack.detected.push("java sources"); }
+  }
+
+  // ── Java: jars on disk (any build tool, or none) ──
+  // v2.5.1 — Also runs for Gradle/Maven projects that still resolve from
+  // `fileTree(dir: 'WEB-INF/lib')` instead of coordinates — common in SI
+  // codebases that adopted a build tool without migrating the jars. Fills
+  // nulls only; coordinate-based answers above always win. Capped so a
+  // vendored `lib/` with thousands of jars cannot stall detection.
+  if (!stack.framework && (stack.language === "java" || (jvmMayClaim && !stack.buildTool))) {
+    // Recursive under the lib roots: `lib/spring/*.jar`, `lib/db/*.jar` are
+    // common hand-sorted layouts.
+    const onDisk = await glob("**/{WEB-INF/lib,lib,libs}/**/*.jar", { cwd: ROOT, ignore: jarIgnore, nodir: true });
+    const jars = [...onDisk.map(j => j.replace(/\\/g, "/")), ...referencedJars];
+    if (jars.length) {
+      if (jars.some(j => /WEB-INF\/lib\//.test(j)) && !stack.packaging) stack.packaging = "war";
+      const cls = JVM.classifyJars(jars.slice(0, 500).map(j => path.basename(j)));
+      // Jars alone are weak evidence — require *.java sources beside them.
+      if (!stack.language && await anyJavaSources()) { stack.language = "java"; stack.detected.push("jars"); }
+      // Everything below is dependency evidence for a JAVA project. A jar
+      // directory with no sources is not a project and gets no DB / ORM /
+      // framework either.
+      if (stack.language === "java") {
+      // JDBC drivers and ORM jars on disk are the only dependency evidence a
+      // no-build-tool project has. Same dual output as every other DB source.
+      for (const db of cls.databases) {
+        if (!stack.database) stack.database = db;
+        if (!stack.databases.includes(db)) stack.databases.push(db);
+      }
+      if (cls.orm && !stack.orm) { stack.orm = cls.orm; stack.detected.push(`${cls.orm} (jar)`); }
+      if (cls.springBoot || cls.springFramework) {
+        if (!stack.framework) {
+          stack.framework = cls.springBoot ? "spring-boot" : "spring-framework";
+          stack.detected.push(`${stack.framework} (jar)`);
+        }
+        if (cls.springFrameworkVersion && !stack.springFrameworkVersion) stack.springFrameworkVersion = cls.springFrameworkVersion;
+        if (!stack.frameworkVersion) {
+          if (stack.framework === "spring-boot" && cls.springBootVersion) stack.frameworkVersion = cls.springBootVersion;
+          if (stack.framework === "spring-framework" && cls.springFrameworkVersion) stack.frameworkVersion = cls.springFrameworkVersion;
+        }
+      }
+      } // language === "java"
+    }
+  }
+
+  // ── Java: deployment descriptor + Spring XML schema evidence ──
+  // v2.5.1 — For trees with no coordinates and no jars (jars gitignored,
+  // IDE metadata absent): `WEB-INF/web.xml` naming DispatcherServlet /
+  // ContextLoaderListener is Spring MVC evidence and a war signal; Spring XML
+  // configs carry `spring-beans-3.0.xsd` — major.minor only, the
+  // lowest-fidelity version source, consulted last and never overriding a
+  // pinned version. Struts descriptors add a tag without setting a framework.
+  // Spring Boot projects are skipped: Boot owns the servlet container, its
+  // WAR packaging is declared in the build file, and the `detected` array of
+  // a Boot project must stay byte-identical to v2.5.0 output.
+  if (stack.framework !== "spring-boot" && (stack.language === "java" || (jvmMayClaim && !stack.buildTool))) {
+    const webXmls = await glob("**/WEB-INF/web.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true });
+    for (const wx of webXmls.slice(0, 5)) {
+      const facts = JVM.webXmlFacts(readFileSafe(path.join(ROOT, wx)));
+      if (!stack.packaging) stack.packaging = "war";
+      if (facts.spring) {
+        if (!stack.language) stack.language = "java";
+        if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework (web.xml)"); }
+      }
+      if (facts.struts && !stack.detected.some(d => d.startsWith(facts.struts))) stack.detected.push(`${facts.struts} (web.xml)`);
+      if (facts.servletVersion && !stack.detected.some(d => d.startsWith("servlet "))) stack.detected.push(`servlet ${facts.servletVersion}`);
+      if (!stack.language) { stack.language = "java"; stack.detected.push("web.xml"); }
+    }
+    if (stack.framework === "spring-framework" && !stack.frameworkVersion) {
+      const xmls = await glob("**/{WEB-INF,resources,config,conf,spring}/**/*.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true });
+      let best = null;
+      for (const x of xmls.slice(0, 50)) {
+        const v = JVM.springXsdVersion(readFileSafe(path.join(ROOT, x)));
+        if (v && (!best || parseFloat(v) > parseFloat(best))) best = v;
+      }
+      if (best) { stack.detected.push(`spring-xsd ${best}`); stack.frameworkVersion = best; if (!stack.springFrameworkVersion) stack.springFrameworkVersion = best; }
+    }
+  }
+
+  // Settle the provisional-language reclaim (see `parked` above).
+  if (parked) {
+    if (stack.language === "java") {
+      stack.detected.push("java (reclaimed from provisional package.json language)");
+    } else {
+      stack.language = parked.language; stack.languageVersion = parked.languageVersion;
+      if (!stack.packageManager) stack.packageManager = parked.packageManager;
+    }
+  }
+
   // ── DB from config files ──
   //
   // Glob covers Spring Boot's full configuration-file naming space:
@@ -1052,29 +1453,41 @@ async function detectStack(ROOT) {
   }
 
   // .env
-  for (const ef of [".env", ".env.local", ".env.development"]) {
-    const ep = path.join(ROOT, ef);
-    if (existsSafe(ep)) {
+  // .env: original checks postgres (not postgresql), no oracle/h2.
+  // Preserve that semantics, but update both primary and array
+  // outputs together.
+  //
+  // Returns true when a file in `files` actually DECLARED a DATABASE_URL —
+  // not merely when a keyword matched. A runtime `.env` carrying a dialect
+  // this keyword list does not cover (`jdbc:oracle:thin:@…`, `jdbc:sqlserver://…`)
+  // still means the project answered the question, and a template must not
+  // answer it differently.
+  const detectDbFromEnvFiles = (files) => {
+    let declared = false;
+    for (const ef of files) {
+      const ep = path.join(ROOT, ef);
+      if (!existsSafe(ep)) continue;
       const ec = readFileSafe(ep);
-      if (ec && ec.includes("DATABASE_URL")) {
-        // .env: original checks postgres (not postgresql), no oracle/h2.
-        // Preserve that semantics, but update both primary and array
-        // outputs together.
-        const envDbs = [
-          ["postgres", "postgresql"],
-          ["mysql", "mysql"],
-          ["mongodb", "mongodb"],
-          ["sqlite", "sqlite"],
-        ];
-        for (const [keyword, value] of envDbs) {
-          if (ec.includes(keyword)) {
-            if (!stack.database) stack.database = value;
-            if (!stack.databases.includes(value)) stack.databases.push(value);
-          }
+      if (!ec || !ec.includes("DATABASE_URL")) continue;
+      declared = true;
+      const envDbs = [
+        ["postgres", "postgresql"],
+        ["mysql", "mysql"],
+        ["mongodb", "mongodb"],
+        ["sqlite", "sqlite"],
+      ];
+      for (const [keyword, value] of envDbs) {
+        if (ec.includes(keyword)) {
+          if (!stack.database) stack.database = value;
+          if (!stack.databases.includes(value)) stack.databases.push(value);
         }
       }
     }
-  }
+    return declared;
+  };
+
+  // Runtime env files first — they hold the real values. Unchanged behaviour.
+  const runtimeEnvDeclared = detectDbFromEnvFiles([".env", ".env.local", ".env.development"]);
 
   // Prisma schema
   const prismaSchema = path.join(ROOT, "prisma/schema.prisma");
@@ -1087,6 +1500,30 @@ async function detectStack(ROOT) {
         if (db[prov[1]]) stack.database = db[prov[1]];
       }
     }
+  }
+
+  // v2.5.x — `.env` is gitignored in most repos, so on a fresh clone the
+  // runtime files are absent and the DB type went undetected even though the
+  // project committed a perfectly good `.env.example`. lib/env-parser.js has
+  // always treated `.env.example` as the canonical "shape of truth" (it heads
+  // ENV_FILE_ORDER); this aligns DB detection with that.
+  //
+  // POSITION MATTERS: this runs LAST, after every other DB source including
+  // the Prisma block above. An `.env.example` value is a placeholder by
+  // definition; `schema.prisma`, build files and `application.yml` are
+  // declarative statements of intent. Hoisting this above them would let a
+  // stale placeholder win the `if (!stack.database)` race against a real
+  // declaration — worse than the null it replaces.
+  //
+  // Two guards keep it strictly additive — a template is consulted ONLY to
+  // fill a total blank, never to contradict or pad an existing answer:
+  //   1. no runtime env file declared a DATABASE_URL, and
+  //   2. no other source (build.gradle / pom.xml / requirements.txt /
+  //      application.yml / schema.prisma) has identified a database.
+  // So a placeholder `mysql://` in `.env.example` can never append a phantom
+  // dialect to a project whose build file already said `oracle`.
+  if (!runtimeEnvDeclared && stack.databases.length === 0 && !stack.database) {
+    detectDbFromEnvFiles([".env.example", ".env.sample", ".env.template"]);
   }
 
   // ── Config file fallback (monorepo) ──

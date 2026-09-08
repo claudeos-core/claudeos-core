@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ Cốt lõi gắn kết tất cả lại là một bất biến: **Claude chỉ �
 
 12 stack, tự động phát hiện từ chính các file dự án.
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (và Spring Framework không dùng Boot, xem bên dưới) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 Dự án multi-stack (chẳng hạn Spring Boot backend cộng Next.js frontend) chạy được luôn mà không cần điều chỉnh.
+
+**Java cũ là mục tiêu hạng nhất (v2.5.1).** Spring 1.x–6.x không dùng Boot được nhận diện: Gradle (thời `apply plugin:`, cách viết `group:/name:/version:` theo thứ tự bất kỳ, phân giải biến qua `gradle.properties` / `apply from:` / buildSrc, version catalog, root chỉ có `settings.gradle`), Maven (POM thời Maven 2, property `${spring.version}`, `spring-framework-bom`, root multi-module, các project anh em không có POM gốc), **Ant + Ivy**, **metadata của Eclipse / IntelliJ / NetBeans** (`.classpath` kể cả tham chiếu tới JAR không commit, mức compliance trong `.settings`, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, version schema XSD của Spring và **eGovFrame** — kèm framework, version Spring Framework, mức Java, packaging `war`/`ear`, driver JDBC và ORM. Cây source lấy `src/` làm gốc cũng được quét bằng đúng các domain pattern như `src/main/java`. Mọi version báo ra đều đọc từ file build, tên JAR hoặc property định nghĩa trong chính project; không suy ra từ giá trị mặc định của framework. Project JVM hoàn toàn không có Spring (`java-library`, `application`, `war` chỉ dùng servlet) được báo là Java với `framework: null`, không bao giờ là Spring.
 
 Quy tắc phát hiện và những gì mỗi scanner trích xuất được mô tả trong [docs/vi/stacks.md](docs/vi/stacks.md).
 

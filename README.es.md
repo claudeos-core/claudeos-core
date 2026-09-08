@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ Para los detalles de cada paso, el sistema de resume basado en marcadores, el tr
 
 12 stacks que se autodetectan a partir de los archivos del proyecto:
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (y Spring Framework sin Boot, ver más abajo) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 Los proyectos multi-stack (por ejemplo, backend Spring Boot con frontend Next.js) funcionan tal cual.
+
+**El Java heredado es un objetivo de primera clase (v2.5.1).** Se detecta Spring 1.x–6.x sin Boot en Gradle (era de `apply plugin:`, notación `group:/name:/version:` en cualquier orden, resolución vía `gradle.properties` / `apply from:` / buildSrc, catálogos de versiones, raíces con solo `settings.gradle`), Maven (POMs de Maven 2, propiedades `${spring.version}`, `spring-framework-bom`, raíces multi-módulo, proyectos hermanos sin POM raíz), **Ant + Ivy**, **metadatos de Eclipse / IntelliJ / NetBeans** (`.classpath` incluidas las referencias a JARs no versionados, nivel de cumplimiento de `.settings`, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, versiones de esquema XSD de Spring y **eGovFrame** — con framework, versión de Spring Framework, nivel de Java, empaquetado `war`/`ear`, driver JDBC y ORM. Los árboles de fuentes con raíz `src/` se escanean con los mismos patrones de dominio que `src/main/java`. Toda versión reportada se lee de un archivo de build, del nombre de un JAR o de una propiedad definida en el proyecto; nada se supone a partir de valores por defecto del framework. Los proyectos JVM sin Spring alguno (`java-library`, `application`, `war` solo de servlets) se reportan como Java con `framework: null`, nunca como Spring.
 
 Las reglas de detección y lo que extrae cada scanner están en [docs/es/stacks.md](docs/es/stacks.md).
 

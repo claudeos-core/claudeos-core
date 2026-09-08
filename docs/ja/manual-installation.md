@@ -58,7 +58,7 @@ npm uninstall -g claudeos-core
 ```json
 {
   "devDependencies": {
-    "claudeos-core": "^2.5.0"
+    "claudeos-core": "^2.5.1"
   }
 }
 ```
@@ -131,7 +131,7 @@ npm link claudeos-core
 
 ```bash
 npm pack claudeos-core
-# claudeos-core-2.5.0.tgz が生成される
+# claudeos-core-2.5.1.tgz が生成される
 ```
 
 **`.tgz` をエアギャップ環境へ転送します。**
@@ -139,7 +139,7 @@ npm pack claudeos-core
 **ローカルファイルからインストール:**
 
 ```bash
-npm install -g ./claudeos-core-2.5.0.tgz
+npm install -g ./claudeos-core-2.5.1.tgz
 ```
 
 ほかに必要なもの:
@@ -156,7 +156,7 @@ npm install -g ./claudeos-core-2.5.0.tgz
 どのインストール方法でも、次の 4 つを確認します。
 
 ```bash
-# バージョン (例: 2.5.0) が出るはず
+# バージョン (例: 2.5.1) が出るはず
 claudeos-core --version
 
 # Claude Code のバージョンが出るはず

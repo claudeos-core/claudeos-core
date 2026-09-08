@@ -228,7 +228,7 @@ async function main() {
           const framework = paData.stack?.framework;
           const language = paData.stack?.language;
           const architecture = paData.stack?.architecture;
-          isBackend = !frontend || ["express", "nestjs", "fastify", "django", "fastapi", "flask", "spring-boot"].includes(framework);
+          isBackend = !frontend || ["express", "nestjs", "fastify", "django", "fastapi", "flask", "spring-boot", "spring-framework"].includes(framework);
           isKotlin = language === "kotlin";
           isKotlinCqrs = isKotlin && (architecture === "cqrs" || paData.stack?.multiModule);
         } catch (_e) { /* If project-analysis parsing fails, conservatively assume backend */ }

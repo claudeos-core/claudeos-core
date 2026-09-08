@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ Pipeline **तीन stages** में चलती है, और LLM call क
 
 12 stacks, project files से auto-detected।
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (और Boot के बिना Spring Framework, नीचे देखें) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 Multi-stack projects (जैसे Spring Boot backend + Next.js frontend) भी out of the box चलते हैं।
+
+**Legacy Java अब first-class target है (v2.5.1).** Boot के बिना Spring 1.x–6.x detect होता है: Gradle (`apply plugin:` युग, किसी भी क्रम में `group:/name:/version:` notation, `gradle.properties` / `apply from:` / buildSrc से resolution, version catalogs, सिर्फ़ `settings.gradle` वाले root), Maven (Maven-2 POM, `${spring.version}` properties, `spring-framework-bom`, multi-module root, बिना root POM के sibling projects), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans metadata** (`.classpath` — बिना commit किए JAR references सहित, `.settings` का compliance level, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD schema versions और **eGovFrame** — framework, Spring Framework version, Java level, `war`/`ear` packaging, JDBC driver और ORM के साथ। `src/`-rooted source tree भी उन्हीं domain patterns से scan होते हैं जो `src/main/java` पर लगते हैं। बताई गई हर version किसी build file, JAR के नाम या project में define की गई property से पढ़ी जाती है; framework के default से कुछ भी नहीं माना जाता। जिन JVM projects में Spring है ही नहीं (`java-library`, `application`, सिर्फ़ servlet वाला `war`) उन्हें `framework: null` के साथ Java बताया जाता है, Spring कभी नहीं।
 
 Detection rules और हर scanner क्या निकालता है, यह [docs/hi/stacks.md](docs/hi/stacks.md) में है।
 

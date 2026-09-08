@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ For per-pass details, marker-based resume, the staged-rules workaround for Claud
 
 12 stacks, auto-detected from your project files:
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (and non-Boot Spring Framework, see below) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 Multi-stack projects (e.g., Spring Boot backend + Next.js frontend) work out of the box.
+
+**Legacy Java is a first-class target (v2.5.1).** Pre-Boot Spring 1.x–6.x on Gradle (`apply plugin:` era, `group:/name:/version:` notation in any order, `gradle.properties` / `apply from:` / buildSrc indirection, version catalogs, settings-only roots), Maven (Maven-2 poms, `${spring.version}` properties, `spring-framework-bom`, multi-module roots, sibling projects with no root pom), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans metadata** (`.classpath` incl. uncommitted jar references, `.settings` compliance level, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD schema versions and **eGovFrame** are detected — framework, Spring Framework version, Java level, `war`/`ear` packaging, JDBC driver and ORM — and `src/`-rooted source trees are scanned with the same domain patterns as `src/main/java`. Every version reported is read from a build file, a jar name or a property defined in the project; nothing is assumed from a framework default. JVM projects with no Spring at all (`java-library`, `application`, servlet-only `war`) are reported as Java with `framework: null`, never as Spring.
 
 For detection rules and what each scanner extracts, see [docs/stacks.md](docs/stacks.md).
 

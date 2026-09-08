@@ -63,6 +63,40 @@ scanner 코드는 `plan-installer/scanners/scan-java.js`에 있습니다.
 
 ---
 
+### Java / Spring Framework (Boot 없음) 과 레거시 JVM (v2.5.1+) — 위 Java 스택의 변형, 템플릿 동일
+
+**탐지 조건:** 빌드가 JVM 플러그인을 선언하거나, 그룹이 **정확히** `org.springframework` (Spring 1.x는 `springframework`) 인 의존성을 선언한 경우. Spring Boot 유무는 상관없습니다. `org.springframework.boot` / `.security` / `.data` / `.cloud` 는 별개 프로젝트이며 절대 Spring Framework로 보고되지 않습니다.
+
+| 빌드 형태 | 읽는 근거 |
+|---|---|
+| Gradle, `apply plugin:` 시절 | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`; `compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`; `group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`; `org.springframework:spring:2.5.6` (2.x 시절 단일 jar) |
+| Gradle, `plugins { }` / Kotlin DSL | `id 'java'`, 맨 이름 `java` / `war` / `` `java-library` ``, `apply(plugin = "war")`; `platform()` / `mavenBom` 을 통한 `spring-framework-bom`; 버전 카탈로그 `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle, 변수 | `ext { springVersion = '…' }`, `def` / `val`, **`gradle.properties`** (같은 파일 정의가 우선), `${project.x}` / `${rootProject.ext.x}`, Groovy 맵 `${versions.spring}`, buildSrc `${Versions.spring}`, `apply from:` 스크립트; Boot 1.x/2.x `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`; `options.release = 17` |
+| Spring 1.x | `org.` 없는 그룹 `springframework` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`; `<groupId>org.springframework</groupId>` 의존성 (주석 제거 후); `spring-framework-bom` import; `<spring.version>` / `<spring.maven.version>` 프로퍼티; `spring-boot-starter-parent` 의 `<version>`; `spring-boot-dependencies` BOM; `<maven.compiler.release>`; Maven 2 시절 `maven-compiler-plugin` 의 `<source>1.5</source>`; **멀티 모듈** `<modules>` 자식 (≤30) |
+| 리포지토리 형태 | `settings.gradle` 만 있는 루트; 루트 빌드 파일 없이 `*/pom.xml` 형제 프로젝트 (깊이 1, ≤30) |
+| IDE 메타데이터 | `.settings/org.eclipse.jdt.core.prefs` 의 compliance; `.classpath` 의 JRE 이름 (`jdk1.6.0_45`) 과 `kind="lib"/"var"` jar 경로 (jar 가 커밋되지 않아도 됨); `.idea/misc.xml` 의 `languageLevel`; `nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`), `ivy.xml` (`org="org.springframework"` 정확 일치, `rev="…"`) |
+| Eclipse WTP / 빌드 도구 없음 | `.classpath` 의 JRE 컨테이너 (`JavaSE-1.7`), `.project` 의 `javanature`; `**/{WEB-INF/lib,lib,libs}/**/*.jar` 파일명 → Spring 버전 (`spring-webmvc-3.0.5.RELEASE.jar`), JDBC 드라이버 (`ojdbc*`, `mysql-connector`, `mariadb-java-client`, `postgresql-`, `h2-`, `sqlite-jdbc`, `mssql-jdbc` / `jtds`, `db2jcc`, Tibero / Altibase / Cubrid), ORM (`ibatis-*`, `mybatis-*`, `hibernate-*`) — `*.java` 소스가 함께 있을 때만 |
+| 배포 기술자 | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC, `war`), Struts 필터 (태그), `<web-app version>`; Spring XML 의 `spring-*-3.0.xsd` → major.minor 버전, 우선순위 최하위 |
+| eGovFrame | `egovframework.rte[.*]` 좌표 → `spring-framework` + `detected` 에 `egovframe <version>` 태그 |
+
+**추출 항목 (위 Spring Boot 목록에 더해):** `frameworkVersion` 과 함께 `framework: "spring-framework"`, `packaging` (`war` / `ear` / `jar` / `pom` — 선언된 경우에만), `springFrameworkVersion` (Framework 버전을 명시적으로 고정한 Boot 프로젝트에서도 채워짐), 소스 루트가 `src/main/java` 가 아닐 때 `sourceLayout: "legacy"`.
+
+**버전 정책.** 모든 버전 문자열은 빌드 파일, jar 이름, 또는 같은 프로젝트 안에 정의된 변수/프로퍼티의 부분 문자열입니다. 해석되지 않는 `${var}` 는 리터럴 대신 `null` 이 되고, 버전이 없는 Spring 2.0 시절 `spring.jar` 는 `frameworkVersion: null` 로 프레임워크만 보고합니다. 프레임워크 기본값에서 가져오는 값은 하나도 없습니다.
+
+**우선순위.** 빌드 파일 (Gradle / Maven) 이 먼저, 그다음 Node / Python 매니페스트, 마지막이 위의 레거시 근거입니다. 레거시 근거는 아무도 주장하지 않은 언어를 채우거나, *잠정* Node 언어 (프레임워크도 프론트엔드 프레임워크도 없는 루트 `package.json` — 애셋 도구용) 를 되찾을 수 있을 뿐이며, 그것도 강한 근거 (`build.xml`, `.project` 의 javanature, 형제 빌드 파일, `WEB-INF/web.xml`) 가 있을 때만입니다. Next.js / Django 프로젝트가 떠도는 `.idea/` 나 벤더링된 jar 때문에 Java 로 뒤집히는 일은 없고, `*.java` 소스가 없는 jar 디렉터리는 아무것도 주장하지 않습니다.
+
+**오탐 가드.** Spring 이 전혀 없는 JVM 프로젝트 (`java-library`, `application`, 서블릿만 쓰는 `war`, Struts 1/2 단독) 는 `framework: null` 인 Java 로 보고됩니다. `com.android.application` 은 JVM `application` 플러그인이 아닙니다. Spring Framework 를 쓰는 Kotlin 프로젝트는 `language: kotlin` 을 유지합니다.
+
+**소스 루트.** `scan-java` 는 `src/main/java` / `src/main/resources` 패턴을 발견된 루트에 맞춰 다시 씁니다. `[<module>/]src/main/java` 가 하나라도 있으면 그것만 사용합니다. 없으면 순서대로: `.classpath` 의 `kind="src"` 항목 (테스트 폴더 제외), `build.xml` 의 `<javac srcdir>` (`<property>` 해석 포함), 그다음 `*.java` 를 담고 있는 `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src`. 이후 동일한 5개 도메인 패턴이 적용되므로 `src/com/acme/erp/controller/*.java` 는 `src/main/java` 아래에 있을 때와 똑같이 Pattern C 입니다.
+
+**알려진 한계.** Gradle 파일은 주석을 제거하지 않습니다 (`//` 로 주석 처리된 좌표도 계산됨 — Boot 에서도 늘 그랬습니다). 리포지토리 밖 부모 pom 으로부터의 상속은 해석하지 않습니다. eGovFrame 의 `web/` 컨트롤러 레이어는 아직 Pattern A/B 의 레이어 이름으로 인식되지 않습니다.
+
+헬퍼는 `plan-installer/jvm-detect.js` 에 있습니다 (순수 텍스트 함수, 단위 테스트로 격리 검증).
+
+---
+
 ### Kotlin / Spring Boot
 
 **감지 조건:** `build.gradle.kts`가 있고 Kotlin plugin이 Spring Boot와 함께 적용된 경우. Java와는 완전히 별도의 코드 경로로 동작하므로 Java 패턴을 재사용하지 않습니다.
@@ -265,7 +299,7 @@ scanner는 `.env*` 파일을 읽어 런타임 설정을 가져옵니다. 생성�
 7. `.env.local`
 8. `.env.development`
 
-**민감 변수 마스킹:** `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다.
+**민감 변수 마스킹:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다.
 
 **Port 결정 우선순위:**
 1. Spring Boot `application.yml`의 `server.port`

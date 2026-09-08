@@ -286,6 +286,97 @@ test("sensitive variable redaction", async (t) => {
     assert.deepStrictEqual(redactSensitiveVars({}), {});
   });
 
+  await t.test("isSensitiveVarName detects abbreviated / less common secret names", () => {
+    // These names were NOT matched before: `/password/i` and `/passwd/i` miss
+    // the bare `PASS` form entirely, and there was no ssh/signing key rule.
+    const sensitive = [
+      "DB_PASS", "MYSQL_PASS", "PASS", "pass", "REDIS-PASS", "DB_PASS_2",
+      "PASSPHRASE", "KEY_PASSPHRASE",
+      "SSH_KEY", "SSH-KEY", "SSHKEY",
+      "SIGNING_KEY", "SIGN_KEY", "SIGNINGKEY",
+    ];
+    for (const name of sensitive) {
+      assert.ok(isSensitiveVarName(name), `${name} should be detected as sensitive`);
+    }
+  });
+
+  await t.test("abbreviated `pass` rule is segment-anchored, not a substring match", () => {
+    // A bare /pass/i would redact these config values and destroy real facts.
+    const safe = [
+      "BYPASS_AUTH", "PASSENGER_NAME", "COMPASS_URL", "PASSTHROUGH_MODE",
+    ];
+    for (const name of safe) {
+      assert.ok(!isSensitiveVarName(name), `${name} should NOT be flagged sensitive`);
+    }
+  });
+
+  await t.test("secret-name corpus: real-world secret key names are all redacted", () => {
+    const secrets = [
+      "DB_PASS", "DB_PW", "ADMIN_PW", "ROOT_PW", "REDIS_PASS", "SMTP_PASS",
+      "RABBITMQ_DEFAULT_PASS", "POSTGRES_PASSWORD", "MYSQL_ROOT_PASSWORD",
+      "MONGO_INITDB_ROOT_PASSWORD", "LDAP_BIND_PASSWORD", "KEYSTORE_PASSWORD",
+      "TRUSTSTORE_PASSWORD", "SSL_KEY_PASSWORD", "PASSPHRASE", "PEPPER",
+      "SECRET_KEY_BASE", "DJANGO_SECRET_KEY", "NEXTAUTH_SECRET", "COOKIE_SECRET",
+      "OAUTH_CLIENT_SECRET", "HMAC_SECRET", "WEBHOOK_SECRET", "CSRF_SECRET",
+      "STRIPE_SECRET_KEY", "SENDGRID_API_KEY", "AWS_ACCESS_KEY_ID",
+      "GCP_SERVICE_ACCOUNT_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
+      "SLACK_BOT_TOKEN", "REFRESH_TOKEN", "PRIVATE_TOKEN", "VAPID_PRIVATE_KEY",
+      "SSH_KEY", "SSH_PRIVATE_KEY", "DEPLOY_KEY", "MASTER_KEY", "LICENSE_KEY",
+      "FCM_SERVER_KEY", "SIGNING_KEY", "JWT_SIGNING_KEY", "DATA_ENCRYPTION_KEY",
+      "RECAPTCHA_SECRET_KEY", "BASIC_AUTH_PASSWORD", "PASSWORD_SALT",
+      "KEYSTORE_PASSPHRASE", "PASSWORD_PEPPER", "SSH_KEY_PATH",
+      "SERVICE_ACCOUNT", "SERVICE_ACCOUNT_JSON", "SERVICE_ACCOUNT_KEY_PATH",
+    ];
+    for (const name of secrets) {
+      assert.ok(isSensitiveVarName(name), `${name} must be redacted`);
+    }
+  });
+
+  await t.test("benign-name corpus: architecture facts survive redaction", () => {
+    // These carry information the generated docs depend on. A blanket
+    // `key` / `pass` rule would destroy them — see the comments on
+    // SENSITIVE_VAR_PATTERNS before widening anything.
+    const benign = [
+      "ROUTING_KEY", "PARTITION_KEY", "SORT_KEY", "IDEMPOTENCY_KEY",
+      "FOREIGN_KEY_CHECKS", "KEY_PREFIX", "CACHE_KEY_PREFIX", "KEY_ALGORITHM",
+      "MASTER_KEYSPACE", "MASTER_HOST", "SERVER_KEYSTORE_PATH", "SERVER_NAME",
+      "SERVICE_NAME", "SERVICE_PORT", "DEPLOY_ENV", "DEPLOY_TARGET",
+      "LICENSE_URL", "BYPASS_AUTH", "BYPASS_CACHE", "PASSENGER_APP_ENV",
+      "COMPASS_URL", "ENCOMPASS_ID", "PASSIVE_MODE", "SURPASS_LIMIT",
+      "HARDWARE_ID", "KEYCLOAK_REALM", "DESIGN_SYSTEM", "ASSIGNEE",
+      "POWER_MODE", "SPAWN_RATE",
+      // Anchor regressions found in review round 2: each of these was
+      // redacted by an unanchored pattern before the anchors were added.
+      "SERVICE_ACCOUNT_EMAIL", "SERVICE_ACCOUNT_NAME", "SERVICE_ACCOUNT_ID",
+      "SSH_KEYSCAN_HOSTS", "SSH_KNOWN_HOSTS", "PEPPER_ROUNDS",
+      "SERVER_KEYS_DIR", "PWD", "OLDPWD",
+    ];
+    for (const name of benign) {
+      assert.ok(!isSensitiveVarName(name), `${name} must NOT be redacted`);
+    }
+  });
+
+  await t.test("accepted over-match: a leading PASS_ segment is redacted (documented trade-off)", () => {
+    // `PASS_RATE=0.95` loses one config fact. Narrowing the rule to a
+    // trailing segment would drop `DB_PASS_2` / `PASS_FILE` and leak a live
+    // credential instead. This test exists so the trade-off is deliberate,
+    // not rediscovered as a "bug" and narrowed into a leak.
+    assert.ok(isSensitiveVarName("PASS_RATE"));
+  });
+
+  await t.test("redactSensitiveVars redacts DB_PASS (v2.5.0 leak: written verbatim to project-analysis.json)", () => {
+    const input = {
+      DATABASE_URL: "postgres://appuser:s3cr3t@db.internal:5432/app",
+      DB_PASS: "hunter2",
+      SERVER_PORT: "8081",
+    };
+    const out = redactSensitiveVars(input);
+    assert.strictEqual(out.DB_PASS, "***REDACTED***");
+    // Unchanged behaviour around it: URL userinfo masked, plain config kept.
+    assert.strictEqual(out.DATABASE_URL, "postgres://***:***@db.internal:5432/app");
+    assert.strictEqual(out.SERVER_PORT, "8081");
+  });
+
   await t.test("readStackEnvInfo end-to-end redacts secrets", () => {
     const os = require("node:os");
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "redact-e2e-"));

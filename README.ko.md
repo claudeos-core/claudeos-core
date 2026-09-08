@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-825%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -358,11 +358,13 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 거꾸로 뒤집습니
 
 12개 스택을 프로젝트 파일에서 자동으로 감지합니다:
 
-**Backend:** Java/Spring Boot · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
+**Backend:** Java/Spring Boot (Boot 없는 Spring Framework 포함, 아래 참고) · Kotlin/Spring Boot · Node/Express · Node/Fastify · Node/NestJS · Python/Django · Python/FastAPI · Python/Flask
 
 **Frontend:** Node/Next.js · Node/Vite · Angular · Vue/Nuxt
 
 멀티 스택 프로젝트 (예: Spring Boot 백엔드 + Next.js 프론트엔드)도 그대로 동작합니다.
+
+**레거시 Java도 1급 대상입니다 (v2.5.1).** Boot 없는 Spring 1.x–6.x를 탐지합니다. Gradle (`apply plugin:` 시절, 순서 무관한 `group:/name:/version:` 표기, `gradle.properties` / `apply from:` / buildSrc를 통한 변수 해석, 버전 카탈로그, `settings.gradle`만 있는 루트), Maven (Maven 2 POM, `${spring.version}` 프로퍼티, `spring-framework-bom`, 멀티 모듈 루트, 루트 POM 없는 형제 프로젝트), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans 메타데이터** (커밋되지 않은 JAR 참조를 포함한 `.classpath`, `.settings`의 compliance 레벨, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD 스키마 버전, 그리고 **eGovFrame (전자정부 표준프레임워크)** 까지 — 프레임워크, Spring Framework 버전, Java 레벨, `war`/`ear` 패키징, JDBC 드라이버, ORM을 뽑아냅니다. `src/`를 루트로 하는 소스 트리도 `src/main/java`와 동일한 도메인 패턴으로 스캔합니다. 보고되는 모든 버전은 빌드 파일, JAR 이름, 또는 프로젝트 안에 정의된 프로퍼티에서 읽은 값이며 프레임워크 기본값으로 추정하지 않습니다. Spring을 전혀 쓰지 않는 JVM 프로젝트 (`java-library`, `application`, 서블릿만 쓰는 `war`)는 `framework: null`인 Java로 보고되며 Spring으로 잡히지 않습니다.
 
 감지 규칙과 각 scanner가 추출하는 내용은 [docs/ko/stacks.md](docs/ko/stacks.md) 참고.
 

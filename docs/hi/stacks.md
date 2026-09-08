@@ -63,6 +63,40 @@ Scanner `plan-installer/scanners/scan-java.js` में है।
 
 ---
 
+### Java / Spring Framework (Boot के बिना) और legacy JVM (v2.5.1+) — ऊपर वाले Java stack का variant, वही template
+
+**कब detect होता है:** जब build किसी JVM plugin को declare करता हो, या ऐसी dependency को जिसका group **बिल्कुल** `org.springframework` हो (Spring 1.x में `springframework`) — Spring Boot हो या न हो। `org.springframework.boot` / `.security` / `.data` / `.cloud` अलग projects हैं और इन्हें कभी Spring Framework नहीं बताया जाता।
+
+| Build का रूप | पढ़ा गया evidence |
+|---|---|
+| Gradle, `apply plugin:` युग | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`; `compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`; `group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`; `org.springframework:spring:2.5.6` (2.x युग का single jar) |
+| Gradle, `plugins { }` / Kotlin DSL | `id 'java'`, अकेला `java` / `war` / `` `java-library` ``, `apply(plugin = "war")`; `platform()` / `mavenBom` के ज़रिए `spring-framework-bom`; version catalog `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle, variables | `ext { springVersion = '…' }`, `def` / `val`, **`gradle.properties`** (उसी file की definition जीतती है), `${project.x}` / `${rootProject.ext.x}`, Groovy map `${versions.spring}`, buildSrc `${Versions.spring}`, `apply from:` scripts; Boot 1.x/2.x `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`; `options.release = 17` |
+| Spring 1.x | `org.` के बिना group `springframework` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`; `<groupId>org.springframework</groupId>` वाली dependencies (comments हटाकर); `spring-framework-bom` import; `<spring.version>` / `<spring.maven.version>` properties; `spring-boot-starter-parent` का `<version>`; `spring-boot-dependencies` BOM; `<maven.compiler.release>`; Maven 2 युग के `maven-compiler-plugin` का `<source>1.5</source>`; **multi-module**: `<modules>` के children (≤30) |
+| Repository की बनावट | सिर्फ़ `settings.gradle` वाला root; root में build file नहीं पर `*/pom.xml` sibling projects (depth 1, ≤30) |
+| IDE metadata | `.settings/org.eclipse.jdt.core.prefs` का compliance; `.classpath` में JRE नाम (`jdk1.6.0_45`) और `kind="lib"/"var"` वाले jar paths (jar commit किए बिना भी); `.idea/misc.xml` का `languageLevel`; `nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`), `ivy.xml` (`org="org.springframework"` exact, `rev="…"`) |
+| Eclipse WTP / बिना build tool | `.classpath` का JRE container (`JavaSE-1.7`), `.project` का `javanature`; `**/{WEB-INF/lib,lib,libs}/**/*.jar` के नामों से → Spring version (`spring-webmvc-3.0.5.RELEASE.jar`), JDBC driver (`ojdbc*`, `mysql-connector`, `mariadb-java-client`, `postgresql-`, `h2-`, `sqlite-jdbc`, `mssql-jdbc` / `jtds`, `db2jcc`, Tibero / Altibase / Cubrid), ORM (`ibatis-*`, `mybatis-*`, `hibernate-*`) — सिर्फ़ तब जब पास में `*.java` sources हों |
+| Deployment descriptor | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC, `war`), Struts filters (tag), `<web-app version>`; Spring XML का `spring-*-3.0.xsd` → major.minor version, सबसे कम priority |
+| eGovFrame | `egovframework.rte[.*]` coordinates → `spring-framework` और `detected` में `egovframe <version>` tag |
+
+**निकाले गए facts (ऊपर की Spring Boot सूची के अलावा):** `frameworkVersion` के साथ `framework: "spring-framework"`, `packaging` (`war` / `ear` / `jar` / `pom` — सिर्फ़ जब declare किया गया हो), `springFrameworkVersion` (उन Boot projects के लिए भी भरा जाता है जो Framework version स्पष्ट रूप से pin करते हैं), और जब source root `src/main/java` न हो तो `sourceLayout: "legacy"`।
+
+**Version नीति.** हर version string किसी build file, jar नाम, या उसी project में define की गई variable/property का substring है। जो `${var}` resolve न हो वह literal नहीं बल्कि `null` देता है; नाम में version न रखने वाला Spring 2.0 युग का `spring.jar` सिर्फ़ framework बताता है, `frameworkVersion: null` के साथ। framework के default से कुछ भी नहीं लिया जाता।
+
+**Precedence.** पहले build files (Gradle / Maven), फिर Node / Python manifests, और सबसे आख़िर में ऊपर वाला legacy evidence। यह evidence सिर्फ़ उस language को भर सकता है जिस पर किसी ने दावा न किया हो, या एक *provisional* Node language वापस ले सकता है (root `package.json` जिसमें न framework मिला न frontend framework — यानी asset tooling), और वह भी सिर्फ़ मज़बूत evidence पर: `build.xml`, javanature वाला `.project`, sibling build file, या `WEB-INF/web.xml`। कोई Next.js / Django project किसी भटके हुए `.idea/` या vendored jar की वजह से Java में नहीं बदलता; जिस jar directory में `*.java` sources न हों वह कुछ भी दावा नहीं करती।
+
+**False-positive guards.** जिस JVM project में Spring है ही नहीं (`java-library`, `application`, सिर्फ़ servlet वाला `war`, अकेला Struts 1/2) उसे `framework: null` के साथ Java बताया जाता है। `com.android.application` JVM का `application` plugin नहीं है। Spring Framework इस्तेमाल करने वाला Kotlin project `language: kotlin` ही रहता है।
+
+**Source roots.** `scan-java` अपने `src/main/java` / `src/main/resources` patterns को मिली हुई root के हिसाब से फिर से लिखता है। अगर कोई भी `[<module>/]src/main/java` मौजूद है तो सिर्फ़ वही इस्तेमाल होते हैं। नहीं तो इस क्रम में: `.classpath` की `kind="src"` entries (test folders छोड़कर), `build.xml` का `<javac srcdir>` (`<property>` resolution सहित), फिर `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` — बशर्ते उनमें `*.java` हो। उसके बाद वही पाँच domain patterns लगते हैं, इसलिए `src/com/acme/erp/controller/*.java` ठीक वैसे ही Pattern C है जैसे `src/main/java` के नीचे होता।
+
+**ज्ञात सीमाएँ.** Gradle files से comments नहीं हटाए जाते (`//` से comment किया coordinate भी गिना जाता है — Boot के लिए हमेशा से ऐसा ही रहा है)। Repository के बाहर के parent pom से inheritance resolve नहीं होती। eGovFrame की `web/` controller layer अभी Pattern A/B के लिए layer नाम के रूप में पहचानी नहीं जाती।
+
+Helpers `plan-installer/jvm-detect.js` में हैं (pure text functions, अलग से unit-tested)।
+
+---
+
 ### Kotlin / Spring Boot
 
 **Detect कब होता है:** `build.gradle.kts` मौजूद हो और Spring Boot के साथ Kotlin plugin apply हो। Java से पूरी तरह अलग code path है, Java patterns reuse नहीं करता।
@@ -265,7 +299,7 @@ Scanner runtime configuration के लिए `.env*` files पढ़ता ह
 7. `.env.local`
 8. `.env.development`
 
-**Sensitive-variable redaction:** `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` वग़ैरह से match होती keys `project-analysis.json` में copy होने से पहले automatically `***REDACTED***` हो जाती हैं। बाक़ी हर URL जैसी value (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) में credentials को `***:***` से mask कर दिया जाता है, जबकि scheme, host, port और path वैसे ही रहते हैं (`postgres://***:***@db.internal:5432/app`): DB type अब भी पहचाना जा सकता है, और password कभी file तक नहीं पहुँचता। Scanner का अपना DB-type detection raw `.env` text सीधे पढ़ता है, इसलिए उस पर कोई असर नहीं पड़ता।
+**Sensitive-variable redaction:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` वग़ैरह से match होती keys `project-analysis.json` में copy होने से पहले automatically `***REDACTED***` हो जाती हैं। बाक़ी हर URL जैसी value (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) में credentials को `***:***` से mask कर दिया जाता है, जबकि scheme, host, port और path वैसे ही रहते हैं (`postgres://***:***@db.internal:5432/app`): DB type अब भी पहचाना जा सकता है, और password कभी file तक नहीं पहुँचता। Scanner का अपना DB-type detection raw `.env` text सीधे पढ़ता है, इसलिए उस पर कोई असर नहीं पड़ता।
 
 **Port resolution precedence:**
 1. Spring Boot `application.yml` `server.port`

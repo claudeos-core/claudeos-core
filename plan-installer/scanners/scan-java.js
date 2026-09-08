@@ -13,6 +13,7 @@
 
 const path = require("path");
 const { glob } = require("glob");
+const { readFileSafe, existsSafe } = require("../../lib/safe-fs");
 
 // Normalize backslash paths from glob on Windows to forward slashes
 const norm = (p) => p.replace(/\\/g, "/");
@@ -29,7 +30,26 @@ const norm = (p) => p.replace(/\\/g, "/");
 // convention plugins are not application modules.
 const JAVA_ROOT_IGNORE = ["**/node_modules/**", "**/build/**", "**/target/**", "**/out/**", "**/.gradle/**", "**/generated/**", "**/.git/**", "**/src/test/**", "**/buildSrc/**"];
 
-async function discoverModulePrefixes(ROOT) {
+// v2.5.x — Source roots, not module prefixes. Every pattern below is written
+// against the Maven/Gradle convention (`src/main/java`, `src/main/resources`)
+// and is rewritten per discovered root, so the pattern set stays a single
+// source of truth while legacy layouts become scannable:
+//
+//   modern   [<module>/]src/main/java          (unchanged behaviour)
+//   Eclipse  <classpathentry kind="src" path="src"/>   ← consulted first
+//   Ant      <javac srcdir="src">  (with <property> resolution)
+//   bare     src/java, src, JavaSource, java, WebContent/WEB-INF/src holding *.java
+//
+// Candidates are tried in that order and every candidate that holds *.java
+// becomes a root, except one nested inside (or enclosing) a root already
+// accepted — the FIRST-listed of a nested pair wins, which is why the bare
+// list names `src/java` before `src`.
+//
+// Legacy roots are consulted ONLY when no `src/main/java` exists anywhere in
+// the tree, so a modern project with a stray top-level `src/` cannot be
+// mis-rooted. For legacy roots the resources root is the java root itself:
+// iBatis-era projects keep sqlmap XML next to the classes.
+async function discoverSourceRoots(ROOT) {
   const javaRoots = (await glob("**/src/main/java/", { cwd: ROOT, ignore: JAVA_ROOT_IGNORE })).map(norm);
   const resRoots = (await glob("**/src/main/resources/", { cwd: ROOT, ignore: JAVA_ROOT_IGNORE })).map(norm);
   const prefixes = new Set();
@@ -37,16 +57,57 @@ async function discoverModulePrefixes(ROOT) {
     const m = r.replace(/\/$/, "").match(/^(.*?)src\/main\/(?:java|resources)$/);
     if (m) prefixes.add(m[1]); // "" for root, "api/" for a module
   }
-  return [...prefixes].sort();
+  if (prefixes.size) {
+    return [...prefixes].sort().map(pre => ({ prefix: pre, javaRoot: pre + "src/main/java", resRoot: pre + "src/main/resources", legacy: false }));
+  }
+
+  // ── legacy fallbacks ──
+  const candidates = [];
+  const cpXml = readFileSafe(path.join(ROOT, ".classpath"));
+  if (cpXml) {
+    for (const m of cpXml.matchAll(/<classpathentry\b[^>]*\bkind\s*=\s*["']src["'][^>]*\bpath\s*=\s*["']([^"']+)["']/g)) {
+      const p = norm(m[1]).replace(/^\/|\/$/g, "");
+      if (p && !/(^|\/)test(s)?(\/|$)/i.test(p)) candidates.push(p);
+    }
+  }
+  const bx = readFileSafe(path.join(ROOT, "build.xml"));
+  if (bx) {
+    const props = {};
+    for (const m of bx.matchAll(/<property\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/g)) props[m[1]] = m[2];
+    for (const m of bx.matchAll(/<javac\b[^>]*\bsrcdir\s*=\s*["']([^"']+)["']/g)) {
+      const p = norm(m[1].replace(/\$\{([^}]+)\}/g, (_, k) => props[k] ?? "")).replace(/^\.?\/|\/$/g, "");
+      if (p && !/test/i.test(p)) candidates.push(p);
+    }
+  }
+  for (const c of ["src/java", "src", "JavaSource", "java", "WebContent/WEB-INF/src"]) candidates.push(c);
+
+  const roots = [];
+  const seen = new Set();
+  for (const c of candidates) {
+    if (seen.has(c)) continue;
+    seen.add(c);
+    if (!existsSafe(path.join(ROOT, c))) continue;
+    const hasJava = (await glob(c + "/**/*.java", { cwd: ROOT, ignore: JAVA_ROOT_IGNORE, nodir: true })).length > 0;
+    if (!hasJava) continue;
+    // Nested pair (`src` vs `src/java`) → keep the first-accepted one only.
+    if (roots.some(r => c.startsWith(r.javaRoot + "/") || r.javaRoot.startsWith(c + "/"))) continue;
+    roots.push({ prefix: "", javaRoot: c, resRoot: c, legacy: true });
+  }
+  return roots;
 }
 
-// Run one `src/main/...`-relative pattern against every discovered module
-// prefix and return the merged, normalized, de-duplicated file list.
-function makeModuleGlob(ROOT, prefixes) {
+// Run one `src/main/...`-relative pattern against every discovered source
+// root — rewriting the conventional leading segment to that root's actual
+// directory — and return the merged, normalized, de-duplicated file list.
+function makeModuleGlob(ROOT, roots) {
   return async (pattern) => {
     const out = new Set();
-    for (const pre of prefixes) {
-      for (const f of await glob(pre + pattern, { cwd: ROOT })) out.add(norm(f));
+    for (const r of roots) {
+      // Replacement FUNCTIONS so a `$` in a discovered root path is literal.
+      const p = pattern
+        .replace(/^src\/main\/java(?=\/|$)/, () => r.javaRoot)
+        .replace(/^src\/main\/resources(?=\/|$)/, () => r.resRoot);
+      for (const f of await glob(p, { cwd: ROOT })) out.add(norm(f));
     }
     return [...out];
   };
@@ -56,8 +117,16 @@ async function scanJavaDomains(stack, ROOT) {
   const backendDomains = [];
   let rootPackage = null;
 
-  const modulePrefixes = await discoverModulePrefixes(ROOT);
-  const gj = makeModuleGlob(ROOT, modulePrefixes.length ? modulePrefixes : [""]);
+  const sourceRoots = await discoverSourceRoots(ROOT);
+  const rootsInUse = sourceRoots.length ? sourceRoots : [{ prefix: "", javaRoot: "src/main/java", resRoot: "src/main/resources", legacy: false }];
+  const modulePrefixes = rootsInUse.map(r => r.prefix).filter(Boolean);
+  const gj = makeModuleGlob(ROOT, rootsInUse);
+  // Regex fragment matching any java root — used where file PATHS (not
+  // glob patterns) are inspected below. Modern roots collapse to the
+  // conventional `src/main/java`; legacy roots contribute their own dir.
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const JAVA_ROOT_ALT = [...new Set(rootsInUse.map(r => r.legacy ? r.javaRoot : "src/main/java"))].map(escRe).join("|");
+  if (stack && rootsInUse.some(r => r.legacy)) stack.sourceLayout = "legacy";
 
   const javaFiles = (await gj("src/main/java/**/*.java"));
 
@@ -80,7 +149,7 @@ async function scanJavaDomains(stack, ROOT) {
   //     not the minority `<root>.misc.*` location (no longer first-match).
   const pkgCounts = new Map();
   for (const f of javaFiles) {
-    const m = f.match(/src\/main\/java\/(.+?)\/(controller|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)/);
+    const m = f.match(new RegExp(`(?:${JAVA_ROOT_ALT})/(.+?)/(controller|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)`));
     if (!m) continue;
     const segs = m[1].split("/");
     for (let len = Math.min(4, segs.length); len >= 1; len--) {
@@ -134,12 +203,11 @@ async function scanJavaDomains(stack, ROOT) {
   // controller/`), where the module's own sub-package plays the role of the
   // Initializr base package and the domains again come from class names.
   const rootPkgPath = rootPackage ? rootPackage.replace(/\./g, "/") : null;
-  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const flatDirCache = new Map();
   const LAYER_CLASS_RE = /^(?:controller|service|mapper|repository|dao|dto)\/([A-Za-z0-9]+?)(?:Controller|Service|Mapper|Repository|Dao|Dto)\.java$/;
   const isFlatBase = (base) => {
     if (!flatDirCache.has(base)) {
-      const dirRe = new RegExp(`(^|/)src/main/java/${escRe(base)}/`);
+      const dirRe = new RegExp(`(^|/)(?:${JAVA_ROOT_ALT})/${escRe(base)}/`);
       const under = [];
       for (const x of javaFiles) {
         const m = x.match(dirRe);
@@ -157,7 +225,7 @@ async function scanJavaDomains(stack, ROOT) {
   // lives, independent of `rootPackage` (which is capped at 4 segments and
   // therefore misses `kr/co/<org>/<proj>/<app>` style base packages).
   const appBases = [...new Set(javaFiles
-    .map(f => (f.match(/src\/main\/java\/(.+)\/[A-Za-z0-9]*Application\.java$/) || [])[1])
+    .map(f => (f.match(new RegExp(`(?:${JAVA_ROOT_ALT})/(.+)/[A-Za-z0-9]*Application\\.java$`)) || [])[1])
     .filter(Boolean))];
   const isFlatLayerPath = (f, layerSegment) => {
     if (!rootPkgPath && appBases.length === 0) return false;
@@ -165,7 +233,7 @@ async function scanJavaDomains(stack, ROOT) {
     const pre = modulePrefixes.find(p => p && f.startsWith(p));
     if (pre && rootPkgPath) bases.push(`${rootPkgPath}/${pre.replace(/\/$/, "").split("/").pop()}`);
     for (const base of bases) {
-      const layerRe = new RegExp(`(^|/)src/main/java/${escRe(base)}/${escRe(layerSegment)}/[^/]+\\.java$`);
+      const layerRe = new RegExp(`(^|/)(?:${JAVA_ROOT_ALT})/${escRe(base)}/${escRe(layerSegment)}/[^/]+\\.java$`);
       if (layerRe.test(f) && isFlatBase(base)) return true;
     }
     return false;

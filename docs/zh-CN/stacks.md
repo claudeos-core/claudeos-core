@@ -63,6 +63,40 @@ scanner 在 `plan-installer/scanners/scan-java.js`。
 
 ---
 
+### Java / Spring Framework (不用 Boot) 与遗留 JVM (v2.5.1+) — 上面 Java 栈的变体，模板相同
+
+**触发条件：** 构建声明了 JVM 插件，或声明了 group **精确等于** `org.springframework` (Spring 1.x 为 `springframework`) 的依赖 — 无论有没有 Spring Boot。`org.springframework.boot` / `.security` / `.data` / `.cloud` 是各自独立的项目，绝不会被报告为 Spring Framework。
+
+| 构建形态 | 读取的依据 |
+|---|---|
+| Gradle，`apply plugin:` 时代 | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`；`compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`；`group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`；`org.springframework:spring:2.5.6` (2.x 时代的单一 jar) |
+| Gradle，`plugins { }` / Kotlin DSL | `id 'java'`、裸写的 `java` / `war` / `` `java-library` ``、`apply(plugin = "war")`；经由 `platform()` / `mavenBom` 的 `spring-framework-bom`；版本目录 `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle，变量 | `ext { springVersion = '…' }`、`def` / `val`、**`gradle.properties`** (同文件内的定义优先)、`${project.x}` / `${rootProject.ext.x}`、Groovy map `${versions.spring}`、buildSrc `${Versions.spring}`、`apply from:` 脚本；Boot 1.x/2.x 的 `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`；`options.release = 17` |
+| Spring 1.x | 不带 `org.` 的 group `springframework` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`；`<groupId>org.springframework</groupId>` 依赖 (已剥离注释)；`spring-framework-bom` import；`<spring.version>` / `<spring.maven.version>` 属性；`spring-boot-starter-parent` 的 `<version>`；`spring-boot-dependencies` BOM；`<maven.compiler.release>`；Maven 2 时代 `maven-compiler-plugin` 的 `<source>1.5</source>`；**多模块** `<modules>` 子模块 (≤30) |
+| 仓库形态 | 只有 `settings.gradle` 的根目录；根目录没有构建文件但存在 `*/pom.xml` 同级项目 (深度 1，≤30) |
+| IDE 元数据 | `.settings/org.eclipse.jdt.core.prefs` 的 compliance；`.classpath` 中的 JRE 名称 (`jdk1.6.0_45`) 与 `kind="lib"/"var"` 的 jar 路径 (jar 可以没有提交)；`.idea/misc.xml` 的 `languageLevel`；`nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`)、`ivy.xml` (`org="org.springframework"` 精确匹配、`rev="…"`) |
+| Eclipse WTP / 无构建工具 | `.classpath` 的 JRE 容器 (`JavaSE-1.7`)、`.project` 的 `javanature`；`**/{WEB-INF/lib,lib,libs}/**/*.jar` 的文件名 → Spring 版本 (`spring-webmvc-3.0.5.RELEASE.jar`)、JDBC 驱动 (`ojdbc*`、`mysql-connector`、`mariadb-java-client`、`postgresql-`、`h2-`、`sqlite-jdbc`、`mssql-jdbc` / `jtds`、`db2jcc`、Tibero / Altibase / Cubrid)、ORM (`ibatis-*`、`mybatis-*`、`hibernate-*`) — 仅当旁边有 `*.java` 源码时 |
+| 部署描述符 | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC、`war`)、Struts 过滤器 (标签)、`<web-app version>`；Spring XML 的 `spring-*-3.0.xsd` → major.minor 版本，优先级最低 |
+| eGovFrame | `egovframework.rte[.*]` 坐标 → `spring-framework`，并在 `detected` 中加上 `egovframe <version>` 标签 |
+
+**提取到的事实 (在上面 Spring Boot 列表之外)：** 带 `frameworkVersion` 的 `framework: "spring-framework"`、`packaging` (`war` / `ear` / `jar` / `pom` — 仅在声明时)、`springFrameworkVersion` (显式固定了 Framework 版本的 Boot 项目也会填充)、源码根目录不是 `src/main/java` 时的 `sourceLayout: "legacy"`。
+
+**版本策略。** 每一个版本字符串都是构建文件、jar 文件名，或同一项目内定义的变量/属性的子串。无法解析的 `${var}` 得到 `null` 而不是字面量；没有版本号的 Spring 2.0 时代 `spring.jar` 只报告框架，`frameworkVersion: null`。没有任何值取自框架默认。
+
+**优先级。** 先是构建文件 (Gradle / Maven)，然后是 Node / Python 清单，最后才是上述遗留依据。遗留依据只能填补无人认领的语言，或者收回一个*临时的* Node 语言 (根 `package.json` 既没有检出框架也没有前端框架 — 属于资源工具链)，且必须有强依据：`build.xml`、带 javanature 的 `.project`、同级构建文件，或 `WEB-INF/web.xml`。Next.js / Django 项目不会因为一个游离的 `.idea/` 或 vendored jar 被翻成 Java；没有 `*.java` 源码的 jar 目录什么都不认领。
+
+**误报防护。** 完全不用 Spring 的 JVM 项目 (`java-library`、`application`、仅有 servlet 的 `war`、单独的 Struts 1/2) 会被报告为 `framework: null` 的 Java。`com.android.application` 不是 JVM 的 `application` 插件。使用 Spring Framework 的 Kotlin 项目保持 `language: kotlin`。
+
+**源码根目录。** `scan-java` 会按发现的根目录改写自己的 `src/main/java` / `src/main/resources` 模式。只要存在任意 `[<module>/]src/main/java`，就只用这些。否则依次是：`.classpath` 的 `kind="src"` 条目 (排除测试目录)、`build.xml` 的 `<javac srcdir>` (含 `<property>` 解析)，然后是含有 `*.java` 的 `src/java`、`src`、`JavaSource`、`java`、`WebContent/WEB-INF/src`。之后套用的仍是同样的五种 domain 模式，所以 `src/com/acme/erp/controller/*.java` 与它位于 `src/main/java` 之下时一样是 Pattern C。
+
+**已知限制。** Gradle 文件不做注释剥离 (被 `//` 注释掉的坐标仍会计入 — 这一点对 Boot 向来如此)。不解析仓库之外父 pom 的继承。eGovFrame 的 `web/` 控制器层尚未被 Pattern A/B 识别为层名。
+
+辅助函数在 `plan-installer/jvm-detect.js` (纯文本函数，有独立的单元测试)。
+
+---
+
 ### Kotlin / Spring Boot
 
 **何时检测:** 存在 `build.gradle.kts` 且与 Spring Boot 一起应用了 Kotlin 插件。代码路径与 Java 完全独立,不复用 Java 模式。
@@ -265,7 +299,7 @@ scanner 读 `.env*` 文件里的运行时配置,这样生成的文档能反映�
 7. `.env.local`
 8. `.env.development`
 
-**敏感变量脱敏:** 匹配 `PASSWORD`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。
+**敏感变量脱敏:** 匹配 `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。
 
 **端口解析优先级:**
 1. Spring Boot `application.yml` 的 `server.port`

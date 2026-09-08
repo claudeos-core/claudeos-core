@@ -63,6 +63,40 @@ Der Scanner liegt in `plan-installer/scanners/scan-java.js`.
 
 ---
 
+### Java / Spring Framework (ohne Boot) und Legacy-JVM (ab v2.5.1) — Variante des obigen Java-Stacks, gleiches Template
+
+**Erkannt, wenn:** der Build ein JVM-Plugin deklariert oder eine Abhängigkeit, deren Gruppe **exakt** `org.springframework` lautet (bei Spring 1.x `springframework`) — mit oder ohne Spring Boot. `org.springframework.boot` / `.security` / `.data` / `.cloud` sind eigene Projekte und werden nie als Spring Framework gemeldet.
+
+| Build-Form | Ausgewertete Belege |
+|---|---|
+| Gradle, `apply plugin:`-Ära | `'java'` / `'java-library'` / `'war'` / `'ear'` / `'application'`; `compile 'org.springframework:spring-webmvc:4.3.30.RELEASE'`; `group: 'org.springframework', name: 'spring-webmvc', version: '3.2.18.RELEASE'`; `org.springframework:spring:2.5.6` (Einzel-JAR der 2.x-Reihe) |
+| Gradle, `plugins { }` / Kotlin DSL | `id 'java'`, blankes `java` / `war` / `` `java-library` ``, `apply(plugin = "war")`; `spring-framework-bom` über `platform()` / `mavenBom`; Version Catalog `module = "org.springframework:spring-…"` + `version.ref` |
+| Gradle, Variablen | `ext { springVersion = '…' }`, `def` / `val`, **`gradle.properties`** (Definition in derselben Datei gewinnt), `${project.x}` / `${rootProject.ext.x}`, Groovy-Maps `${versions.spring}`, buildSrc `${Versions.spring}`, `apply from:`-Skripte; Boot 1.x/2.x `buildscript { classpath("…:spring-boot-gradle-plugin:1.5.22.RELEASE") }`; `options.release = 17` |
+| Spring 1.x | blanke Gruppe `springframework` ohne `org.` (Maven / Gradle / Ivy) — `springframework:spring:1.2.9` |
+| Maven | `<packaging>`; Abhängigkeiten mit `<groupId>org.springframework</groupId>` (Kommentare entfernt); `spring-framework-bom`-Import; Properties `<spring.version>` / `<spring.maven.version>`; `<version>` von `spring-boot-starter-parent`; `spring-boot-dependencies`-BOM; `<maven.compiler.release>`; `<source>1.5</source>` im `maven-compiler-plugin` der Maven-2-Ära; **Multi-Module**: `<modules>`-Kinder (≤30) |
+| Repository-Formen | Root nur mit `settings.gradle`; kein Build-File im Root, aber `*/pom.xml`-Schwesterprojekte (Tiefe 1, ≤30) |
+| IDE-Metadaten | Compliance aus `.settings/org.eclipse.jdt.core.prefs`; JRE-Name in `.classpath` (`jdk1.6.0_45`) und JAR-Pfade mit `kind="lib"/"var"` (die JARs müssen nicht eingecheckt sein); `languageLevel` in `.idea/misc.xml`; `nbproject/project.properties` |
+| Ant / Ivy | `build.xml` (`<javac source="1.6">`), `ivy.xml` (`org="org.springframework"` exakt, `rev="…"`) |
+| Eclipse WTP / ohne Build-Tool | JRE-Container in `.classpath` (`JavaSE-1.7`), `javanature` in `.project`; JAR-Namen aus `**/{WEB-INF/lib,lib,libs}/**/*.jar` → Spring-Version (`spring-webmvc-3.0.5.RELEASE.jar`), JDBC-Treiber (`ojdbc*`, `mysql-connector`, `mariadb-java-client`, `postgresql-`, `h2-`, `sqlite-jdbc`, `mssql-jdbc` / `jtds`, `db2jcc`, Tibero / Altibase / Cubrid), ORM (`ibatis-*`, `mybatis-*`, `hibernate-*`) — nur neben `*.java`-Quellen |
+| Deployment-Deskriptor | `WEB-INF/web.xml` — `DispatcherServlet` / `ContextLoaderListener` (Spring MVC, `war`), Struts-Filter (Tag), `<web-app version>`; Spring-XML `spring-*-3.0.xsd` → Major.Minor-Version, niedrigste Priorität |
+| eGovFrame | Koordinaten `egovframework.rte[.*]` → `spring-framework` plus Tag `egovframe <version>` in `detected` |
+
+**Ermittelte Fakten (zusätzlich zur Spring-Boot-Liste oben):** `framework: "spring-framework"` mit `frameworkVersion`, `packaging` (`war` / `ear` / `jar` / `pom` — nur wenn deklariert), `springFrameworkVersion` (wird auch für Boot-Projekte gefüllt, die die Framework-Version explizit pinnen), `sourceLayout: "legacy"`, wenn die Quell-Root nicht `src/main/java` ist.
+
+**Versionsregel.** Jeder Versions-String ist ein Teilstring einer Build-Datei, eines JAR-Namens oder einer im selben Projekt definierten Variable bzw. Property. Ein nicht auflösbares `${var}` ergibt `null` statt des Literals; ein `spring.jar` aus der Spring-2.0-Zeit ohne Version im Namen meldet nur das Framework mit `frameworkVersion: null`. Nichts wird aus Framework-Defaults übernommen.
+
+**Reihenfolge.** Zuerst Build-Dateien (Gradle / Maven), dann Node- und Python-Manifeste, zuletzt die obigen Legacy-Belege. Legacy-Belege dürfen nur eine Sprache füllen, die niemand beansprucht hat, oder eine *vorläufige* Node-Sprache zurückholen (ein Root-`package.json` ohne erkanntes Framework und ohne Frontend-Framework — also Asset-Tooling), und das nur bei starken Belegen: `build.xml`, `.project` mit javanature, ein Build-File im Schwesterverzeichnis oder `WEB-INF/web.xml`. Ein Next.js- oder Django-Projekt wird nie durch ein verirrtes `.idea/` oder ein mitgeliefertes JAR zu Java; ein JAR-Verzeichnis ohne `*.java`-Quellen beansprucht gar nichts.
+
+**Schutz vor Fehlklassifikation.** Ein JVM-Projekt ganz ohne Spring (`java-library`, `application`, reines Servlet-`war`, Struts 1/2 allein) wird als Java mit `framework: null` gemeldet. `com.android.application` ist nicht das JVM-Plugin `application`. Ein Kotlin-Projekt, das Spring Framework nutzt, bleibt `language: kotlin`.
+
+**Quell-Roots.** `scan-java` schreibt seine Muster `src/main/java` / `src/main/resources` auf die gefundene Root um. Existiert irgendein `[<module>/]src/main/java`, werden nur diese verwendet. Andernfalls der Reihe nach: `kind="src"`-Einträge aus `.classpath` (Test-Ordner ausgeschlossen), `<javac srcdir>` aus `build.xml` (inklusive `<property>`-Auflösung), dann `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src`, sofern sie `*.java` enthalten. Danach greifen dieselben fünf Domain-Muster, sodass `src/com/acme/erp/controller/*.java` genauso Pattern C ist wie unterhalb von `src/main/java`.
+
+**Bekannte Grenzen.** Gradle-Dateien werden nicht von Kommentaren bereinigt (eine mit `//` auskommentierte Koordinate zählt weiterhin mit — bei Boot war das schon immer so). Vererbung aus einem Parent-POM außerhalb des Repositories wird nicht aufgelöst. Die Controller-Schicht `web/` von eGovFrame wird von Pattern A/B noch nicht als Schichtname erkannt.
+
+Die Helfer liegen in `plan-installer/jvm-detect.js` (reine Textfunktionen, isoliert unit-getestet).
+
+---
+
 ### Kotlin / Spring Boot
 
 **Erkannt, wenn:** `build.gradle.kts` vorhanden ist und das Kotlin-Plugin neben Spring Boot greift. Hat einen vollständig eigenen Code-Pfad gegenüber Java, nutzt keine Java-Muster wieder.
@@ -265,7 +299,7 @@ Der Scanner liest `.env*`-Dateien für die Laufzeitkonfiguration, damit die gene
 7. `.env.local`
 8. `.env.development`
 
-**Redigieren sensibler Variablen:** Schlüssel, die `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET` etc. matchen, landen vor dem Kopieren in `project-analysis.json` automatisch als `***REDACTED***`. Bei jedem anderen URL-förmigen Wert (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) werden nur die Zugangsdaten zu `***:***` maskiert; Schema, Host, Port und Pfad bleiben erhalten (`postgres://***:***@db.internal:5432/app`). Der DB-Typ bleibt erkennbar, das Passwort erreicht die Datei nie. Die DB-Typ-Erkennung des Scanners selbst liest den rohen `.env`-Text direkt und ist davon nicht betroffen.
+**Redigieren sensibler Variablen:** Schlüssel, die `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` etc. matchen, landen vor dem Kopieren in `project-analysis.json` automatisch als `***REDACTED***`. Bei jedem anderen URL-förmigen Wert (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) werden nur die Zugangsdaten zu `***:***` maskiert; Schema, Host, Port und Pfad bleiben erhalten (`postgres://***:***@db.internal:5432/app`). Der DB-Typ bleibt erkennbar, das Passwort erreicht die Datei nie. Die DB-Typ-Erkennung des Scanners selbst liest den rohen `.env`-Text direkt und ist davon nicht betroffen.
 
 **Port-Auflösungs-Vorrang:**
 1. Spring-Boot-`application.yml` `server.port`

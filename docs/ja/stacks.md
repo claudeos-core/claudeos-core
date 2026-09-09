@@ -91,7 +91,7 @@ scanner は `plan-installer/scanners/scan-java.js` にあります。
 
 **ソースルート.** `scan-java` は `src/main/java` / `src/main/resources` のパターンを、発見したルートに合わせて書き換えます。`[<module>/]src/main/java` が一つでもあればそれだけを使います。なければ順に、`.classpath` の `kind="src"` エントリ (テストフォルダは除外)、`build.xml` の `<javac srcdir>` (`<property>` の解決込み)、そして `*.java` を含む `src/java`、`src`、`JavaSource`、`java`、`WebContent/WEB-INF/src` です。その後は同じ 5 つのドメインパターンが適用されるので、`src/com/acme/erp/controller/*.java` は `src/main/java` の下にある場合とまったく同じく Pattern C になります。
 
-**既知の制限.** Gradle ファイルはコメントを除去しません (`//` でコメントアウトされた座標も数えられます — Boot でも従来からそうです)。リポジトリ外の親 pom からの継承は解決しません。v2.5.2 以降、`web/` は HTTP 層として認識されますが、プロジェクト内に `controller/` ディレクトリが一つも存在しない場合にかぎられます。モジュールごとに二つの規約が混在するツリーでは、`web/` 側のモジュールは従来の動作 (`controllers: 0`) のままです。
+**既知の制限.** Gradle ファイルはコメントを除去しません (`//` でコメントアウトされた座標も数えられます — Boot でも従来からそうです)。リポジトリ外の親 pom からの継承は解決しません。eGovFrame の `web/` コントローラ層は、まだ Pattern A/B のレイヤ名として認識されません。
 
 ヘルパーは `plan-installer/jvm-detect.js` にあります (純粋なテキスト関数、単体テストで分離して検証)。
 
@@ -299,7 +299,7 @@ scanner は `.env*` ファイルを読んで実行時設定を取得し、生成
 7. `.env.local`
 8. `.env.development`
 
-**機密変数の redaction:** `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。パスワードに生の `/`、`?`、`#` が含まれる場合 (base64 で生成したパスワードにはよくあります)、URL の authority が曖昧になるため、v2.5.2 以降そうした値は部分マスクではなく丸ごと破棄されます (`***REDACTED***`)。host も一緒に失われ、`init` が Phase 1 のサマリで該当するキー名を知らせます (`envInfo.credentialWarnings`、キー名のみ)。host を残したい場合はパスワードをパーセントエンコードしてください (`/` は `%2F`)。
+**機密変数の redaction:** `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。 v2.5.2 以降、そのルールで userinfo を書き換えられない値は素通しせず丸ごと破棄されます (`***REDACTED***`)。パスワードに生の `/`、`?`、`#`、空白が含まれる場合や、数字で始まるために切り詰められた authority が `host:port` に見える場合です。host も一緒に失われ、`init` が Phase 1 のサマリで該当するキー名を知らせます (`envInfo.credentialWarnings`、キー名のみ、ルートの `.env` とサブディレクトリ SPA の `.env` の両方)。`envInfo.host` / `envInfo.apiTarget` は sentinel を CLAUDE.md §3 に持ち込まず `null` になります。host を残したい場合はパスワードをパーセントエンコードしてください (`/` は `%2F`)。
 
 **Port 解決の優先順位:**
 1. Spring Boot の `application.yml` の `server.port`
@@ -326,7 +326,7 @@ Step A の終了後、`claudeos-core/generated/project-analysis.json` にこの�
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

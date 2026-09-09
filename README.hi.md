@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-997%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-981%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -365,8 +365,6 @@ Pipeline **तीन stages** में चलती है, और LLM call क
 Multi-stack projects (जैसे Spring Boot backend + Next.js frontend) भी out of the box चलते हैं।
 
 **Legacy Java अब first-class target है (v2.5.1).** Boot के बिना Spring 1.x–6.x detect होता है: Gradle (`apply plugin:` युग, किसी भी क्रम में `group:/name:/version:` notation, `gradle.properties` / `apply from:` / buildSrc से resolution, version catalogs, सिर्फ़ `settings.gradle` वाले root), Maven (Maven-2 POM, `${spring.version}` properties, `spring-framework-bom`, multi-module root, बिना root POM के sibling projects), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans metadata** (`.classpath` — बिना commit किए JAR references सहित, `.settings` का compliance level, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD schema versions और **eGovFrame** — framework, Spring Framework version, Java level, `war`/`ear` packaging, JDBC driver और ORM के साथ। `src/`-rooted source tree भी उन्हीं domain patterns से scan होते हैं जो `src/main/java` पर लगते हैं। बताई गई हर version किसी build file, JAR के नाम या project में define की गई property से पढ़ी जाती है; framework के default से कुछ भी नहीं माना जाता। जिन JVM projects में Spring है ही नहीं (`java-library`, `application`, सिर्फ़ servlet वाला `war`) उन्हें `framework: null` के साथ Java बताया जाता है, Spring कभी नहीं।
-
-**इनके layouts सिर्फ़ detect नहीं, scan भी होते हैं (v2.5.2).** eGovFrame और इसकी नकल करने वाले pre-Boot projects HTTP layer को `controller/` नहीं बल्कि `web/` कहते हैं, और services को `service/` + `service/impl/` में बाँटते हैं — इसलिए v2.5.2 से पहले ऐसा project सही detect होता था और फिर हर domain के लिए `controllers: 0` बताता था। अब दोनों रूप पढ़े जाते हैं: `web/` उसी project में controller layer मानी जाती है जिसमें कहीं भी `controller/` directory न हो (कम से कम एक `web/*Controller.java` ज़रूरी है, ताकि `config/web/WebConfig.java` कभी कोई domain न बना दे, और Pattern E का `adapter/in/web/` बाहर रखा जाता है), और `*/impl/` files उन interfaces के साथ गिनी जाती हैं जिन्हें वे implement करती हैं। जब कोई भी layout pattern मेल नहीं खाता, तो domains पास में संयोग से पड़ी directory से नहीं, बल्कि layer-suffix वाले class नामों से आते हैं (`UserServiceImpl` → `user`) — legacy tree अपने base package के नाम वाला एक domain देने के बजाय अपने असली domains देता है।
 
 Detection rules और हर scanner क्या निकालता है, यह [docs/hi/stacks.md](docs/hi/stacks.md) में है।
 

@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-997%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-981%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -365,8 +365,6 @@ severity 分三档 (`fail` / `warn` / `advisory`),这样用户能手动修掉的
 多栈项目 (例如 Spring Boot 后端 + Next.js 前端) 也能直接跑。
 
 **遗留 Java 是一等目标 (v2.5.1)。** 可识别不使用 Boot 的 Spring 1.x–6.x：Gradle (`apply plugin:` 时代、顺序任意的 `group:/name:/version:` 写法、通过 `gradle.properties` / `apply from:` / buildSrc 解析变量、版本目录、只有 `settings.gradle` 的根目录)、Maven (Maven 2 时代的 POM、`${spring.version}` 属性、`spring-framework-bom`、多模块根、没有根 POM 的同级项目)、**Ant + Ivy**、**Eclipse / IntelliJ / NetBeans 元数据** (`.classpath`，包括指向未提交 JAR 的引用、`.settings` 中的 compliance 级别、`.idea/misc.xml`、`nbproject`)、`WebContent/WEB-INF/lib/**/*.jar`、`WEB-INF/web.xml`、Spring XSD 架构版本，以及 **eGovFrame** — 连同框架、Spring Framework 版本、Java 级别、`war`/`ear` 打包方式、JDBC 驱动和 ORM 一并给出。以 `src/` 为根的源码树也会用与 `src/main/java` 相同的 domain 模式扫描。报告的每个版本都来自构建文件、JAR 文件名或项目内定义的属性；不会依据框架默认值推测。完全不用 Spring 的 JVM 项目 (`java-library`、`application`、仅有 servlet 的 `war`) 会被报告为 `framework: null` 的 Java，绝不会当成 Spring。
-
-**它们的布局不只被识别,还会被扫描 (v2.5.2)。** eGovFrame 以及照搬它的 pre-Boot 项目把 HTTP 层命名为 `web/` 而不是 `controller/`,并把 service 拆成 `service/` 与 `service/impl/` —— 所以在 v2.5.2 之前,这类项目能被正确识别,却对每个 domain 都报告 `controllers: 0`。现在两种形态都会读取:只要整个项目中不存在任何 `controller/` 目录,`web/` 就算作 controller 层 (至少要有一个 `web/*Controller.java`,因此 `config/web/WebConfig.java` 绝不会凭空造出一个 domain;Pattern E 的 `adapter/in/web/` 被排除在外),`*/impl/` 下的文件也会与它们实现的接口一并计入。若没有任何布局模式匹配,domain 取自带层后缀的类名 (`UserServiceImpl` → `user`),而不是碰巧挨着的目录名 —— 遗留代码树会给出真正的 domain,而不是一个以其 base package 命名的 domain。
 
 具体的识别规则、每个 scanner 抽取了什么内容,详见 [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md)。
 

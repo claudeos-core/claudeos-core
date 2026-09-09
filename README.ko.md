@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-997%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-981%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -365,8 +365,6 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 거꾸로 뒤집습니
 멀티 스택 프로젝트 (예: Spring Boot 백엔드 + Next.js 프론트엔드)도 그대로 동작합니다.
 
 **레거시 Java도 1급 대상입니다 (v2.5.1).** Boot 없는 Spring 1.x–6.x를 탐지합니다. Gradle (`apply plugin:` 시절, 순서 무관한 `group:/name:/version:` 표기, `gradle.properties` / `apply from:` / buildSrc를 통한 변수 해석, 버전 카탈로그, `settings.gradle`만 있는 루트), Maven (Maven 2 POM, `${spring.version}` 프로퍼티, `spring-framework-bom`, 멀티 모듈 루트, 루트 POM 없는 형제 프로젝트), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans 메타데이터** (커밋되지 않은 JAR 참조를 포함한 `.classpath`, `.settings`의 compliance 레벨, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD 스키마 버전, 그리고 **eGovFrame (전자정부 표준프레임워크)** 까지 — 프레임워크, Spring Framework 버전, Java 레벨, `war`/`ear` 패키징, JDBC 드라이버, ORM을 뽑아냅니다. `src/`를 루트로 하는 소스 트리도 `src/main/java`와 동일한 도메인 패턴으로 스캔합니다. 보고되는 모든 버전은 빌드 파일, JAR 이름, 또는 프로젝트 안에 정의된 프로퍼티에서 읽은 값이며 프레임워크 기본값으로 추정하지 않습니다. Spring을 전혀 쓰지 않는 JVM 프로젝트 (`java-library`, `application`, 서블릿만 쓰는 `war`)는 `framework: null`인 Java로 보고되며 Spring으로 잡히지 않습니다.
-
-**레이아웃까지 스캔합니다 (v2.5.2).** eGovFrame 과 이를 따라간 pre-Boot 프로젝트들은 HTTP 레이어를 `controller/` 가 아니라 `web/` 로 부르고, 서비스를 `service/` + `service/impl/` 로 나눕니다 — 그래서 v2.5.2 이전에는 이런 프로젝트가 정상적으로 감지된 다음 모든 도메인에서 `controllers: 0` 으로 보고됐습니다. 이제 두 형태 모두 읽습니다. `web/` 는 프로젝트 전체에 `controller/` 디렉터리가 하나도 없을 때만 컨트롤러 레이어로 취급되며 (`web/*Controller.java` 가 최소 하나 있어야 하므로 `config/web/WebConfig.java` 가 도메인을 만들어내는 일은 없고, Pattern E 의 `adapter/in/web/` 는 제외됩니다), `*/impl/` 파일은 자신이 구현하는 인터페이스와 함께 계산됩니다. 어떤 레이아웃 패턴도 맞지 않으면 도메인은 우연히 옆에 놓인 디렉터리 이름이 아니라 레이어 접미사가 붙은 클래스 이름 (`UserServiceImpl` → `user`) 에서 나옵니다 — 레거시 트리는 베이스 패키지 이름을 딴 도메인 하나가 아니라 실제 도메인들을 내놓습니다.
 
 감지 규칙과 각 scanner가 추출하는 내용은 [docs/ko/stacks.md](docs/ko/stacks.md) 참고.
 

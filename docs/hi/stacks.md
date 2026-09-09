@@ -91,7 +91,7 @@ Scanner `plan-installer/scanners/scan-java.js` में है।
 
 **Source roots.** `scan-java` अपने `src/main/java` / `src/main/resources` patterns को मिली हुई root के हिसाब से फिर से लिखता है। अगर कोई भी `[<module>/]src/main/java` मौजूद है तो सिर्फ़ वही इस्तेमाल होते हैं। नहीं तो इस क्रम में: `.classpath` की `kind="src"` entries (test folders छोड़कर), `build.xml` का `<javac srcdir>` (`<property>` resolution सहित), फिर `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` — बशर्ते उनमें `*.java` हो। उसके बाद वही पाँच domain patterns लगते हैं, इसलिए `src/com/acme/erp/controller/*.java` ठीक वैसे ही Pattern C है जैसे `src/main/java` के नीचे होता।
 
-**ज्ञात सीमाएँ.** Gradle files से comments नहीं हटाए जाते (`//` से comment किया coordinate भी गिना जाता है — Boot के लिए हमेशा से ऐसा ही रहा है)। Repository के बाहर के parent pom से inheritance resolve नहीं होती। v2.5.2 से `web/` को HTTP layer के रूप में पहचाना जाता है, लेकिन सिर्फ़ उस project में जिसमें कहीं भी `controller/` directory न हो; जिस tree में दोनों conventions module दर module मिली-जुली हों, वहाँ `web/` वाले modules पुराना व्यवहार (`controllers: 0`) बनाए रखते हैं।
+**ज्ञात सीमाएँ.** Gradle files से comments नहीं हटाए जाते (`//` से comment किया coordinate भी गिना जाता है — Boot के लिए हमेशा से ऐसा ही रहा है)। Repository के बाहर के parent pom से inheritance resolve नहीं होती। eGovFrame की `web/` controller layer अभी Pattern A/B के लिए layer नाम के रूप में पहचानी नहीं जाती।
 
 Helpers `plan-installer/jvm-detect.js` में हैं (pure text functions, अलग से unit-tested)।
 
@@ -299,7 +299,7 @@ Scanner runtime configuration के लिए `.env*` files पढ़ता ह
 7. `.env.local`
 8. `.env.development`
 
-**Sensitive-variable redaction:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` वग़ैरह से match होती keys `project-analysis.json` में copy होने से पहले automatically `***REDACTED***` हो जाती हैं। बाक़ी हर URL जैसी value (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) में credentials को `***:***` से mask कर दिया जाता है, जबकि scheme, host, port और path वैसे ही रहते हैं (`postgres://***:***@db.internal:5432/app`): DB type अब भी पहचाना जा सकता है, और password कभी file तक नहीं पहुँचता। Scanner का अपना DB-type detection raw `.env` text सीधे पढ़ता है, इसलिए उस पर कोई असर नहीं पड़ता। अगर password में बिना encode किया `/`, `?` या `#` हो (base64 से बने passwords में यह आम है), तो URL की authority अस्पष्ट हो जाती है, इसलिए v2.5.2 से ऐसा value आंशिक mask होने के बजाय पूरा हटा दिया जाता है (`***REDACTED***`)। इसके साथ host भी चला जाता है, और `init` अपनी Phase 1 summary में प्रभावित keys के नाम बताता है (`envInfo.credentialWarnings`, सिर्फ़ key नाम)। Host दिखता रहे इसके लिए password को percent-encode करें (`/` को `%2F`)।
+**Sensitive-variable redaction:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` वग़ैरह से match होती keys `project-analysis.json` में copy होने से पहले automatically `***REDACTED***` हो जाती हैं। बाक़ी हर URL जैसी value (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) में credentials को `***:***` से mask कर दिया जाता है, जबकि scheme, host, port और path वैसे ही रहते हैं (`postgres://***:***@db.internal:5432/app`): DB type अब भी पहचाना जा सकता है, और password कभी file तक नहीं पहुँचता। Scanner का अपना DB-type detection raw `.env` text सीधे पढ़ता है, इसलिए उस पर कोई असर नहीं पड़ता। v2.5.2 से, जिस value का userinfo वह rule दोबारा नहीं लिख सकता, वह पास होने के बजाय पूरा हटा दिया जाता है (`***REDACTED***`): password में बिना encode किया `/`, `?`, `#` या space हो, या वह सिर्फ़ digits से शुरू हो जिससे कटी हुई authority `host:port` जैसी दिखे। इसके साथ host भी चला जाता है, और `init` अपनी Phase 1 summary में प्रभावित keys के नाम बताता है (`envInfo.credentialWarnings`, सिर्फ़ key नाम, root `.env` और sub-directory SPA के अपने `.env` दोनों के लिए)। `envInfo.host` / `envInfo.apiTarget` sentinel को CLAUDE.md §3 में ले जाने के बजाय `null` हो जाते हैं। Host दिखता रहे इसके लिए password को percent-encode करें (`/` को `%2F`)।
 
 **Port resolution precedence:**
 1. Spring Boot `application.yml` `server.port`
@@ -326,7 +326,7 @@ Step A खत्म होने पर यह file `claudeos-core/generated/pro
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

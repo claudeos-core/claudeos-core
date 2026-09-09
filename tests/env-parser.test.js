@@ -490,7 +490,7 @@ test("hasUnmaskedUrlCredentials flags only the shapes the userinfo rule cannot r
   assert.strictEqual(maskUrlCredentials("postgres://app:pa/ss@db:5432/app?sslmode=require&password=x"), "***REDACTED***");
 });
 
-test("readStackEnvInfo reports the dropped keys by name and exposes unredacted port values", (t) => {
+test("readStackEnvInfo reports the dropped keys by name", (t) => {
   const os = require("os"), fs = require("fs"), pathMod = require("path");
   const { readStackEnvInfo } = require("../lib/env-parser");
   const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "envwarn-"));
@@ -511,8 +511,122 @@ test("readStackEnvInfo reports the dropped keys by name and exposes unredacted p
   const blob = JSON.stringify(info);
   assert.ok(!blob.includes("pa/ss") && !blob.includes("hunter2"), "no secret material anywhere in envInfo");
 
-  // portVars: unredacted, digits only, whitelist keys only.
-  assert.strictEqual(info.portVars.SERVER_PORT, "8080");
-  assert.ok(!("DB_PASSWORD" in info.portVars), "non-port keys are never copied into portVars");
-  assert.ok(!("DATABASE_URL" in info.portVars), "non-numeric values are never copied into portVars");
+  // Port resolution is unaffected by the drop, and still reads the raw map.
+  assert.strictEqual(info.port, 8080);
+});
+
+// ─── v2.5.2 regression: the credential backstop's own threat model ───────────
+//
+// The first cut of `hasUnmaskedUrlCredentials` guessed from the TRUNCATED
+// authority — the text before the first `/?#` — and returned false when the
+// part after its `:` was all digits, on the reasoning that `host:port` is not
+// `user:password`. For `postgres://user:12345/6@db/app` the truncated
+// authority is `user:12345`, whose tail IS all digits, so a password that
+// merely BEGINS with digits was waved straight through. Base64-generated
+// passwords do that routinely, and `isSensitiveVarName("DATABASE_URL")` is
+// false, so nothing else backstopped it.
+test("the backstop catches passwords the userinfo rule cannot reach", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "postgres://user:12345/6@db.internal:5432/app", // digit-leading password
+    "mysql://root:8080/x@h/d",                      // password that looks like a port
+    "redis://:1234/abc@r:6379/0",                   // empty user, digit-leading
+    "postgres://u:pa ss@host/db",                   // space (userinfo rule excludes \s)
+    "postgres://app:pa/ss@db:5432/app",             // raw "/"
+    "postgres://app:pa/ss@db:5432/app?token=abc",   // ...with a query PARAM_RE rewrites
+    "redis://:pw?x@host/0",                         // raw "?"
+    "postgres://app:pa#ss@db/app",                  // raw "#"
+    "amqp://guest:gu/est@rabbit:5672/",
+    "mongodb+srv://u:p/w@cluster.mongodb.net/db",
+    "https://user:pa/ss@host/x",                    // web scheme, head is not host:port
+  ]) {
+    assert.strictEqual(M(v), "***REDACTED***", `should redact whole: ${v}`);
+  }
+});
+
+test("the backstop never destroys a credential-free URL", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "postgres://u:p@host/db",                       // the userinfo rule handles it
+    "postgres://u:p@host/path/@x",                  // ...plus an "@" in the path
+    "https://cdn.jsdelivr.net/npm/@scope/pkg",      // scoped npm path
+    "http://a.com:8080/img/@2x.png",                // web scheme, complete host:port
+    "http://[::1]:8080/img/@2x.png",                // bracketed IPv6 is a host
+    "http://[2001:db8::1]:8080/health",
+    "mongodb://host:port/db?authSource=admin&x=a@b", // the "@" sits in the query
+    "mongodb://h1:27017,h2:27017/db?opt=a@b",        // replica set, "@" in query
+    "https://api.internal:${PORT}/v1/@me",           // unexpanded template
+    "https://example.com:443/redirect?to=https://other.com/@x",
+    "file:///c:/data/app.db",
+    "jdbc:oracle:thin:@//host:1521/ORCL",
+  ]) {
+    assert.notStrictEqual(M(v), "***REDACTED***", `must not redact whole: ${v}`);
+  }
+  // Ordinary masking is untouched.
+  assert.strictEqual(M("postgres://u:p@host/db"), "postgres://***:***@host/db");
+  assert.strictEqual(M("postgres://app:p@ss@db:5432/app"), "postgres://***:***@db:5432/app");
+});
+
+test("host and apiTarget never carry the redaction sentinel", (t) => {
+  const os2 = require("os"), fs2 = require("fs"), path2 = require("path");
+  const { readStackEnvInfo } = require("../lib/env-parser");
+  const dir = fs2.mkdtempSync(path2.join(os2.tmpdir(), "envsent-"));
+  t.after(() => fs2.rmSync(dir, { recursive: true, force: true }));
+  fs2.writeFileSync(path2.join(dir, ".env.example"),
+    "API_TARGET=http://svc:p/w@api.internal/v1\nHOST=http://h:p/w@real.host/x\n");
+
+  const info = readStackEnvInfo(dir);
+  // These two are rendered straight into CLAUDE.md §3, and the scaffold's only
+  // sentinel guard covers `envInfo.vars`. Null makes the row simply absent.
+  assert.strictEqual(info.apiTarget, null);
+  assert.strictEqual(info.host, null);
+  // The warning still names both keys so the loss is not silent.
+  assert.deepStrictEqual(info.credentialWarnings.sort(), ["API_TARGET", "HOST"]);
+});
+
+// ─── v2.5.2 regression: the backstop must always terminate ──────────────────
+//
+// `String.prototype.lastIndexOf` clamps a negative `fromIndex` to 0 instead of
+// returning -1, so a backward scan written as
+// `for (i = s.lastIndexOf("@"); i !== -1; i = s.lastIndexOf("@", i - 1))`
+// re-finds an "@" at index 0 forever. That hung `init` at 100% CPU with no
+// error and no output — strictly worse than reporting a wrong value.
+test("the credential backstop terminates on every input shape", () => {
+  const { hasUnmaskedUrlCredentials: H, maskUrlCredentials: M } = require("../lib/env-parser");
+  const started = Date.now();
+  for (const v of [
+    "postgres://@ :x",      // "@" at index 0, fails the host test, head holds ":"
+    "postgres://@\t:x",
+    "redis://@ :p",
+    "postgres://@", "postgres://@:", "postgres://:@", "postgres://@@", "postgres://",
+    "postgres://@host/db",  // empty userinfo: real, and not a credential
+  ]) {
+    assert.strictEqual(typeof H(v), "boolean", `must return for: ${v}`);
+    assert.strictEqual(typeof M(v), "string", `must return for: ${v}`);
+  }
+  assert.ok(Date.now() - started < 2000, "must not spin");
+  assert.strictEqual(M("postgres://@host/db"), "postgres://***:***@host/db");
+});
+
+// A DSN that also carries an "@" inside a query parameter (an email address, a
+// redirect URL) must not defeat the backstop. The scan has to `continue` past
+// that "@" to the earlier one that terminates the real authority, not abandon
+// the search with `return false`.
+test("an @ in a query string does not disable the backstop", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "postgres://app:pa/ss@db:5432/app?redirect=user@host",
+    "mongodb://user:p/w@cluster.example.net:27017/db?authSource=admin&x=a@b",
+    "postgres://user:12345/6@db.internal:5432/app?opt=a@b",
+  ]) {
+    assert.strictEqual(M(v), "***REDACTED***", `should redact whole: ${v}`);
+  }
+  // ...while a credential-free DSN whose query merely holds an "@" is kept.
+  for (const v of [
+    "mongodb://host:port/db?authSource=admin&x=a@b",
+    "mongodb://h1:27017,h2:27017/db?opt=a@b",
+    "https://api.example.com/v1?redirect=user@host",
+  ]) {
+    assert.notStrictEqual(M(v), "***REDACTED***", `must not redact: ${v}`);
+  }
 });

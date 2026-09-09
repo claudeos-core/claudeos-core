@@ -57,12 +57,16 @@ async function main() {
   // have its userinfo rewritten without risking the host, so the whole value
   // is dropped. Say so: silently losing a DATABASE_URL would otherwise look
   // like a detection bug. Key names only, never any part of the value.
-  const credWarn = (stack.envInfo && stack.envInfo.credentialWarnings) || [];
-  if (credWarn.length) {
-    console.warn(`\n  ⚠️  Credential-shaped value dropped from ${credWarn.join(", ")} (${stack.envInfo.source}).`);
-    console.warn("  The password contains a raw '/', '?' or '#', which makes the URL's host ambiguous,");
-    console.warn("  so the value was redacted whole rather than partially masked. Percent-encode the");
-    console.warn("  password (e.g. '/' as %2F) to keep the host visible in the generated docs.");
+  // Both env sources are reported. A sub-directory SPA keeps its own
+  // `frontend/.env`, read into `stack.frontendEnvInfo`, and reading only
+  // `stack.envInfo` swallowed exactly the drop this warning exists to announce.
+  for (const info of [stack.envInfo, stack.frontendEnvInfo]) {
+    const credWarn = (info && info.credentialWarnings) || [];
+    if (!credWarn.length) continue;
+    console.warn(`\n  ⚠️  Credential-shaped value dropped from ${credWarn.join(", ")} (${info.source}).`);
+    console.warn("  The password contains a raw '/', '?', '#' or space, which makes the URL's host");
+    console.warn("  ambiguous, so the value was redacted whole rather than partially masked.");
+    console.warn("  Percent-encode the password (e.g. '/' as %2F) to keep the host visible.");
   }
   console.log("");
 

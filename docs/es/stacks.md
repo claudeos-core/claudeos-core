@@ -91,7 +91,7 @@ El scanner está en `plan-installer/scanners/scan-java.js`.
 
 **Raíces de fuentes.** `scan-java` reescribe sus patrones `src/main/java` / `src/main/resources` según la raíz descubierta. Si existe algún `[<module>/]src/main/java`, solo se usan esos. Si no, en orden: entradas `kind="src"` de `.classpath` (excluyendo carpetas de test), `<javac srcdir>` de `build.xml` (con resolución de `<property>`), y después `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` si contienen `*.java`. Luego se aplican los mismos cinco patrones de dominio, así que `src/com/acme/erp/controller/*.java` es Pattern C exactamente igual que si estuviera bajo `src/main/java`.
 
-**Límites conocidos.** Los archivos Gradle no se limpian de comentarios (una coordenada comentada con `//` sigue contando — siempre ha sido así con Boot). No se resuelve la herencia de un pom padre externo al repositorio. Desde v2.5.2 `web/` sí se reconoce como capa HTTP, pero solo en un proyecto que no contenga ningún directorio `controller/`; en un árbol que mezcla ambas convenciones entre módulos, los módulos `web/` conservan el comportamiento anterior (`controllers: 0`).
+**Límites conocidos.** Los archivos Gradle no se limpian de comentarios (una coordenada comentada con `//` sigue contando — siempre ha sido así con Boot). No se resuelve la herencia de un pom padre externo al repositorio. La capa de controladores `web/` de eGovFrame todavía no se reconoce como nombre de capa para Pattern A/B.
 
 Los helpers están en `plan-installer/jvm-detect.js` (funciones de texto puras, con tests unitarios aislados).
 
@@ -299,7 +299,7 @@ El scanner lee archivos `.env*` para configuración de runtime, para que los doc
 7. `.env.local`
 8. `.env.development`
 
-**Redacción de variables sensibles:** las claves que coinciden con `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, etc. se redactan automáticamente a `***REDACTED***` antes de copiarse a `project-analysis.json`. Cualquier otro valor con forma de URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) ve sus credenciales enmascaradas como `***:***`, conservando esquema, host, puerto y ruta (`postgres://***:***@db.internal:5432/app`): el tipo de DB sigue siendo reconocible y la contraseña nunca llega al archivo. La propia detección del tipo de DB del scanner lee el texto crudo de `.env` directamente y no se ve afectada. Si la contraseña contiene un `/`, `?` o `#` sin codificar (frecuente en contraseñas generadas en base64), la authority de la URL queda ambigua; desde v2.5.2 ese valor se descarta entero (`***REDACTED***`) en lugar de enmascararse parcialmente. El host se pierde con él, e `init` nombra las claves afectadas en su resumen de la Fase 1 (`envInfo.credentialWarnings`, solo nombres de clave). Codifica la contraseña en porcentaje (`/` como `%2F`) para conservar el host.
+**Redacción de variables sensibles:** las claves que coinciden con `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, etc. se redactan automáticamente a `***REDACTED***` antes de copiarse a `project-analysis.json`. Cualquier otro valor con forma de URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) ve sus credenciales enmascaradas como `***:***`, conservando esquema, host, puerto y ruta (`postgres://***:***@db.internal:5432/app`): el tipo de DB sigue siendo reconocible y la contraseña nunca llega al archivo. La propia detección del tipo de DB del scanner lee el texto crudo de `.env` directamente y no se ve afectada. Desde v2.5.2, un valor cuyo userinfo esa regla no puede reescribir se descarta ENTERO (`***REDACTED***`) en lugar de pasar tal cual: una contraseña con `/`, `?`, `#` o un espacio sin codificar, o que simplemente empieza por dígitos de modo que la authority truncada se lee como `host:port`. El host se pierde con él, e `init` nombra las claves afectadas en su resumen de la Fase 1 (`envInfo.credentialWarnings`, solo nombres, para el `.env` raíz y el propio de una SPA en subdirectorio). `envInfo.host` / `envInfo.apiTarget` pasan a ser `null` en vez de llevar el centinela al §3 de CLAUDE.md. Codifica la contraseña en porcentaje (`/` como `%2F`) para conservar el host.
 
 **Precedencia de resolución de port:**
 1. `server.port` de `application.yml` de Spring Boot
@@ -326,7 +326,7 @@ Cuando Step A termina, encontrarás este archivo en `claudeos-core/generated/pro
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

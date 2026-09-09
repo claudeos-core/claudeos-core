@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-997%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-981%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -365,8 +365,6 @@ ClaudeOS-Core переворачивает привычный сценарий �
 Многостековые проекты (например, Spring Boot на бэкенде и Next.js на фронтенде) поддерживаются из коробки.
 
 **Legacy-Java — полноценная цель (v2.5.1).** Распознаётся Spring 1.x–6.x без Boot: Gradle (эпоха `apply plugin:`, нотация `group:/name:/version:` в любом порядке, разрешение переменных через `gradle.properties` / `apply from:` / buildSrc, каталоги версий, корни только с `settings.gradle`), Maven (POM времён Maven 2, свойства `${spring.version}`, `spring-framework-bom`, многомодульные корни, соседние проекты без корневого POM), **Ant + Ivy**, **метаданные Eclipse / IntelliJ / NetBeans** (`.classpath`, включая ссылки на JAR, которых нет в репозитории, уровень compliance из `.settings`, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, версии XSD-схем Spring и **eGovFrame** — вместе с фреймворком, версией Spring Framework, уровнем Java, упаковкой `war`/`ear`, JDBC-драйвером и ORM. Деревья исходников с корнем `src/` сканируются теми же доменными шаблонами, что и `src/main/java`. Любая выводимая версия прочитана из файла сборки, имени JAR или свойства, определённого в самом проекте; ничего не берётся из значений по умолчанию фреймворка. JVM-проекты вовсе без Spring (`java-library`, `application`, чисто сервлетный `war`) выводятся как Java с `framework: null` и никогда как Spring.
-
-**Их раскладки не только детектируются, но и сканируются (v2.5.2).** eGovFrame и скопировавшие его проекты до Boot называют HTTP-слой `web/`, а не `controller/`, и разделяют сервисы на `service/` + `service/impl/` — поэтому до v2.5.2 такой проект корректно детектировался, а затем сообщал `controllers: 0` для каждого домена. Теперь читаются обе формы: `web/` считается слоем контроллеров в любом проекте, где нигде нет каталога `controller/` (требуется хотя бы один `web/*Controller.java`, так что `config/web/WebConfig.java` никогда не породит домен, а `adapter/in/web/` из Pattern E исключается), а файлы `*/impl/` учитываются вместе с интерфейсами, которые они реализуют. Если не подходит ни один шаблон раскладки, домены берутся из имён классов с суффиксом слоя (`UserServiceImpl` → `user`), а не из каталога, случайно оказавшегося рядом: legacy-дерево отдаёт свои настоящие домены, а не один, названный по базовому пакету.
 
 Правила детекции и то, что вытаскивает каждый сканер, описаны в [docs/ru/stacks.md](docs/ru/stacks.md).
 

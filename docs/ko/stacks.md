@@ -91,7 +91,7 @@ scanner 코드는 `plan-installer/scanners/scan-java.js`에 있습니다.
 
 **소스 루트.** `scan-java` 는 `src/main/java` / `src/main/resources` 패턴을 발견된 루트에 맞춰 다시 씁니다. `[<module>/]src/main/java` 가 하나라도 있으면 그것만 사용합니다. 없으면 순서대로: `.classpath` 의 `kind="src"` 항목 (테스트 폴더 제외), `build.xml` 의 `<javac srcdir>` (`<property>` 해석 포함), 그다음 `*.java` 를 담고 있는 `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src`. 이후 동일한 5개 도메인 패턴이 적용되므로 `src/com/acme/erp/controller/*.java` 는 `src/main/java` 아래에 있을 때와 똑같이 Pattern C 입니다.
 
-**알려진 한계.** Gradle 파일은 주석을 제거하지 않습니다 (`//` 로 주석 처리된 좌표도 계산됨 — Boot 에서도 늘 그랬습니다). 리포지토리 밖 부모 pom 으로부터의 상속은 해석하지 않습니다. v2.5.2 부터 `web/` 는 HTTP 레이어로 인식되지만, 프로젝트 전체에 `controller/` 디렉터리가 하나도 없을 때만 적용됩니다 — 모듈마다 두 컨벤션이 섞인 트리에서는 `web/` 쪽 모듈이 이전 동작 (`controllers: 0`) 을 유지합니다.
+**알려진 한계.** Gradle 파일은 주석을 제거하지 않습니다 (`//` 로 주석 처리된 좌표도 계산됨 — Boot 에서도 늘 그랬습니다). 리포지토리 밖 부모 pom 으로부터의 상속은 해석하지 않습니다. eGovFrame 의 `web/` 컨트롤러 레이어는 아직 Pattern A/B 의 레이어 이름으로 인식되지 않습니다.
 
 헬퍼는 `plan-installer/jvm-detect.js` 에 있습니다 (순수 텍스트 함수, 단위 테스트로 격리 검증).
 
@@ -299,7 +299,7 @@ scanner는 `.env*` 파일을 읽어 런타임 설정을 가져옵니다. 생성�
 7. `.env.local`
 8. `.env.development`
 
-**민감 변수 마스킹:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다. 비밀번호에 원시 `/`, `?`, `#`이 들어 있으면 (base64로 생성한 비밀번호에 자주 있습니다) URL의 authority가 모호해지므로, v2.5.2부터 이런 값은 부분 마스킹 대신 통째로 버려집니다 (`***REDACTED***`). host도 함께 사라지며, `init`이 Phase 1 요약에서 해당 키 이름을 알려줍니다 (`envInfo.credentialWarnings`, 키 이름만). host를 보존하려면 비밀번호를 percent-encoding 하세요 (`/`는 `%2F`).
+**민감 변수 마스킹:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다. v2.5.2부터, 그 규칙으로 userinfo를 다시 쓸 수 없는 값은 그대로 통과시키지 않고 통째로 버립니다 (`***REDACTED***`). 비밀번호에 원시 `/`, `?`, `#`, 공백이 들어 있거나, 숫자로 시작해서 잘린 authority가 `host:port`로 읽히는 경우입니다. host도 함께 사라지며, `init`이 Phase 1 요약에서 해당 키 이름을 알려줍니다 (`envInfo.credentialWarnings`, 키 이름만, 루트 `.env`와 하위 SPA의 `.env` 양쪽). `envInfo.host` / `envInfo.apiTarget`은 sentinel을 CLAUDE.md 3절로 흘리지 않고 `null`이 됩니다. host를 보존하려면 비밀번호를 percent-encoding 하세요 (`/`는 `%2F`).
 
 **Port 결정 우선순위:**
 1. Spring Boot `application.yml`의 `server.port`
@@ -326,7 +326,7 @@ Step A가 끝나면 `claudeos-core/generated/project-analysis.json`에서 이 �
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

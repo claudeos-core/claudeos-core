@@ -264,6 +264,297 @@ function detectDb(stack, content, rules) {
  * @param {string} ROOT - project root path
  * @returns {Promise<object>} stack info
  */
+/**
+ * v2.5.1 — Fold one child pom (Maven <module> or a depth-1 sibling project)
+ * into `stack`, filling only what is still null. `${prop}` in the child
+ * resolves against the child first, then `rootPom` (may be "").
+ *
+ * v2.5.2 — Lifted out of detectStack(). It only ever read and mutated
+ * `stack`, so taking it as the first parameter makes the dependency
+ * explicit and lets the legacy-JVM block below live outside detectStack too.
+ */
+function absorbMavenPom(stack, cp, rootPom, mod) {
+  const cpClean = stripComments(cp);
+  const propsText = cp + "\n" + rootPom;
+  if (!stack.framework && cpClean.includes("spring-boot")) { stack.framework = "spring-boot"; stack.detected.push(`spring-boot (${mod})`); }
+  if (stack.framework === "spring-boot" && !stack.frameworkVersion) { const bv = JVM.mavenSpringBootVersion(propsText, cpClean); if (bv) stack.frameworkVersion = bv; }
+  if (!stack.framework && JVM.mavenHasSpringFramework(cpClean)) { stack.framework = "spring-framework"; stack.detected.push(`spring-framework (${mod})`); }
+  // Root <properties> may already have yielded the Framework version
+  // before any module declared the framework itself — link them.
+  if (stack.framework === "spring-framework" && !stack.frameworkVersion && stack.springFrameworkVersion) stack.frameworkVersion = stack.springFrameworkVersion;
+  if (!stack.springFrameworkVersion) {
+    const v = JVM.mavenSpringFrameworkVersion(propsText, cpClean);
+    if (v) { stack.springFrameworkVersion = v; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = v; }
+  }
+  if (JVM.hasEgovframe(cpClean) && !stack.detected.some(d => d.startsWith("egovframe"))) {
+    const ev = JVM.egovframeVersion(cpClean, propsText);
+    stack.detected.push(ev ? `egovframe ${ev}` : "egovframe");
+    if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework"); }
+  }
+  if (!stack.orm) { if (IBATIS_REGEX.test(cpClean)) { stack.orm = "ibatis"; stack.detected.push(`ibatis (${mod})`); } else detectFirst(stack, "orm", cpClean, MAVEN_ORM_RULES); }
+  for (const [keyword, value] of DB_KEYWORD_RULES.filter(([kw]) => kw !== "postgres")) {
+    if (cpClean.includes(keyword)) { if (!stack.database) stack.database = value; if (!stack.databases.includes(value)) stack.databases.push(value); }
+  }
+  if (!stack.languageVersion) {
+    const jv = cp.match(/<java\.version>\s*(\d+(?:\.\d+)?)\s*<\/java\.version>/) || cp.match(/<maven\.compiler\.(?:source|release)>\s*(\d+(?:\.\d+)?)\s*</);
+    if (jv) stack.languageVersion = normalizeJavaVersion(jv[1]);
+  }
+  if (!stack.packaging) { const pk = JVM.mavenPackaging(cp); if (pk && pk !== "pom") stack.packaging = pk; }
+  if (stack.framework !== "spring-boot") for (const t of JVM.legacyFrameworkTags(cpClean)) { const tag = t.version ? `${t.tag} ${t.version}` : t.tag; if (!stack.detected.includes(tag)) stack.detected.push(tag); }
+}
+
+/**
+ * v2.5.2 — The legacy-JVM evidence pass, lifted out of detectStack().
+ *
+ * Everything here reads evidence WEAKER than a root build file: sibling
+ * build files one directory down, Ant / Eclipse / IntelliJ / NetBeans
+ * metadata, jars on disk, `WEB-INF/web.xml`, Spring XSDs. It therefore runs
+ * last, after the Gradle, Maven, Node and Python blocks, and may only
+ *   (a) fill a language nobody claimed, or
+ *   (b) reclaim a PROVISIONAL Node language (see `languageFromPackageJson`).
+ *
+ * It was ~220 lines inline in a function that is already the largest in the
+ * codebase, which is what made the v2.5.2 scanner fixes expensive to reason
+ * about. It is self-contained: `jvmMayClaim`, `parked`, `jarIgnore`,
+ * `referencedJars` and the `anyJavaSources` memo are all local to this pass,
+ * and the reclaim it opens is also settled here. Its only outside
+ * dependencies are `stack` (mutated in place, exactly as before) and the
+ * module-level helpers.
+ *
+ * Pure move: no behavior change, no reordering, no renaming. `stack` is
+ * mutated rather than returned so the call site reads identically to the
+ * inline block it replaces.
+ *
+ * @param {string}  ROOT                    project root
+ * @param {object}  stack                   the detection accumulator, mutated in place
+ * @param {boolean} languageFromPackageJson `stack.language` came from a root package.json
+ */
+async function detectLegacyJvm(ROOT, stack, languageFromPackageJson) {
+  // ── Java: legacy evidence (runs AFTER Node/Python) ──
+  // v2.5.1 — Everything below reads evidence weaker than a root build file:
+  // sibling-directory build files, Ant / Eclipse / IntelliJ / NetBeans
+  // metadata, jars on disk, `WEB-INF/web.xml`, Spring XSDs. It therefore runs
+  // last and may only (a) fill a language nobody claimed, or (b) reclaim a
+  // PROVISIONAL Node language — a root package.json that exists for gulp /
+  // jQuery / Tailwind asset tooling, with NO Node framework detected — and
+  // only on STRONG JVM evidence (build.xml, `.project` javanature, a sibling
+  // pom/gradle, a WEB-INF/web.xml, or Spring jars beside *.java sources).
+  // A Next.js / Express / Django project with a stray `.idea/misc.xml` or a
+  // vendored `tools/lib/*.jar` is never flipped to Java.
+  // `src/test/**` is excluded everywhere below: a test-resources `web.xml`
+  // or a test fixture jar is not deployment evidence for the application.
+  // v2.5.2 — `out/` (IntelliJ), `bin/` (Eclipse default output), `.gradle/`,
+  // `.idea/` and `.svn/` are pruned as well. They hold no evidence the blocks
+  // below read (jars under a `lib/` segment, `WEB-INF/web.xml`, Spring XML),
+  // but they are walked on every framework-less Java project because these
+  // three globs are all rooted at `**`. Pruning them is free correctness AND
+  // the only cheap lever on walk cost for large enterprise trees.
+  const jarIgnore = ["**/node_modules/**", "**/build/**", "**/target/**", "**/.git/**", "**/dist/**", "**/src/test/**", "**/out/**", "**/bin/**", "**/.gradle/**", "**/.idea/**", "**/.svn/**"];
+  const referencedJars = [];
+  // Memoized: does the tree hold any *.java source at all? Shared by the
+  // Ant / jar / last-resort decisions below so the walk happens at most once.
+  let anyJavaMemo = null;
+  const anyJavaSources = async () => {
+    if (anyJavaMemo === null) anyJavaMemo = (await glob("**/*.java", { cwd: ROOT, ignore: jarIgnore, nodir: true })).length > 0;
+    return anyJavaMemo;
+  };
+  let jvmMayClaim = !stack.language;
+  // Provisional-language reclaim. The Node language is PARKED, not dropped:
+  // if none of the JVM blocks below actually claims the project (a `build.xml`
+  // that is not Ant — a Phing file or an empty stub — with no *.java anywhere),
+  // the parked values are restored at the end of this section. A gulp-only
+  // site therefore never ends up with `language: null`, and a reclaimed Java
+  // project does not keep `packageManager: "npm"` from the asset tooling.
+  let parked = null;
+  if (!jvmMayClaim && languageFromPackageJson && !stack.framework && !stack.frontend && !stack.buildTool) {
+    const strong =
+      existsSafe(path.join(ROOT, "build.xml")) ||
+      JVM.eclipseHasJavaNature(readFileSafe(path.join(ROOT, ".project"))) ||
+      (await glob("*/{pom.xml,build.gradle,build.gradle.kts}", { cwd: ROOT, ignore: ["node_modules/**"] })).length > 0 ||
+      (await glob("**/WEB-INF/web.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true })).length > 0;
+    if (strong) {
+      jvmMayClaim = true;
+      parked = { language: stack.language, languageVersion: stack.languageVersion, packageManager: stack.packageManager };
+      stack.language = null; stack.languageVersion = null; stack.packageManager = null;
+    }
+  }
+  // ── Java: build files one directory down (no root build file) ──
+  // v2.5.1 — SI repositories often hold sibling projects (`erp-web/pom.xml`,
+  // `erp-batch/pom.xml`) with no aggregator at the root. Depth-1 poms are
+  // absorbed with the same rules as Maven <modules>. Depth-1 Gradle files
+  // without a root `settings.gradle` / `build.gradle` are NOT swept — they
+  // count as strong evidence for the reclaim above and the `*.java` last
+  // resort then sets the language, but framework/version stay null (a root
+  // `settings.gradle` is what makes the Gradle sub-module sweep run).
+  if (!stack.buildTool && jvmMayClaim) {
+    const siblingPoms = (await glob("*/pom.xml", { cwd: ROOT, ignore: ["node_modules/**"] })).map(p => p.replace(/\\/g, "/")).sort();
+    if (siblingPoms.length) {
+      stack.buildTool = "maven"; stack.language = "java";
+      stack.detected.push(`pom.xml (${siblingPoms.length} sibling project${siblingPoms.length > 1 ? "s" : ""})`);
+      if (!stack.packageManager) stack.packageManager = "maven";
+      for (const sp of siblingPoms.slice(0, 30)) {
+        const cp = readFileSafe(path.join(ROOT, sp));
+        if (cp) absorbMavenPom(stack, cp, "", path.dirname(sp));
+      }
+    }
+  }
+
+  // ── Java: Ant / Eclipse WTP / no build tool (legacy) ──
+  // v2.5.x — The shape of most pre-Maven enterprise code: a `build.xml`,
+  // an Eclipse `.classpath`/`.project`, `WebContent/WEB-INF/lib/*.jar`, and
+  // sources under `src/` (no `src/main/java`). Evidence, in order of
+  // strength:
+  //   1. build.xml            → buildTool "ant", Java level from <javac source="">
+  //   2. .classpath/.project  → Java level from the JRE container, javanature
+  //   3. **/WEB-INF/lib/*.jar → packaging "war"; Spring jars → framework +
+  //                             version parsed from the jar NAME
+  //                             (spring-webmvc-3.0.5.RELEASE.jar). An
+  //                             unversioned `spring.jar` (2.0 era) reports the
+  //                             framework with version null — never a guess.
+  //   4. **/*.java            → language "java" as a last resort
+  // Only runs when no Gradle/Maven build file claimed the project.
+  if (!stack.buildTool && jvmMayClaim) {
+    const buildXml = path.join(ROOT, "build.xml");
+    if (existsSafe(buildXml)) {
+      const bx = readFileSafe(buildXml);
+      // `<project>` alone is not Ant — Phing (PHP) and other XML build tools
+      // use the same root element. Require a `<javac>` task or *.java sources.
+      if (bx && /<project\b/.test(bx) && (/<javac\b/.test(bx) || await anyJavaSources())) {
+        stack.buildTool = "ant"; stack.language = "java"; stack.detected.push("build.xml");
+        if (!stack.packageManager) stack.packageManager = "ant";
+        const src = JVM.antJavacSource(bx);
+        if (src && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(src);
+        // v2.5.1 — Ant + Ivy: ivy.xml is the dependency manifest.
+        const ivy = readFileSafe(path.join(ROOT, "ivy.xml"));
+        if (ivy) {
+          stack.detected.push("ivy.xml");
+          if (!stack.framework && JVM.ivyHasSpringFramework(ivy)) { stack.framework = "spring-framework"; stack.detected.push("spring-framework (ivy)"); }
+          const iv = JVM.ivySpringFrameworkVersion(ivy);
+          if (iv) { stack.springFrameworkVersion = iv; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = iv; }
+          if (!stack.orm) { if (IBATIS_REGEX.test(ivy)) { stack.orm = "ibatis"; stack.detected.push("ibatis (ivy)"); } else detectFirst(stack, "orm", ivy, GRADLE_ORM_RULES); }
+          detectDb(stack, ivy, DB_KEYWORD_RULES.filter(([kw]) => !["postgres", "sqlite"].includes(kw)));
+        }
+      }
+    }
+    const classpathXml = readFileSafe(path.join(ROOT, ".classpath"));
+    const projectXml = readFileSafe(path.join(ROOT, ".project"));
+    const jdtPrefs = readFileSafe(path.join(ROOT, ".settings/org.eclipse.jdt.core.prefs"));
+    if (classpathXml || projectXml || jdtPrefs) {
+      if (JVM.eclipseHasJavaNature(projectXml) || (classpathXml && /JRE_CONTAINER|kind="src"/.test(classpathXml)) || jdtPrefs) {
+        if (!stack.language) { stack.language = "java"; stack.detected.push(".classpath/.project"); }
+        // `.settings/org.eclipse.jdt.core.prefs` compliance level is what the
+        // compiler actually used — it outranks the JRE container name.
+        const lvl = JVM.eclipseJdtPrefsLevel(jdtPrefs) || (classpathXml ? JVM.eclipseJreLevel(classpathXml) : null);
+        if (lvl && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(lvl);
+      }
+    }
+    // IntelliJ / NetBeans project metadata.
+    const ideaMisc = readFileSafe(path.join(ROOT, ".idea/misc.xml"));
+    if (ideaMisc) {
+      const lvl = JVM.intellijLanguageLevel(ideaMisc);
+      if (lvl) { if (!stack.language) { stack.language = "java"; stack.detected.push(".idea/misc.xml"); } if (!stack.languageVersion) stack.languageVersion = normalizeJavaVersion(lvl); }
+    }
+    const nbProps = readFileSafe(path.join(ROOT, "nbproject/project.properties"));
+    const nb = JVM.netbeansProject(nbProps);
+    if (nbProps && (nb.level || nb.jars.length)) {
+      if (!stack.language) { stack.language = "java"; stack.detected.push("nbproject"); }
+      if (nb.level && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(nb.level);
+    }
+    // Jar names referenced by IDE metadata even when the jars themselves are
+    // not committed (`.classpath kind="lib"/"var"`, NetBeans file.reference).
+    // Fed into the same classifier as jars on disk, below.
+    referencedJars.push(...JVM.eclipseClasspathJars(classpathXml), ...nb.jars);
+    if (referencedJars.some(j => /WEB-INF\/lib\//.test(j)) && !stack.packaging) stack.packaging = "war";
+    if (!stack.language && await anyJavaSources()) { stack.language = "java"; stack.detected.push("java sources"); }
+  }
+
+  // ── Java: jars on disk (any build tool, or none) ──
+  // v2.5.1 — Also runs for Gradle/Maven projects that still resolve from
+  // `fileTree(dir: 'WEB-INF/lib')` instead of coordinates — common in SI
+  // codebases that adopted a build tool without migrating the jars. Fills
+  // nulls only; coordinate-based answers above always win. Capped so a
+  // vendored `lib/` with thousands of jars cannot stall detection.
+  if (!stack.framework && (stack.language === "java" || (jvmMayClaim && !stack.buildTool))) {
+    // Recursive under the lib roots: `lib/spring/*.jar`, `lib/db/*.jar` are
+    // common hand-sorted layouts.
+    const onDisk = await glob("**/{WEB-INF/lib,lib,libs}/**/*.jar", { cwd: ROOT, ignore: jarIgnore, nodir: true });
+    const jars = [...onDisk.map(j => j.replace(/\\/g, "/")), ...referencedJars];
+    if (jars.length) {
+      if (jars.some(j => /WEB-INF\/lib\//.test(j)) && !stack.packaging) stack.packaging = "war";
+      const cls = JVM.classifyJars(jars.slice(0, 500).map(j => path.basename(j)));
+      // Jars alone are weak evidence — require *.java sources beside them.
+      if (!stack.language && await anyJavaSources()) { stack.language = "java"; stack.detected.push("jars"); }
+      // Everything below is dependency evidence for a JAVA project. A jar
+      // directory with no sources is not a project and gets no DB / ORM /
+      // framework either.
+      if (stack.language === "java") {
+      // JDBC drivers and ORM jars on disk are the only dependency evidence a
+      // no-build-tool project has. Same dual output as every other DB source.
+      for (const db of cls.databases) {
+        if (!stack.database) stack.database = db;
+        if (!stack.databases.includes(db)) stack.databases.push(db);
+      }
+      if (cls.orm && !stack.orm) { stack.orm = cls.orm; stack.detected.push(`${cls.orm} (jar)`); }
+      if (cls.springBoot || cls.springFramework) {
+        if (!stack.framework) {
+          stack.framework = cls.springBoot ? "spring-boot" : "spring-framework";
+          stack.detected.push(`${stack.framework} (jar)`);
+        }
+        if (cls.springFrameworkVersion && !stack.springFrameworkVersion) stack.springFrameworkVersion = cls.springFrameworkVersion;
+        if (!stack.frameworkVersion) {
+          if (stack.framework === "spring-boot" && cls.springBootVersion) stack.frameworkVersion = cls.springBootVersion;
+          if (stack.framework === "spring-framework" && cls.springFrameworkVersion) stack.frameworkVersion = cls.springFrameworkVersion;
+        }
+      }
+      } // language === "java"
+    }
+  }
+
+  // ── Java: deployment descriptor + Spring XML schema evidence ──
+  // v2.5.1 — For trees with no coordinates and no jars (jars gitignored,
+  // IDE metadata absent): `WEB-INF/web.xml` naming DispatcherServlet /
+  // ContextLoaderListener is Spring MVC evidence and a war signal; Spring XML
+  // configs carry `spring-beans-3.0.xsd` — major.minor only, the
+  // lowest-fidelity version source, consulted last and never overriding a
+  // pinned version. Struts descriptors add a tag without setting a framework.
+  // Spring Boot projects are skipped: Boot owns the servlet container, its
+  // WAR packaging is declared in the build file, and the `detected` array of
+  // a Boot project must stay byte-identical to v2.5.0 output.
+  if (stack.framework !== "spring-boot" && (stack.language === "java" || (jvmMayClaim && !stack.buildTool))) {
+    const webXmls = await glob("**/WEB-INF/web.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true });
+    for (const wx of webXmls.slice(0, 5)) {
+      const facts = JVM.webXmlFacts(readFileSafe(path.join(ROOT, wx)));
+      if (!stack.packaging) stack.packaging = "war";
+      if (facts.spring) {
+        if (!stack.language) stack.language = "java";
+        if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework (web.xml)"); }
+      }
+      if (facts.struts && !stack.detected.some(d => d.startsWith(facts.struts))) stack.detected.push(`${facts.struts} (web.xml)`);
+      if (facts.servletVersion && !stack.detected.some(d => d.startsWith("servlet "))) stack.detected.push(`servlet ${facts.servletVersion}`);
+      if (!stack.language) { stack.language = "java"; stack.detected.push("web.xml"); }
+    }
+    if (stack.framework === "spring-framework" && !stack.frameworkVersion) {
+      const xmls = await glob("**/{WEB-INF,resources,config,conf,spring}/**/*.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true });
+      let best = null;
+      for (const x of xmls.slice(0, 50)) {
+        const v = JVM.springXsdVersion(readFileSafe(path.join(ROOT, x)));
+        if (v && (!best || parseFloat(v) > parseFloat(best))) best = v;
+      }
+      if (best) { stack.detected.push(`spring-xsd ${best}`); stack.frameworkVersion = best; if (!stack.springFrameworkVersion) stack.springFrameworkVersion = best; }
+    }
+  }
+
+  // Settle the provisional-language reclaim (see `parked` above).
+  if (parked) {
+    if (stack.language === "java") {
+      stack.detected.push("java (reclaimed from provisional package.json language)");
+    } else {
+      stack.language = parked.language; stack.languageVersion = parked.languageVersion;
+      if (!stack.packageManager) stack.packageManager = parked.packageManager;
+    }
+  }
+}
+
 async function detectStack(ROOT) {
   // Lazily evaluated once per call; only consulted when a "kotlin" keyword
   // would otherwise flip the language (see hasJavaOnlySources).
@@ -681,38 +972,6 @@ async function detectStack(ROOT) {
     }
   }
 
-  // v2.5.1 — Fold one child pom (Maven <module> or a depth-1 sibling
-  // project) into `stack`, filling only what is still null. `${prop}` in the
-  // child resolves against the child first, then `rootPom` (may be "").
-  const absorbMavenPom = (cp, rootPom, mod) => {
-    const cpClean = stripComments(cp);
-    const propsText = cp + "\n" + rootPom;
-    if (!stack.framework && cpClean.includes("spring-boot")) { stack.framework = "spring-boot"; stack.detected.push(`spring-boot (${mod})`); }
-    if (stack.framework === "spring-boot" && !stack.frameworkVersion) { const bv = JVM.mavenSpringBootVersion(propsText, cpClean); if (bv) stack.frameworkVersion = bv; }
-    if (!stack.framework && JVM.mavenHasSpringFramework(cpClean)) { stack.framework = "spring-framework"; stack.detected.push(`spring-framework (${mod})`); }
-    // Root <properties> may already have yielded the Framework version
-    // before any module declared the framework itself — link them.
-    if (stack.framework === "spring-framework" && !stack.frameworkVersion && stack.springFrameworkVersion) stack.frameworkVersion = stack.springFrameworkVersion;
-    if (!stack.springFrameworkVersion) {
-      const v = JVM.mavenSpringFrameworkVersion(propsText, cpClean);
-      if (v) { stack.springFrameworkVersion = v; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = v; }
-    }
-    if (JVM.hasEgovframe(cpClean) && !stack.detected.some(d => d.startsWith("egovframe"))) {
-      const ev = JVM.egovframeVersion(cpClean, propsText);
-      stack.detected.push(ev ? `egovframe ${ev}` : "egovframe");
-      if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework"); }
-    }
-    if (!stack.orm) { if (IBATIS_REGEX.test(cpClean)) { stack.orm = "ibatis"; stack.detected.push(`ibatis (${mod})`); } else detectFirst(stack, "orm", cpClean, MAVEN_ORM_RULES); }
-    for (const [keyword, value] of DB_KEYWORD_RULES.filter(([kw]) => kw !== "postgres")) {
-      if (cpClean.includes(keyword)) { if (!stack.database) stack.database = value; if (!stack.databases.includes(value)) stack.databases.push(value); }
-    }
-    if (!stack.languageVersion) {
-      const jv = cp.match(/<java\.version>\s*(\d+(?:\.\d+)?)\s*<\/java\.version>/) || cp.match(/<maven\.compiler\.(?:source|release)>\s*(\d+(?:\.\d+)?)\s*</);
-      if (jv) stack.languageVersion = normalizeJavaVersion(jv[1]);
-    }
-    if (!stack.packaging) { const pk = JVM.mavenPackaging(cp); if (pk && pk !== "pom") stack.packaging = pk; }
-    if (stack.framework !== "spring-boot") for (const t of JVM.legacyFrameworkTags(cpClean)) { const tag = t.version ? `${t.tag} ${t.version}` : t.tag; if (!stack.detected.includes(tag)) stack.detected.push(tag); }
-  };
 
   // ── Java: Maven ──
   if (existsSafe(path.join(ROOT, "pom.xml"))) {
@@ -822,7 +1081,7 @@ async function detectStack(ROOT) {
       const moduleNames = [...pomClean.matchAll(/<module>\s*([^<]+?)\s*<\/module>/g)].map(m => m[1]);
       for (const mod of moduleNames.slice(0, 30)) {
         const cp = readFileSafe(path.join(ROOT, mod, "pom.xml"));
-        if (cp) absorbMavenPom(cp, pom, mod);
+        if (cp) absorbMavenPom(stack, cp, pom, mod);
       }
       if (IBATIS_REGEX.test(pomClean)) {
         stack.orm = "ibatis";
@@ -1119,223 +1378,8 @@ async function detectStack(ROOT) {
     }
   }
 
-  // ── Java: legacy evidence (runs AFTER Node/Python) ──
-  // v2.5.1 — Everything below reads evidence weaker than a root build file:
-  // sibling-directory build files, Ant / Eclipse / IntelliJ / NetBeans
-  // metadata, jars on disk, `WEB-INF/web.xml`, Spring XSDs. It therefore runs
-  // last and may only (a) fill a language nobody claimed, or (b) reclaim a
-  // PROVISIONAL Node language — a root package.json that exists for gulp /
-  // jQuery / Tailwind asset tooling, with NO Node framework detected — and
-  // only on STRONG JVM evidence (build.xml, `.project` javanature, a sibling
-  // pom/gradle, a WEB-INF/web.xml, or Spring jars beside *.java sources).
-  // A Next.js / Express / Django project with a stray `.idea/misc.xml` or a
-  // vendored `tools/lib/*.jar` is never flipped to Java.
-  // `src/test/**` is excluded everywhere below: a test-resources `web.xml`
-  // or a test fixture jar is not deployment evidence for the application.
-  const jarIgnore = ["**/node_modules/**", "**/build/**", "**/target/**", "**/.git/**", "**/dist/**", "**/src/test/**"];
-  const referencedJars = [];
-  // Memoized: does the tree hold any *.java source at all? Shared by the
-  // Ant / jar / last-resort decisions below so the walk happens at most once.
-  let anyJavaMemo = null;
-  const anyJavaSources = async () => {
-    if (anyJavaMemo === null) anyJavaMemo = (await glob("**/*.java", { cwd: ROOT, ignore: jarIgnore, nodir: true })).length > 0;
-    return anyJavaMemo;
-  };
-  let jvmMayClaim = !stack.language;
-  // Provisional-language reclaim. The Node language is PARKED, not dropped:
-  // if none of the JVM blocks below actually claims the project (a `build.xml`
-  // that is not Ant — a Phing file or an empty stub — with no *.java anywhere),
-  // the parked values are restored at the end of this section. A gulp-only
-  // site therefore never ends up with `language: null`, and a reclaimed Java
-  // project does not keep `packageManager: "npm"` from the asset tooling.
-  let parked = null;
-  if (!jvmMayClaim && languageFromPackageJson && !stack.framework && !stack.frontend && !stack.buildTool) {
-    const strong =
-      existsSafe(path.join(ROOT, "build.xml")) ||
-      JVM.eclipseHasJavaNature(readFileSafe(path.join(ROOT, ".project"))) ||
-      (await glob("*/{pom.xml,build.gradle,build.gradle.kts}", { cwd: ROOT, ignore: ["node_modules/**"] })).length > 0 ||
-      (await glob("**/WEB-INF/web.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true })).length > 0;
-    if (strong) {
-      jvmMayClaim = true;
-      parked = { language: stack.language, languageVersion: stack.languageVersion, packageManager: stack.packageManager };
-      stack.language = null; stack.languageVersion = null; stack.packageManager = null;
-    }
-  }
-  // ── Java: build files one directory down (no root build file) ──
-  // v2.5.1 — SI repositories often hold sibling projects (`erp-web/pom.xml`,
-  // `erp-batch/pom.xml`) with no aggregator at the root. Depth-1 poms are
-  // absorbed with the same rules as Maven <modules>. Depth-1 Gradle files
-  // without a root `settings.gradle` / `build.gradle` are NOT swept — they
-  // count as strong evidence for the reclaim above and the `*.java` last
-  // resort then sets the language, but framework/version stay null (a root
-  // `settings.gradle` is what makes the Gradle sub-module sweep run).
-  if (!stack.buildTool && jvmMayClaim) {
-    const siblingPoms = (await glob("*/pom.xml", { cwd: ROOT, ignore: ["node_modules/**"] })).map(p => p.replace(/\\/g, "/")).sort();
-    if (siblingPoms.length) {
-      stack.buildTool = "maven"; stack.language = "java";
-      stack.detected.push(`pom.xml (${siblingPoms.length} sibling project${siblingPoms.length > 1 ? "s" : ""})`);
-      if (!stack.packageManager) stack.packageManager = "maven";
-      for (const sp of siblingPoms.slice(0, 30)) {
-        const cp = readFileSafe(path.join(ROOT, sp));
-        if (cp) absorbMavenPom(cp, "", path.dirname(sp));
-      }
-    }
-  }
-
-  // ── Java: Ant / Eclipse WTP / no build tool (legacy) ──
-  // v2.5.x — The shape of most pre-Maven enterprise code: a `build.xml`,
-  // an Eclipse `.classpath`/`.project`, `WebContent/WEB-INF/lib/*.jar`, and
-  // sources under `src/` (no `src/main/java`). Evidence, in order of
-  // strength:
-  //   1. build.xml            → buildTool "ant", Java level from <javac source="">
-  //   2. .classpath/.project  → Java level from the JRE container, javanature
-  //   3. **/WEB-INF/lib/*.jar → packaging "war"; Spring jars → framework +
-  //                             version parsed from the jar NAME
-  //                             (spring-webmvc-3.0.5.RELEASE.jar). An
-  //                             unversioned `spring.jar` (2.0 era) reports the
-  //                             framework with version null — never a guess.
-  //   4. **/*.java            → language "java" as a last resort
-  // Only runs when no Gradle/Maven build file claimed the project.
-  if (!stack.buildTool && jvmMayClaim) {
-    const buildXml = path.join(ROOT, "build.xml");
-    if (existsSafe(buildXml)) {
-      const bx = readFileSafe(buildXml);
-      // `<project>` alone is not Ant — Phing (PHP) and other XML build tools
-      // use the same root element. Require a `<javac>` task or *.java sources.
-      if (bx && /<project\b/.test(bx) && (/<javac\b/.test(bx) || await anyJavaSources())) {
-        stack.buildTool = "ant"; stack.language = "java"; stack.detected.push("build.xml");
-        if (!stack.packageManager) stack.packageManager = "ant";
-        const src = JVM.antJavacSource(bx);
-        if (src && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(src);
-        // v2.5.1 — Ant + Ivy: ivy.xml is the dependency manifest.
-        const ivy = readFileSafe(path.join(ROOT, "ivy.xml"));
-        if (ivy) {
-          stack.detected.push("ivy.xml");
-          if (!stack.framework && JVM.ivyHasSpringFramework(ivy)) { stack.framework = "spring-framework"; stack.detected.push("spring-framework (ivy)"); }
-          const iv = JVM.ivySpringFrameworkVersion(ivy);
-          if (iv) { stack.springFrameworkVersion = iv; if (stack.framework === "spring-framework" && !stack.frameworkVersion) stack.frameworkVersion = iv; }
-          if (!stack.orm) { if (IBATIS_REGEX.test(ivy)) { stack.orm = "ibatis"; stack.detected.push("ibatis (ivy)"); } else detectFirst(stack, "orm", ivy, GRADLE_ORM_RULES); }
-          detectDb(stack, ivy, DB_KEYWORD_RULES.filter(([kw]) => !["postgres", "sqlite"].includes(kw)));
-        }
-      }
-    }
-    const classpathXml = readFileSafe(path.join(ROOT, ".classpath"));
-    const projectXml = readFileSafe(path.join(ROOT, ".project"));
-    const jdtPrefs = readFileSafe(path.join(ROOT, ".settings/org.eclipse.jdt.core.prefs"));
-    if (classpathXml || projectXml || jdtPrefs) {
-      if (JVM.eclipseHasJavaNature(projectXml) || (classpathXml && /JRE_CONTAINER|kind="src"/.test(classpathXml)) || jdtPrefs) {
-        if (!stack.language) { stack.language = "java"; stack.detected.push(".classpath/.project"); }
-        // `.settings/org.eclipse.jdt.core.prefs` compliance level is what the
-        // compiler actually used — it outranks the JRE container name.
-        const lvl = JVM.eclipseJdtPrefsLevel(jdtPrefs) || (classpathXml ? JVM.eclipseJreLevel(classpathXml) : null);
-        if (lvl && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(lvl);
-      }
-    }
-    // IntelliJ / NetBeans project metadata.
-    const ideaMisc = readFileSafe(path.join(ROOT, ".idea/misc.xml"));
-    if (ideaMisc) {
-      const lvl = JVM.intellijLanguageLevel(ideaMisc);
-      if (lvl) { if (!stack.language) { stack.language = "java"; stack.detected.push(".idea/misc.xml"); } if (!stack.languageVersion) stack.languageVersion = normalizeJavaVersion(lvl); }
-    }
-    const nbProps = readFileSafe(path.join(ROOT, "nbproject/project.properties"));
-    const nb = JVM.netbeansProject(nbProps);
-    if (nbProps && (nb.level || nb.jars.length)) {
-      if (!stack.language) { stack.language = "java"; stack.detected.push("nbproject"); }
-      if (nb.level && !stack.languageVersion) stack.languageVersion = normalizeJavaVersion(nb.level);
-    }
-    // Jar names referenced by IDE metadata even when the jars themselves are
-    // not committed (`.classpath kind="lib"/"var"`, NetBeans file.reference).
-    // Fed into the same classifier as jars on disk, below.
-    referencedJars.push(...JVM.eclipseClasspathJars(classpathXml), ...nb.jars);
-    if (referencedJars.some(j => /WEB-INF\/lib\//.test(j)) && !stack.packaging) stack.packaging = "war";
-    if (!stack.language && await anyJavaSources()) { stack.language = "java"; stack.detected.push("java sources"); }
-  }
-
-  // ── Java: jars on disk (any build tool, or none) ──
-  // v2.5.1 — Also runs for Gradle/Maven projects that still resolve from
-  // `fileTree(dir: 'WEB-INF/lib')` instead of coordinates — common in SI
-  // codebases that adopted a build tool without migrating the jars. Fills
-  // nulls only; coordinate-based answers above always win. Capped so a
-  // vendored `lib/` with thousands of jars cannot stall detection.
-  if (!stack.framework && (stack.language === "java" || (jvmMayClaim && !stack.buildTool))) {
-    // Recursive under the lib roots: `lib/spring/*.jar`, `lib/db/*.jar` are
-    // common hand-sorted layouts.
-    const onDisk = await glob("**/{WEB-INF/lib,lib,libs}/**/*.jar", { cwd: ROOT, ignore: jarIgnore, nodir: true });
-    const jars = [...onDisk.map(j => j.replace(/\\/g, "/")), ...referencedJars];
-    if (jars.length) {
-      if (jars.some(j => /WEB-INF\/lib\//.test(j)) && !stack.packaging) stack.packaging = "war";
-      const cls = JVM.classifyJars(jars.slice(0, 500).map(j => path.basename(j)));
-      // Jars alone are weak evidence — require *.java sources beside them.
-      if (!stack.language && await anyJavaSources()) { stack.language = "java"; stack.detected.push("jars"); }
-      // Everything below is dependency evidence for a JAVA project. A jar
-      // directory with no sources is not a project and gets no DB / ORM /
-      // framework either.
-      if (stack.language === "java") {
-      // JDBC drivers and ORM jars on disk are the only dependency evidence a
-      // no-build-tool project has. Same dual output as every other DB source.
-      for (const db of cls.databases) {
-        if (!stack.database) stack.database = db;
-        if (!stack.databases.includes(db)) stack.databases.push(db);
-      }
-      if (cls.orm && !stack.orm) { stack.orm = cls.orm; stack.detected.push(`${cls.orm} (jar)`); }
-      if (cls.springBoot || cls.springFramework) {
-        if (!stack.framework) {
-          stack.framework = cls.springBoot ? "spring-boot" : "spring-framework";
-          stack.detected.push(`${stack.framework} (jar)`);
-        }
-        if (cls.springFrameworkVersion && !stack.springFrameworkVersion) stack.springFrameworkVersion = cls.springFrameworkVersion;
-        if (!stack.frameworkVersion) {
-          if (stack.framework === "spring-boot" && cls.springBootVersion) stack.frameworkVersion = cls.springBootVersion;
-          if (stack.framework === "spring-framework" && cls.springFrameworkVersion) stack.frameworkVersion = cls.springFrameworkVersion;
-        }
-      }
-      } // language === "java"
-    }
-  }
-
-  // ── Java: deployment descriptor + Spring XML schema evidence ──
-  // v2.5.1 — For trees with no coordinates and no jars (jars gitignored,
-  // IDE metadata absent): `WEB-INF/web.xml` naming DispatcherServlet /
-  // ContextLoaderListener is Spring MVC evidence and a war signal; Spring XML
-  // configs carry `spring-beans-3.0.xsd` — major.minor only, the
-  // lowest-fidelity version source, consulted last and never overriding a
-  // pinned version. Struts descriptors add a tag without setting a framework.
-  // Spring Boot projects are skipped: Boot owns the servlet container, its
-  // WAR packaging is declared in the build file, and the `detected` array of
-  // a Boot project must stay byte-identical to v2.5.0 output.
-  if (stack.framework !== "spring-boot" && (stack.language === "java" || (jvmMayClaim && !stack.buildTool))) {
-    const webXmls = await glob("**/WEB-INF/web.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true });
-    for (const wx of webXmls.slice(0, 5)) {
-      const facts = JVM.webXmlFacts(readFileSafe(path.join(ROOT, wx)));
-      if (!stack.packaging) stack.packaging = "war";
-      if (facts.spring) {
-        if (!stack.language) stack.language = "java";
-        if (!stack.framework) { stack.framework = "spring-framework"; stack.detected.push("spring-framework (web.xml)"); }
-      }
-      if (facts.struts && !stack.detected.some(d => d.startsWith(facts.struts))) stack.detected.push(`${facts.struts} (web.xml)`);
-      if (facts.servletVersion && !stack.detected.some(d => d.startsWith("servlet "))) stack.detected.push(`servlet ${facts.servletVersion}`);
-      if (!stack.language) { stack.language = "java"; stack.detected.push("web.xml"); }
-    }
-    if (stack.framework === "spring-framework" && !stack.frameworkVersion) {
-      const xmls = await glob("**/{WEB-INF,resources,config,conf,spring}/**/*.xml", { cwd: ROOT, ignore: jarIgnore, nodir: true });
-      let best = null;
-      for (const x of xmls.slice(0, 50)) {
-        const v = JVM.springXsdVersion(readFileSafe(path.join(ROOT, x)));
-        if (v && (!best || parseFloat(v) > parseFloat(best))) best = v;
-      }
-      if (best) { stack.detected.push(`spring-xsd ${best}`); stack.frameworkVersion = best; if (!stack.springFrameworkVersion) stack.springFrameworkVersion = best; }
-    }
-  }
-
-  // Settle the provisional-language reclaim (see `parked` above).
-  if (parked) {
-    if (stack.language === "java") {
-      stack.detected.push("java (reclaimed from provisional package.json language)");
-    } else {
-      stack.language = parked.language; stack.languageVersion = parked.languageVersion;
-      if (!stack.packageManager) stack.packageManager = parked.packageManager;
-    }
-  }
+  // ── Java: legacy evidence (runs AFTER Node/Python) ── (see detectLegacyJvm)
+  await detectLegacyJvm(ROOT, stack, languageFromPackageJson);
 
   // ── DB from config files ──
   //
@@ -1586,7 +1630,12 @@ async function detectStack(ROOT) {
     // `NG_PORT`). `extractPort()` prefers the frontend keys, so when a
     // backend exists the frontend key must go to `frontendPort`, never to the
     // backend's `stack.port`.
-    const vars = envInfo.vars || {};
+    // v2.5.2 — read the UNREDACTED port values (`envInfo.portVars`), not the
+    // redacted `vars` map. No current key-name rule intersects a port key, so
+    // this changes nothing today; it removes the structural dependency of
+    // port detection on the redaction rule set. Falls back to `vars` for an
+    // envInfo produced by a pre-v2.5.2 caller.
+    const vars = envInfo.portVars || envInfo.vars || {};
     const feKeys = Object.keys(vars).filter(k => /^(VITE_|NEXT_|NUXT_|NG_)\w*PORT$/.test(k));
     const backendOnlyVars = Object.fromEntries(Object.entries(vars).filter(([k]) => !feKeys.includes(k)));
     const backendPort = extractPort(backendOnlyVars);

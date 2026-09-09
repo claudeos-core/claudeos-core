@@ -91,7 +91,7 @@ Scanner ở `plan-installer/scanners/scan-java.js`.
 
 **Gốc source.** `scan-java` viết lại các pattern `src/main/java` / `src/main/resources` theo gốc tìm được. Nếu tồn tại bất kỳ `[<module>/]src/main/java` nào thì chỉ dùng chúng. Nếu không, theo thứ tự: các mục `kind="src"` trong `.classpath` (loại trừ thư mục test), `<javac srcdir>` trong `build.xml` (có phân giải `<property>`), rồi `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` nếu chứa `*.java`. Sau đó vẫn là năm domain pattern như cũ, nên `src/com/acme/erp/controller/*.java` là Pattern C y hệt như khi nằm dưới `src/main/java`.
 
-**Giới hạn đã biết.** File Gradle không được bóc comment (một toạ độ bị `//` vẫn được tính — với Boot xưa nay vẫn vậy). Không phân giải kế thừa từ pom cha nằm ngoài repository. Lớp controller `web/` của eGovFrame chưa được Pattern A/B nhận là tên lớp.
+**Giới hạn đã biết.** File Gradle không được bóc comment (một toạ độ bị `//` vẫn được tính — với Boot xưa nay vẫn vậy). Không phân giải kế thừa từ pom cha nằm ngoài repository. Từ v2.5.2, `web/` được nhận là lớp HTTP, nhưng chỉ với project không có thư mục `controller/` ở bất cứ đâu; trong cây trộn cả hai quy ước giữa các module, những module dùng `web/` vẫn giữ hành vi cũ (`controllers: 0`).
 
 Các helper nằm trong `plan-installer/jvm-detect.js` (hàm xử lý văn bản thuần, có unit test riêng).
 
@@ -299,7 +299,7 @@ Scanner đọc tệp `.env*` lấy cấu hình runtime, để tài liệu sinh r
 7. `.env.local`
 8. `.env.development`
 
-**Redact biến nhạy cảm:** key khớp `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng.
+**Redact biến nhạy cảm:** key khớp `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng. Nếu mật khẩu chứa `/`, `?` hoặc `#` thô (mật khẩu sinh bằng base64 rất hay gặp), phần authority của URL trở nên nhập nhằng, nên từ v2.5.2 giá trị như vậy bị bỏ nguyên (`***REDACTED***`) thay vì chỉ che một phần. Host mất theo, và `init` nêu tên các key bị ảnh hưởng trong tóm tắt Phase 1 (`envInfo.credentialWarnings`, chỉ tên key). Hãy percent-encode mật khẩu (`/` thành `%2F`) để giữ lại host.
 
 **Thứ tự ưu tiên xác định port:**
 1. `server.port` của Spring Boot `application.yml`
@@ -326,7 +326,7 @@ Sau khi Step A xong, sẽ thấy tệp này ở `claudeos-core/generated/project
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

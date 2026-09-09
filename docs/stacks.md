@@ -89,7 +89,7 @@ The scanner is in `plan-installer/scanners/scan-java.js`.
 
 **Source roots.** `scan-java` rewrites its `src/main/java` / `src/main/resources` patterns per discovered root. If any `[<module>/]src/main/java` exists, only those are used. Otherwise, in order: `.classpath` `kind="src"` entries (test folders excluded), `build.xml` `<javac srcdir>` (with `<property>` resolution), then `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` holding `*.java`. The same five domain patterns then apply, so `src/com/acme/erp/controller/*.java` is Pattern C exactly as it would be under `src/main/java`.
 
-**Known limits.** Gradle files are not comment-stripped (a `//`-commented coordinate still counts, as it always has for Boot); inheritance from a parent pom outside the repository is not resolved; eGovFrame's `web/` controller layer is not yet a recognized layer name for Pattern A/B.
+**Known limits.** Gradle files are not comment-stripped (a `//`-commented coordinate still counts, as it always has for Boot); inheritance from a parent pom outside the repository is not resolved. As of v2.5.2 `web/` IS recognized as the HTTP layer, but only for a project that holds no `controller/` directory anywhere — a tree mixing the two conventions across modules keeps the old behavior (`controllers: 0`) in its `web/` modules.
 
 The helpers are in `plan-installer/jvm-detect.js` (pure text functions, unit-tested in isolation).
 
@@ -297,7 +297,7 @@ The scanner reads `.env*` files for runtime configuration so generated docs refl
 7. `.env.local`
 8. `.env.development`
 
-**Sensitive-variable redaction:** keys matching `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, etc. are auto-redacted to `***REDACTED***` before being copied into `project-analysis.json`. Every other URL-shaped value (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) has its credentials masked to `***:***` while scheme, host, port and path are kept (`postgres://***:***@db.internal:5432/app`) — the DB type is still recognizable, the password never reaches the file. The scanner's own DB-type detection reads the raw `.env` text directly and is unaffected.
+**Sensitive-variable redaction:** keys matching `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, etc. are auto-redacted to `***REDACTED***` before being copied into `project-analysis.json`. Every other URL-shaped value (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) has its credentials masked to `***:***` while scheme, host, port and path are kept (`postgres://***:***@db.internal:5432/app`) — the DB type is still recognizable, the password never reaches the file. The scanner's own DB-type detection reads the raw `.env` text directly and is unaffected. A password containing a raw `/`, `?` or `#` (base64-generated passwords often do) makes the URL's authority ambiguous, so since v2.5.2 such a value is dropped whole (`***REDACTED***`) rather than partially masked — the host is lost along with it, and `init` names the affected keys in its Phase 1 summary (`envInfo.credentialWarnings`, key names only). Percent-encode the password (`/` as `%2F`) to keep the host visible.
 
 **Port resolution precedence:**
 1. Spring Boot `application.yml` `server.port`
@@ -324,7 +324,7 @@ After Step A finishes, you'll find this file at `claudeos-core/generated/project
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

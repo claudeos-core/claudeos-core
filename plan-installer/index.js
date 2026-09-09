@@ -52,7 +52,19 @@ async function main() {
     console.log(`    Database:    ${stack.database || "none"}`);
   }
   console.log(`    ORM:         ${stack.orm || "none"}`);
-  console.log(`    PackageMgr:  ${stack.packageManager || "none"}\n`);
+  console.log(`    PackageMgr:  ${stack.packageManager || "none"}`);
+  // v2.5.2 — a URL value whose password holds a raw `/`, `?` or `#` cannot
+  // have its userinfo rewritten without risking the host, so the whole value
+  // is dropped. Say so: silently losing a DATABASE_URL would otherwise look
+  // like a detection bug. Key names only, never any part of the value.
+  const credWarn = (stack.envInfo && stack.envInfo.credentialWarnings) || [];
+  if (credWarn.length) {
+    console.warn(`\n  ⚠️  Credential-shaped value dropped from ${credWarn.join(", ")} (${stack.envInfo.source}).`);
+    console.warn("  The password contains a raw '/', '?' or '#', which makes the URL's host ambiguous,");
+    console.warn("  so the value was redacted whole rather than partially masked. Percent-encode the");
+    console.warn("  password (e.g. '/' as %2F) to keep the host visible in the generated docs.");
+  }
+  console.log("");
 
   // Phase 2: Structure scan
   console.log("  [Phase 2] Scanning structure...");

@@ -416,8 +416,12 @@ test("sensitive variable redaction", async (t) => {
 test("maskUrlCredentials masks passwords containing @, Go DSNs, and never rewrites @ that sits in a path, query, mailto or plain value", () => {
   const { maskUrlCredentials } = require("../lib/env-parser");
   assert.strictEqual(maskUrlCredentials("postgres://app:p@ss@db:5432/app"), "postgres://***:***@db:5432/app", "password with @");
-  // A raw "/" inside a password is not a valid URL; it is left alone rather than risk corrupting real URLs whose PATH contains "@".
-  assert.strictEqual(maskUrlCredentials("postgres://app:pa/ss@db:5432/app"), "postgres://app:pa/ss@db:5432/app");
+  // v2.5.2 — a raw "/" inside a password cannot be rewritten in place without
+  // risking the host, but leaving the value verbatim leaked the password into
+  // project-analysis.json (the key is DATABASE_URL, so the key-name rule does
+  // not backstop it). The whole value is dropped instead. Superseded the
+  // v2.5.0 "left alone" assertion deliberately.
+  assert.strictEqual(maskUrlCredentials("postgres://app:pa/ss@db:5432/app"), "***REDACTED***");
   assert.strictEqual(maskUrlCredentials("https://cdn.jsdelivr.net/npm/@scope/pkg"), "https://cdn.jsdelivr.net/npm/@scope/pkg", "scoped package path");
   assert.strictEqual(maskUrlCredentials("https://api.example.com/users/@me"), "https://api.example.com/users/@me", "@ in path");
   assert.strictEqual(maskUrlCredentials("https://host:8080/path/@x"), "https://host:8080/path/@x", "port before path with @");
@@ -436,4 +440,79 @@ test("maskUrlCredentials masks passwords containing @, Go DSNs, and never rewrit
   assert.strictEqual(maskUrlCredentials("sqlserver://host;databaseName=app;user=sa;password=x"), "sqlserver://host;databaseName=app;user=sa;password=***");
   assert.strictEqual(maskUrlCredentials("https://api.example.com/v1?token=abc&page=2"), "https://api.example.com/v1?token=***&page=2");
   assert.strictEqual(maskUrlCredentials("user:p@ss@tcp(h:3306)/db"), "***:***@tcp(h:3306)/db", "Go DSN password containing @");
+});
+
+// ─── v2.5.2: last-resort backstop for userinfo holding a raw RFC-3986 delimiter ──
+test("hasUnmaskedUrlCredentials flags only the shapes the userinfo rule cannot reach", () => {
+  const { hasUnmaskedUrlCredentials: H, maskUrlCredentials } = require("../lib/env-parser");
+
+  // Flagged: the authority looks like `user:password` and the real `@` sits
+  // past the first `/`, `?` or `#` — the masking regex was forced to stop early.
+  for (const v of [
+    "postgres://u:p/w@host/db",            // raw "/" in password
+    "redis://:pw?x@host/0",                // raw "?" in password, empty user
+    "mysql://root:a/b/c@db:3306/app",      // several raw "/"
+    "postgres://app:pa#ss@db/app",         // raw "#"
+    "postgres://app:Zm9v/YmFy@db:5432/app", // base64-generated password
+  ]) {
+    assert.strictEqual(H(v), true, `should flag: ${v}`);
+    assert.strictEqual(maskUrlCredentials(v), "***REDACTED***", `should redact whole: ${v}`);
+  }
+
+  // Not flagged — every one of these is either already masked by the userinfo
+  // rule, or an "@" that legitimately belongs to a path/query.
+  for (const v of [
+    "postgres://u:p@host/db",                 // masking handles it
+    "postgres://app:p@ss@db:5432/app",        // "@" in password, still in authority
+    "https://cdn.jsdelivr.net/npm/@scope/pkg", // scoped npm path
+    "https://api.example.com/users/@me",      // "@" in path
+    "https://host:8080/path/@x",              // host:port, not user:password
+    "http://a.com:8080/img/@2x.png",          // ditto
+    "https://api.example.com/v1?redirect=user@host", // "@" in query
+    "https://user@host/path",                 // user, no password
+    "mailto:ops@example.com",                 // not a DSN
+    "jdbc:postgresql://db:5432/app?user=app&password=s3cret", // PARAM_RE handles it
+  ]) {
+    assert.strictEqual(H(v), false, `should NOT flag: ${v}`);
+  }
+
+  // The masking rule still wins where it applies: only values whose
+  // authority it could NOT mask are candidates for the whole-value drop.
+  assert.strictEqual(maskUrlCredentials("postgres://app:p@ss@db:5432/app"), "postgres://***:***@db:5432/app");
+  assert.strictEqual(maskUrlCredentials("https://host:8080/path/@x"), "https://host:8080/path/@x");
+  // A masked userinfo plus an "@" later in the path must NOT trip the backstop.
+  assert.strictEqual(maskUrlCredentials("postgres://u:p@host/path/@x"), "postgres://***:***@host/path/@x");
+
+  // The backstop is gated on the userinfo rule not firing — not on "did the
+  // value change at all". PARAM_RE rewriting a query parameter on the same
+  // value must not let the raw-delimiter password through.
+  assert.strictEqual(maskUrlCredentials("postgres://app:pa/ss@db:5432/app?token=abc"), "***REDACTED***");
+  assert.strictEqual(maskUrlCredentials("postgres://app:pa/ss@db:5432/app?sslmode=require&password=x"), "***REDACTED***");
+});
+
+test("readStackEnvInfo reports the dropped keys by name and exposes unredacted port values", (t) => {
+  const os = require("os"), fs = require("fs"), pathMod = require("path");
+  const { readStackEnvInfo } = require("../lib/env-parser");
+  const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), "envwarn-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(pathMod.join(dir, ".env"), [
+    "DATABASE_URL=postgres://app:pa/ss@db:5432/app",
+    "REDIS_URL=redis://cache:6379/0",
+    "SERVER_PORT=8080",
+    "DB_PASSWORD=hunter2",
+  ].join("\n"));
+
+  const info = readStackEnvInfo(dir);
+  assert.deepStrictEqual(info.credentialWarnings, ["DATABASE_URL"], "names the key, and only that key");
+  assert.strictEqual(info.vars.DATABASE_URL, "***REDACTED***");
+  assert.strictEqual(info.vars.REDIS_URL, "redis://cache:6379/0", "credential-free URL untouched");
+
+  // Warning must never echo any part of the value.
+  const blob = JSON.stringify(info);
+  assert.ok(!blob.includes("pa/ss") && !blob.includes("hunter2"), "no secret material anywhere in envInfo");
+
+  // portVars: unredacted, digits only, whitelist keys only.
+  assert.strictEqual(info.portVars.SERVER_PORT, "8080");
+  assert.ok(!("DB_PASSWORD" in info.portVars), "non-port keys are never copied into portVars");
+  assert.ok(!("DATABASE_URL" in info.portVars), "non-numeric values are never copied into portVars");
 });

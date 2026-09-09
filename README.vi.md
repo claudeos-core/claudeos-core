@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-974%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-997%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -365,6 +365,8 @@ Cốt lõi gắn kết tất cả lại là một bất biến: **Claude chỉ �
 Dự án multi-stack (chẳng hạn Spring Boot backend cộng Next.js frontend) chạy được luôn mà không cần điều chỉnh.
 
 **Java cũ là mục tiêu hạng nhất (v2.5.1).** Spring 1.x–6.x không dùng Boot được nhận diện: Gradle (thời `apply plugin:`, cách viết `group:/name:/version:` theo thứ tự bất kỳ, phân giải biến qua `gradle.properties` / `apply from:` / buildSrc, version catalog, root chỉ có `settings.gradle`), Maven (POM thời Maven 2, property `${spring.version}`, `spring-framework-bom`, root multi-module, các project anh em không có POM gốc), **Ant + Ivy**, **metadata của Eclipse / IntelliJ / NetBeans** (`.classpath` kể cả tham chiếu tới JAR không commit, mức compliance trong `.settings`, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, version schema XSD của Spring và **eGovFrame** — kèm framework, version Spring Framework, mức Java, packaging `war`/`ear`, driver JDBC và ORM. Cây source lấy `src/` làm gốc cũng được quét bằng đúng các domain pattern như `src/main/java`. Mọi version báo ra đều đọc từ file build, tên JAR hoặc property định nghĩa trong chính project; không suy ra từ giá trị mặc định của framework. Project JVM hoàn toàn không có Spring (`java-library`, `application`, `war` chỉ dùng servlet) được báo là Java với `framework: null`, không bao giờ là Spring.
+
+**Layout của chúng được quét, không chỉ được phát hiện (v2.5.2).** eGovFrame và các project pre-Boot sao chép nó đặt tên lớp HTTP là `web/` thay vì `controller/`, và tách service thành `service/` + `service/impl/` — nên trước v2.5.2, một project như vậy được phát hiện đúng rồi lại báo `controllers: 0` cho mọi domain. Giờ cả hai dạng đều được đọc: `web/` được tính là lớp controller với bất kỳ project nào không có thư mục `controller/` ở bất cứ đâu (phải có ít nhất một `web/*Controller.java`, nên `config/web/WebConfig.java` không bao giờ tạo ra domain, và `adapter/in/web/` của Pattern E bị loại trừ), còn các file `*/impl/` được đếm cùng với interface mà chúng hiện thực. Khi không pattern layout nào khớp, domain lấy từ tên class có hậu tố lớp (`UserServiceImpl` → `user`) chứ không phải từ thư mục tình cờ nằm bên cạnh — cây legacy trả về đúng các domain thật thay vì một domain đặt theo base package.
 
 Quy tắc phát hiện và những gì mỗi scanner trích xuất được mô tả trong [docs/vi/stacks.md](docs/vi/stacks.md).
 

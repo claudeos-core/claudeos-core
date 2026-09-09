@@ -18,6 +18,19 @@ const { readFileSafe, existsSafe } = require("../../lib/safe-fs");
 // Normalize backslash paths from glob on Windows to forward slashes
 const norm = (p) => p.replace(/\\/g, "/");
 
+// v2.5.2 — Class-name prefixes that describe a class's ROLE, not the business
+// capability it serves. `AbstractServiceImpl` is not a domain called
+// `abstract`, and `DefaultUserServiceImpl` is the `user` domain. eGovFrame
+// matters most here: it prefixes essentially every class with `Egov`
+// (`EgovSampleController`, `EgovSampleServiceImpl`), so without stripping,
+// every class-name-derived domain in an eGovFrame tree is `egov…`. Applied
+// wherever a domain is read off a class name: Pattern C, the flat-controller
+// re-attach, and the class-name last resort of the directory fallback.
+// Must be followed by an uppercase letter so `EgovernanceService` keeps its name.
+const STEM_PREFIX_RE = /^(?:Abstract|Default|Simple|Generic|Egov)(?=[A-Z])/;
+// Strip repeatedly: `AbstractDefaultUserService` → `User`.
+const stripRolePrefix = (stem) => { while (STEM_PREFIX_RE.test(stem)) stem = stem.replace(STEM_PREFIX_RE, ""); return stem; };
+
 // v2.5.0 — Module-aware scanning.
 // Source roots (`[<module>/]src/main/java`, `[<module>/]src/main/resources`)
 // are discovered ONCE with a single ignore-filtered walk; every subsequent
@@ -130,6 +143,45 @@ async function scanJavaDomains(stack, ROOT) {
 
   const javaFiles = (await gj("src/main/java/**/*.java"));
 
+  // v2.5.2 — `web/` as the controller layer.
+  //
+  // eGovFrame (전자정부 표준프레임워크) and the pre-Boot enterprise projects
+  // that copied its layout name the HTTP layer `web/`, not `controller/`:
+  //
+  //     com/acme/erp/user/web/UserController.java
+  //     com/acme/erp/user/service/impl/UserServiceImpl.java
+  //
+  // Every pattern below was written against the literal segment `controller`,
+  // so these projects reported `controllers: 0` for every domain — a plausible
+  // wrong number rather than a visible failure, fed straight into Pass 3.
+  // v2.5.1 made this reachable at scale by finally letting such projects past
+  // `init`'s "No language detected".
+  //
+  // The promotion is gated on the project holding NO `controller/` directory
+  // at all. Every project that reached Pattern A/B/C/D through a `controller/`
+  // dir is therefore unchanged to the byte. A project with no `controller/`
+  // dir previously fell to the directory fallback and reported its base
+  // package as a domain; it now gets real domains (Pattern C, class names).
+  // Two further guards:
+  //   - at least one `web/*Controller.java` must exist. A `config/web/
+  //     WebConfig.java` is not an HTTP layer and must not manufacture a
+  //     `config` domain.
+  //   - `{domain}/adapter/in/web/` is excluded — that is Pattern E's own
+  //     spelling, and treating its `web` as a layer would yield a domain
+  //     named `in`.
+  const ADAPTER_IN_WEB_RE = /\/adapter\/in\/web\//;
+  const WEB_CTRL_FILE_RE = /(^|\/)web\/[A-Za-z0-9]*Controller\.java$/;
+  const hasControllerDir = javaFiles.some(f => /\/controller\//.test(f));
+  const webControllers = hasControllerDir
+    ? []
+    : javaFiles.filter(f => WEB_CTRL_FILE_RE.test(f) && !ADAPTER_IN_WEB_RE.test(f));
+  const webIsController = webControllers.length > 0;
+  // Regex fragment for "the HTTP layer segment", used everywhere `controller`
+  // appeared as a literal. Identical to `controller` unless the flag is on.
+  const CTRL_SEG = webIsController ? "(?:controller|web)" : "controller";
+  // Which layer segment a given controller file sits in (for isFlatLayerPath).
+  const ctrlSegOf = (f) => (/\/web\/[^/]+\.java$/.test(f) ? "web" : "controller");
+
   // v2.4.0 — Pick the LONGEST package prefix (1-4 segments) that still
   // covers ≥80% of layer-bearing files. Pre-v2.4.0 the first matched file
   // won, which misclassified projects whose actual production code lives
@@ -149,7 +201,7 @@ async function scanJavaDomains(stack, ROOT) {
   //     not the minority `<root>.misc.*` location (no longer first-match).
   const pkgCounts = new Map();
   for (const f of javaFiles) {
-    const m = f.match(new RegExp(`(?:${JAVA_ROOT_ALT})/(.+?)/(controller|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)`));
+    const m = f.match(new RegExp(`(?:${JAVA_ROOT_ALT})/(.+?)/(${CTRL_SEG}|aggregator|facade|usecase|orchestrator|service|mapper|dao|dto|entity|repository|adapter)`));
     if (!m) continue;
     const segs = m[1].split("/");
     for (let len = Math.min(4, segs.length); len >= 1; len--) {
@@ -204,7 +256,7 @@ async function scanJavaDomains(stack, ROOT) {
   // Initializr base package and the domains again come from class names.
   const rootPkgPath = rootPackage ? rootPackage.replace(/\./g, "/") : null;
   const flatDirCache = new Map();
-  const LAYER_CLASS_RE = /^(?:controller|service|mapper|repository|dao|dto)\/([A-Za-z0-9]+?)(?:Controller|Service|Mapper|Repository|Dao|Dto)\.java$/;
+  const LAYER_CLASS_RE = new RegExp(`^(?:${CTRL_SEG}|service|mapper|repository|dao|dto)\\/([A-Za-z0-9]+?)(?:Controller|Service|Mapper|Repository|Dao|Dto)\\.java$`);
   const isFlatBase = (base) => {
     if (!flatDirCache.has(base)) {
       const dirRe = new RegExp(`(^|/)(?:${JAVA_ROOT_ALT})/${escRe(base)}/`);
@@ -246,6 +298,27 @@ async function scanJavaDomains(stack, ROOT) {
   // a controller must never silently belong to no domain.
   const flatSkippedControllers = [];
 
+  // v2.5.2 — Register a Pattern C domain from a controller's class-name stem
+  // (`UserController` → `User`). The domain NAME has role prefixes stripped
+  // (`EgovSampleController` → `sample`, `DefaultUserController` → `user`), and
+  // every raw stem that mapped to it is remembered so the Pattern C layer
+  // globs can match BOTH spellings: eGovFrame names its service
+  // `EgovSampleServiceImpl` but its DAO `SampleDAO`, and a glob built from
+  // either stem alone drops the other file. A stem that strips to nothing
+  // (`AbstractController`) keeps its literal name — a controller must never
+  // silently belong to no domain.
+  // Kept OUTSIDE domainMap: its entries are spread into project-analysis.json.
+  const classStems = {};
+  const addClassNameDomain = (rawStem) => {
+    const stripped = stripRolePrefix(rawStem) || rawStem;
+    const d = stripped.toLowerCase();
+    if (!domainMap[d]) domainMap[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "C" };
+    domainMap[d].controllers++;
+    if (!classStems[d]) classStems[d] = new Set();
+    classStems[d].add(rawStem);
+    classStems[d].add(stripped);
+  };
+
   // Pattern A: controller/{domain}/*.java (layer-first — domain under controller)
   const controllersA = (await gj("src/main/java/**/controller/*/*.java"));
   for (const f of controllersA) {
@@ -261,14 +334,18 @@ async function scanJavaDomains(stack, ROOT) {
   // Pattern B/D: {domain}/controller/*.java (domain-first — controller under domain)
   // D extends B: {module}/{domain}/controller/ — auto-upgrade to module/domain on name conflict
   if (!detectedPattern) {
-    const controllersB = (await gj("src/main/java/**/*/controller/*.java"));
+    // v2.5.2 — `webControllers` is empty unless the web/-as-controller flag
+    // is on (see above), so this concat is a no-op for every existing project.
+    const controllersB = [...(await gj("src/main/java/**/*/controller/*.java")), ...webControllers];
+    const CTRL_B_RE = new RegExp(`/([^/]+)/${CTRL_SEG}/[^/]+\\.java$`);
+    const CTRL_B_PARENT_RE = new RegExp(`/([^/]+)/([^/]+)/${CTRL_SEG}/`);
     const domainPaths = {};
     for (const f of controllersB) {
-      if (isFlatLayerPath(f, "controller")) { flatSkippedControllers.push(f); continue; }
-      const m = f.match(/\/([^/]+)\/controller\/[^/]+\.java$/);
+      if (isFlatLayerPath(f, ctrlSegOf(f))) { flatSkippedControllers.push(f); continue; }
+      const m = f.match(CTRL_B_RE);
       if (m) {
         const d = m[1];
-        const parentMatch = f.match(/\/([^/]+)\/([^/]+)\/controller\//);
+        const parentMatch = f.match(CTRL_B_PARENT_RE);
         const parentModule = parentMatch ? parentMatch[1] : null;
         if (!domainPaths[d]) domainPaths[d] = [];
         domainPaths[d].push({ file: f, module: parentModule });
@@ -314,14 +391,10 @@ async function scanJavaDomains(stack, ROOT) {
 
   // Pattern C: Flat structure — controller/*.java (no domain directory, extract domain from class name)
   if (!detectedPattern) {
-    const controllersC = (await gj("src/main/java/**/controller/*.java"));
+    const controllersC = [...(await gj("src/main/java/**/controller/*.java")), ...webControllers];
     for (const f of controllersC) {
       const m = f.match(/\/([A-Z][a-zA-Z]*)Controller\.java$/);
-      if (m) {
-        const d = m[1].toLowerCase();
-        if (!domainMap[d]) domainMap[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "C" };
-        domainMap[d].controllers++;
-      }
+      if (m) addClassNameDomain(m[1]);
     }
     if (Object.keys(domainMap).length > 0) detectedPattern = "C";
   }
@@ -332,10 +405,7 @@ async function scanJavaDomains(stack, ROOT) {
   if (detectedPattern && detectedPattern !== "C") {
     for (const f of flatSkippedControllers) {
       const m = f.match(/\/([A-Z][a-zA-Z]*)Controller\.java$/);
-      if (!m) continue;
-      const d = m[1].toLowerCase();
-      if (!domainMap[d]) domainMap[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "C" };
-      domainMap[d].controllers++;
+      if (m) addClassNameDomain(m[1]);
     }
   }
 
@@ -364,29 +434,54 @@ async function scanJavaDomains(stack, ROOT) {
     const p = domainMap[d].pattern;
     const dn = domainMap[d].domainName || d;
     let svcGlob, mprGlob, dtoGlob, aggGlob;
+    // v2.5.2 — `*/impl/` sub-layer. Interface-plus-implementation is the
+    // default in eGovFrame and common throughout enterprise Java:
+    //   user/service/UserService.java          ← counted before
+    //   user/service/impl/UserServiceImpl.java ← silently dropped
+    // The layer globs use `*`, which does not cross `/`, so the impl files
+    // matched nothing and every such domain under-reported its size. That
+    // feeds domain-grouper's 40-files-per-group split, so the miscount
+    // changed how work was batched, not just a displayed number.
+    // These are separate globs, never overlapping the ones above, so no file
+    // can be counted twice. eGovFrame also parks its DAO in `service/impl/`;
+    // counting those as services (one bucket, once) is deliberate.
+    let svcImplGlob = null, mprImplGlob = null;
 
     if (p === "A") {
       svcGlob = `src/main/java/**/service/${d}/*.java`;
       mprGlob = `src/main/java/**/{mapper,repository,dao}/${d}/*.java`;
       dtoGlob = `src/main/java/**/dto/${d}/**/*.java`;
       aggGlob = `src/main/java/**/{aggregator,facade,usecase,orchestrator}/${d}/*.java`;
+      svcImplGlob = `src/main/java/**/service/{${d}/impl,impl/${d}}/*.java`;
+      mprImplGlob = `src/main/java/**/{mapper,repository,dao}/{${d}/impl,impl/${d}}/*.java`;
     } else if (p === "B" || p === "D") {
       svcGlob = `src/main/java/**/${dn}/service/*.java`;
       mprGlob = `src/main/java/**/${dn}/{mapper,repository,dao}/*.java`;
       dtoGlob = `src/main/java/**/${dn}/dto/**/*.java`;
       aggGlob = `src/main/java/**/${dn}/{aggregator,facade,usecase,orchestrator}/*.java`;
+      svcImplGlob = `src/main/java/**/${dn}/service/impl/*.java`;
+      mprImplGlob = `src/main/java/**/${dn}/{mapper,repository,dao}/impl/*.java`;
     } else if (p === "E") {
       svcGlob = `src/main/java/**/${d}/{application,domain}/**/*.java`;
       mprGlob = `src/main/java/**/${d}/{adapter/out/{persistence,repository},infrastructure}/*.java`;
       dtoGlob = `src/main/java/**/${d}/**/{dto,command,query}/**/*.java`;
       aggGlob = null; // DDD/Hexagonal typically doesn't use aggregator layer
     } else {
-      // Pattern C: Flat — match domain name from file name
-      const cap = d.charAt(0).toUpperCase() + d.slice(1);
+      // Pattern C: Flat — match domain name from file name.
+      // v2.5.2 — `cap` is a brace set of every class-name stem that produced
+      // this domain (`{EgovSample,Sample}`), so prefixed and unprefixed
+      // siblings are both counted. A domain that came from the supplementary
+      // scan (a directory name, no stems) keeps the capitalized name as before.
+      const stems = classStems[d] ? [...classStems[d]] : [];
+      const capOne = d.charAt(0).toUpperCase() + d.slice(1);
+      if (!stems.includes(capOne)) stems.push(capOne);
+      const cap = stems.length > 1 ? `{${stems.join(",")}}` : stems[0];
       svcGlob = `src/main/java/**/service/${cap}*.java`;
       mprGlob = `src/main/java/**/{mapper,repository,dao}/${cap}*.java`;
       dtoGlob = `src/main/java/**/dto/${cap}*.java`;
       aggGlob = `src/main/java/**/{aggregator,facade,usecase,orchestrator}/${cap}*.java`;
+      svcImplGlob = `src/main/java/**/service/impl/${cap}*.java`;
+      mprImplGlob = `src/main/java/**/{mapper,repository,dao}/impl/${cap}*.java`;
     }
     // Pattern C (flat): XML may be in flat directory without domain subdirectory (e.g., mapper/OrderMapper.xml)
     // Other patterns: XML is in domain subdirectory (e.g., mapper/order/OrderMapper.xml)
@@ -400,8 +495,10 @@ async function scanJavaDomains(stack, ROOT) {
     const dto = await gj(dtoGlob);
     const xml = await gj(xmlGlob);
     const agg = aggGlob ? await gj(aggGlob) : [];
-    domainMap[d].services = svc.length + agg.length;
-    domainMap[d].mappers = mpr.length;
+    const svcImpl = svcImplGlob ? await gj(svcImplGlob) : [];
+    const mprImpl = mprImplGlob ? await gj(mprImplGlob) : [];
+    domainMap[d].services = svc.length + agg.length + svcImpl.length;
+    domainMap[d].mappers = mpr.length + mprImpl.length;
     domainMap[d].dtos = dto.length;
     domainMap[d].xmlMappers = xml.length;
 
@@ -430,9 +527,40 @@ async function scanJavaDomains(stack, ROOT) {
     // legacy behavior identical for projects whose standard globs
     // already cover everything, and prevents over-counting for
     // domains with healthy direct-layout file counts.
+    // v2.5.2 — `standardCount` deliberately EXCLUDES svcImpl/mprImpl even
+    // though those files are counted above. It is not a file count; it is the
+    // trigger for the deep-sweep below, and it means "did the canonical layer
+    // globs describe this domain at all?". Adding the impl globs to it made a
+    // domain whose only service file was `service/impl/UserServiceImpl.java`
+    // look canonical, which suppressed the sweep — and with it the catch-all
+    // that classifies non-canonical layers (`gateway/`, `listener/`, …) as
+    // services. That domain then under-reported its size, dropping real files.
+    // The sweep resets and re-counts everything anyway, so excluding impl here
+    // costs nothing and keeps the catch-all reachable.
     const standardCount = svc.length + agg.length + mpr.length + dto.length + xml.length;
     if (standardCount === 0 && (p === "B" || p === "D")) {
       const deepFiles = (await gj(`src/main/java/**/${dn}/**/*.java`));
+      // v2.5.2 — reset before sweeping. `domainMap[d].controllers` was already
+      // filled by the Pattern B/D loop above, and `deepFiles` re-walks EVERY
+      // .java file under the domain — including those same controllers. The
+      // sweep therefore counted them a second time: a domain whose only file
+      // was `user/controller/UserController.java` reported `controllers: 2`.
+      //
+      // Latent since v2.4.0, and invisible in practice because it needs a
+      // Pattern B/D domain with zero service/mapper/dto/xml files. v2.5.2's
+      // `web/` support routes eGovFrame domains straight into that shape, so
+      // the release's headline fix would otherwise have shipped inflated
+      // counts — and `totalFiles` feeds domain-grouper's 40-files-per-group
+      // split, so this was never only a displayed number.
+      //
+      // The sweep re-classifies the whole domain tree from scratch, so it is
+      // the single source of truth here; the other three counters are already
+      // 0 (that is what `standardCount === 0` means) and are reset only to
+      // keep that invariant explicit rather than incidental.
+      domainMap[d].controllers = 0;
+      domainMap[d].services = 0;
+      domainMap[d].mappers = 0;
+      domainMap[d].dtos = 0;
       // v2.4.0 — extended layer recognition. Enterprise codebases
       // commonly include implementation/support layers beyond the canonical
       // controller/service/mapper/dto trio. Files in `factory/`, `strategy/`,
@@ -453,7 +581,7 @@ async function scanJavaDomains(stack, ROOT) {
         let classified = false;
         for (let i = parts.length - 2; i >= 0; i--) {
           const seg = parts[i];
-          if (seg === "controller") { domainMap[d].controllers++; classified = true; break; }
+          if (seg === "controller" || (webIsController && seg === "web")) { domainMap[d].controllers++; classified = true; break; }
           if (SVC_LAYERS.includes(seg)) { domainMap[d].services++; classified = true; break; }
           if (DAO_LAYERS.includes(seg)) { domainMap[d].mappers++; classified = true; break; }
           if (DTO_LAYERS.includes(seg)) { domainMap[d].dtos++; classified = true; break; }
@@ -479,31 +607,115 @@ async function scanJavaDomains(stack, ROOT) {
     const versionPattern = /^v\d+$/;
     const layerNames = ["controller", "aggregator", "facade", "usecase", "orchestrator", "service", "mapper", "repository", "dao", "dto", "vo", "entity", "adapter"];
 
+    // v2.5.2 — three corrections to this fallback.
+    //
+    // (1) ONE DOMAIN PER FILE. It used to credit BOTH the segment before the
+    //     layer dir and the segment after it, so a single file created two
+    //     domains. `example/service/impl/UserServiceImpl.java` produced a
+    //     domain `example` (the base package) AND a domain `impl` (an
+    //     implementation folder) — and in a layer-first tree
+    //     `com/acme/controller/user/X.java` it produced `acme` beside the
+    //     real `user`. A path is either `{domain}/{layer}/` or
+    //     `{layer}/{domain}/`; it is never both. Which one wins is decided
+    //     below.
+    // (2) IMPLEMENTATION FOLDERS ARE NOT DOMAINS. `impl`, `factory`,
+    //     `handler` and friends name a role, not a business capability.
+    // (3) THE BASE PACKAGE IS NOT A DOMAIN. If the segment equals the last
+    //     part of `rootPackage`, it is the package everything lives under —
+    //     the same reasoning `isFlatLayerPath` applies to the primary
+    //     patterns.
+    const NON_DOMAIN = ["impl", "support", "helper", "factory", "strategy",
+                        "handler", "listener", "validator", "converter",
+                        "provider", "manager", "client", "interceptor",
+                        "filter", "resolver", "spec", "specs",
+                        "abstract", "default", "simple", "generic"];
+    const rootTail = rootPackage ? rootPackage.split(".").pop() : null;
+    // The web/-as-controller flag is computed from the discovered source
+    // roots; this fallback walks the whole tree, so re-derive it here for a
+    // project where no source root was discovered at all.
+    const fbWebIsController = webIsController || (
+      !allJava.some(f => /\/controller\//.test(f)) &&
+      allJava.some(f => WEB_CTRL_FILE_RE.test(f) && !ADAPTER_IN_WEB_RE.test(f))
+    );
+    const fbLayerNames = fbWebIsController ? [...layerNames, "web"] : layerNames;
+    const isHttpLayer = (seg) => seg === "controller" || (fbWebIsController && seg === "web");
+    const qualifies = (seg) => !!seg && !seg.endsWith(".java") && !skipNames.includes(seg) &&
+      !fbLayerNames.includes(seg) && !NON_DOMAIN.includes(seg) &&
+      !seg.includes(".") && !versionPattern.test(seg) && seg !== rootTail;
+
     for (const f of allJava) {
       const parts = f.replace(/\\/g, "/").split("/");
       for (let i = 0; i < parts.length - 1; i++) {
-        if (layerNames.includes(parts[i])) {
-          const prevDir = parts[i - 1];
+        if (fbLayerNames.includes(parts[i])) {
+          const prevDir = i > 0 ? parts[i - 1] : null;
           const nextDir = parts[i + 1];
 
-          // {domain}/layer/ pattern (domain before layer)
-          if (i > 0 && !skipNames.includes(prevDir) && !layerNames.includes(prevDir) && !prevDir.includes(".") && !versionPattern.test(prevDir)) {
-            if (!javaDomains[prevDir]) javaDomains[prevDir] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "B" };
-            if (parts[i] === "controller") javaDomains[prevDir].controllers++;
-            else if (["aggregator", "facade", "usecase", "orchestrator", "service"].includes(parts[i])) javaDomains[prevDir].services++;
-            else if (["mapper", "repository", "dao"].includes(parts[i])) javaDomains[prevDir].mappers++;
-            else if (["dto", "vo"].includes(parts[i])) javaDomains[prevDir].dtos++;
-          }
-          // layer/{domain}/ pattern (layer before domain)
-          if (nextDir && !nextDir.endsWith(".java") && !skipNames.includes(nextDir) && !layerNames.includes(nextDir) && !versionPattern.test(nextDir)) {
-            if (!javaDomains[nextDir]) javaDomains[nextDir] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "A" };
-            if (parts[i] === "controller") javaDomains[nextDir].controllers++;
-            else if (["aggregator", "facade", "usecase", "orchestrator", "service"].includes(parts[i])) javaDomains[nextDir].services++;
-            else if (["mapper", "repository", "dao"].includes(parts[i])) javaDomains[nextDir].mappers++;
-            else if (["dto", "vo"].includes(parts[i])) javaDomains[nextDir].dtos++;
+          // v2.5.2 — `{domain}/{layer}/` wins over `{layer}/{domain}/`.
+          //
+          // The segment BEFORE the layer dir is preferred whenever it
+          // qualifies, because `{domain}/{layer}/{subpackage}/File.java` and
+          // `{layer}/{domain}/File.java` are structurally identical from here
+          // — in both, the layer dir is followed by one more directory and
+          // then the file. Preferring the segment AFTER the layer reads
+          // `order/service/query/OrderQueryHandler.java` as a domain named
+          // `query` and loses the real `order`; preferring the one before
+          // reads it correctly, because a layer dir that has a domain in
+          // front of it is not itself the top of the tree.
+          //
+          // The `{layer}/{domain}/` case still resolves, via `rootTail`: in
+          // `com/acme/controller/user/X.java` the segment before `controller`
+          // is the base package, which never qualifies, so `user` is taken.
+          // That layout is also normally claimed by Pattern A long before
+          // this fallback runs.
+          let name = null, pattern = null;
+          if (qualifies(prevDir)) { name = prevDir; pattern = "B"; }
+          else if (qualifies(nextDir)) { name = nextDir; pattern = "A"; }
+
+          if (name) {
+            if (!javaDomains[name]) javaDomains[name] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern };
+            if (isHttpLayer(parts[i])) javaDomains[name].controllers++;
+            else if (["aggregator", "facade", "usecase", "orchestrator", "service"].includes(parts[i])) javaDomains[name].services++;
+            else if (["mapper", "repository", "dao"].includes(parts[i])) javaDomains[name].mappers++;
+            else if (["dto", "vo"].includes(parts[i])) javaDomains[name].dtos++;
           }
           break;
         }
+      }
+    }
+
+    // v2.5.2 — class-name last resort.
+    //
+    // Tightening the directory walk above (one domain per file, no `impl`, no
+    // base package) is correct, but on its own it can turn a tree that used
+    // to yield junk domains into a tree that yields NONE — and zero domains
+    // aborts `init` outright ("domain-groups.json has invalid totalGroups: 0").
+    // Trading wrong output for no output is not an improvement.
+    //
+    // So when the directory walk finds nothing, fall back to what Pattern C
+    // already does for flat layouts: read the domain off the layer-suffixed
+    // class name. `service/impl/UserServiceImpl.java` + `dao/UserDao.java`
+    // yields `user` — which is the answer, and is grounded in a real
+    // identifier rather than in a directory that happens to sit nearby.
+    // Runs ONLY when the walk produced nothing, so it can never alter a
+    // project that already had domains.
+    if (Object.keys(javaDomains).length === 0) {
+      // Longest suffix first so `UserServiceImpl` yields `user`, not `userservice`.
+      const STEM_RE = /^([A-Z][A-Za-z0-9]*?)(ServiceImpl|RepositoryImpl|MapperImpl|DaoImpl|DAOImpl|Controller|Service|Repository|Mapper|Dao|DAO|Dto|VO)\.java$/;
+      // Role prefixes (`Abstract`, `Default`, `Egov`, …) are stripped via the
+      // module-level STEM_PREFIX_RE, and the result is re-checked against
+      // skipNames/NON_DOMAIN below, so `AbstractBaseService` reduces to `base`
+      // and is then dropped; `AbstractServiceImpl` strips to "" and is skipped.
+      for (const f of allJava) {
+        const m = path.basename(f).match(STEM_RE);
+        if (!m) continue;
+        const name = stripRolePrefix(m[1]).toLowerCase();
+        if (!name || skipNames.includes(name) || NON_DOMAIN.includes(name) || versionPattern.test(name)) continue;
+        if (!javaDomains[name]) javaDomains[name] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "C" };
+        const kind = m[2];
+        if (kind === "Controller") javaDomains[name].controllers++;
+        else if (/^(Repository|Mapper|Dao|DAO)/.test(kind)) javaDomains[name].mappers++;
+        else if (kind === "Dto" || kind === "VO") javaDomains[name].dtos++;
+        else javaDomains[name].services++;
       }
     }
 

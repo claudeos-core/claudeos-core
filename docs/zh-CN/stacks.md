@@ -91,7 +91,7 @@ scanner 在 `plan-installer/scanners/scan-java.js`。
 
 **源码根目录。** `scan-java` 会按发现的根目录改写自己的 `src/main/java` / `src/main/resources` 模式。只要存在任意 `[<module>/]src/main/java`，就只用这些。否则依次是：`.classpath` 的 `kind="src"` 条目 (排除测试目录)、`build.xml` 的 `<javac srcdir>` (含 `<property>` 解析)，然后是含有 `*.java` 的 `src/java`、`src`、`JavaSource`、`java`、`WebContent/WEB-INF/src`。之后套用的仍是同样的五种 domain 模式，所以 `src/com/acme/erp/controller/*.java` 与它位于 `src/main/java` 之下时一样是 Pattern C。
 
-**已知限制。** Gradle 文件不做注释剥离 (被 `//` 注释掉的坐标仍会计入 — 这一点对 Boot 向来如此)。不解析仓库之外父 pom 的继承。eGovFrame 的 `web/` 控制器层尚未被 Pattern A/B 识别为层名。
+**已知限制。** Gradle 文件不做注释剥离 (被 `//` 注释掉的坐标仍会计入 — 这一点对 Boot 向来如此)。不解析仓库之外父 pom 的继承。自 v2.5.2 起,`web/` 会被识别为 HTTP 层,但仅限于整个项目中不存在任何 `controller/` 目录的情况;若一棵树在不同模块间混用两种约定,其中的 `web/` 模块仍保持旧行为 (`controllers: 0`)。
 
 辅助函数在 `plan-installer/jvm-detect.js` (纯文本函数，有独立的单元测试)。
 
@@ -299,7 +299,7 @@ scanner 读 `.env*` 文件里的运行时配置,这样生成的文档能反映�
 7. `.env.local`
 8. `.env.development`
 
-**敏感变量脱敏:** 匹配 `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。
+**敏感变量脱敏:** 匹配 `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。若密码中含有未编码的 `/`、`?` 或 `#`(base64 生成的密码经常如此),URL 的 authority 就会变得有歧义,因此自 v2.5.2 起这类值会被整体丢弃(`***REDACTED***`),而不是只做部分脱敏。host 也会随之丢失,`init` 会在 Phase 1 摘要中列出受影响的 key 名(`envInfo.credentialWarnings`,仅 key 名)。请对密码做 percent-encoding(`/` 写作 `%2F`)以保留 host。
 
 **端口解析优先级:**
 1. Spring Boot `application.yml` 的 `server.port`
@@ -326,7 +326,7 @@ Step A 完成后,这份文件会出现在 `claudeos-core/generated/project-analy
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

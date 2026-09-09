@@ -91,7 +91,7 @@ Le scanner est dans `plan-installer/scanners/scan-java.js`.
 
 **Racines de sources.** `scan-java` réécrit ses motifs `src/main/java` / `src/main/resources` selon la racine découverte. Si un `[<module>/]src/main/java` existe, seules ces racines sont utilisées. Sinon, dans l'ordre : entrées `kind="src"` de `.classpath` (dossiers de test exclus), `<javac srcdir>` de `build.xml` (avec résolution des `<property>`), puis `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` s'ils contiennent des `*.java`. Les mêmes cinq motifs de domaine s'appliquent ensuite, si bien que `src/com/acme/erp/controller/*.java` est un Pattern C exactement comme sous `src/main/java`.
 
-**Limites connues.** Les fichiers Gradle ne sont pas débarrassés de leurs commentaires (une coordonnée commentée par `//` compte toujours — c'est le cas depuis toujours pour Boot). L'héritage depuis un POM parent extérieur au dépôt n'est pas résolu. La couche de contrôleurs `web/` d'eGovFrame n'est pas encore reconnue comme nom de couche par les Patterns A/B.
+**Limites connues.** Les fichiers Gradle ne sont pas débarrassés de leurs commentaires (une coordonnée commentée par `//` compte toujours — c'est le cas depuis toujours pour Boot). L'héritage depuis un POM parent extérieur au dépôt n'est pas résolu. Depuis la v2.5.2, `web/` est bien reconnue comme couche HTTP, mais uniquement pour un projet ne contenant aucun répertoire `controller/` ; dans une arborescence mêlant les deux conventions selon les modules, les modules `web/` conservent l'ancien comportement (`controllers: 0`).
 
 Les helpers se trouvent dans `plan-installer/jvm-detect.js` (fonctions de texte pures, testées unitairement de façon isolée).
 
@@ -299,7 +299,7 @@ Le scanner lit les fichiers `.env*` pour la configuration runtime, histoire que 
 7. `.env.local`
 8. `.env.development`
 
-**Redaction des variables sensibles :** les clés matchant `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, etc. sont auto-redacted en `***REDACTED***` avant copie dans `project-analysis.json`. Toute autre valeur en forme d'URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) voit ses identifiants masqués en `***:***`, en conservant le schéma, l'hôte, le port et le chemin (`postgres://***:***@db.internal:5432/app`) : le type de DB reste reconnaissable et le mot de passe n'atteint jamais le fichier. La détection du type de DB par le scanner lui-même lit le texte brut de `.env` directement et n'est pas affectée.
+**Redaction des variables sensibles :** les clés matchant `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, etc. sont auto-redacted en `***REDACTED***` avant copie dans `project-analysis.json`. Toute autre valeur en forme d'URL (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) voit ses identifiants masqués en `***:***`, en conservant le schéma, l'hôte, le port et le chemin (`postgres://***:***@db.internal:5432/app`) : le type de DB reste reconnaissable et le mot de passe n'atteint jamais le fichier. La détection du type de DB par le scanner lui-même lit le texte brut de `.env` directement et n'est pas affectée. Si le mot de passe contient un `/`, `?` ou `#` brut (fréquent pour les mots de passe générés en base64), l'authority de l'URL devient ambiguë ; depuis la v2.5.2, une telle valeur est donc entièrement supprimée (`***REDACTED***`) plutôt que partiellement masquée. L'hôte disparaît avec elle, et `init` nomme les clés concernées dans son récapitulatif de la phase 1 (`envInfo.credentialWarnings`, noms de clés uniquement). Encodez le mot de passe en pourcentage (`/` en `%2F`) pour conserver l'hôte.
 
 **Précédence de résolution du port :**
 1. `server.port` de `application.yml` Spring Boot
@@ -326,7 +326,7 @@ Une fois Step A terminé, ce fichier se trouve à `claudeos-core/generated/proje
     "buildTool": "gradle",
     "logger": "logback",
     "port": 8080,
-    "envInfo": { "source": ".env.example", "vars": {...}, "port": 8080, "host": "localhost", "apiTarget": null },
+    "envInfo": { "source": ".env.example", "vars": {...}, "portVars": {...}, "credentialWarnings": [], "port": 8080, "host": "localhost", "apiTarget": null },
     "detected": ["spring-boot", "mybatis", "postgres", "gradle", "logback"]
   },
   "domains": ["order", "customer", "product", ...],

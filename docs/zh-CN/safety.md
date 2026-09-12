@@ -1,4 +1,4 @@
-# Safety: re-init 时保留什么
+# Safety: re-init 时保留什么，以及什么永远不会离开你的 `.env`
 
 一个常见担心:*"我自定义了 `.claude/rules/`。再跑一次 `npx claudeos-core init`,改动会丢吗?"*
 
@@ -195,8 +195,29 @@ CI 在 Linux / macOS / Windows × Node 18 / 20 上运行。
 
 ---
 
+## 永远不会进入生成文件的东西: `.env` 里的密钥
+
+上面所有内容讲的是 *你的文件* 如何在 ClaudeOS 下存活。本节讲的是 *你的密钥* 不会从中泄出。它放在这里，是因为"这个工具会不会把我的 `.env` 复制进 LLM 会读的东西里?"是一个安全问题，而人们正是为此打开这一页。
+
+`init` 会读取一个 `.env*` 文件 (搜索顺序见 [stacks.md](stacks.md#env-提取v220))，好让生成的 CLAUDE.md 写出真实的 port、host 和数据库。解析出的变量写入 `claudeos-core/generated/project-analysis.json`，而 Pass 3 / Pass 4 的 prompt 会指示模型读取该文件。写入之前，每个值都按此顺序经过三条规则:
+
+1. **按键名遮蔽。** 匹配 `PASSWORD`、`PASS`、`PW`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` 等的键会变成 `***REDACTED***`。键本身保留，所以"这个变量存在"仍然是文档可以陈述的事实。
+2. **连接串内部的凭据遮蔽。** 对第一条规则没抓到的键 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`SPRING_DATASOURCE_URL` 等)，只重写*凭据部分*并保留其余内容，因此 DB 类型、host、port 和 path 仍然可读:
+   - URL userinfo: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - query / property 参数: `?user=app&password=x` → `?user=app&password=***`
+   - Go / MySQL DSN: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (`@host:port:SID`、`@(DESCRIPTION=…)` 和 `jdbc:oracle:oci:` 形式同样处理)
+3. **整值丢弃 (v2.5.2)。** 当第二条规则无法安全重写凭据时 — 密码含有原始的 `/`、`?`、`#` 或空格，以数字开头，或者 Oracle DSN 的 user 部分本身含有 `@` 而无法确定 user 与密码的分界 (v2.5.3) — 该值会被整个丢弃 (`***REDACTED***`)，而不是部分遮蔽。丢掉 host 远比泄露密码便宜。`init` 会在 Phase 1 摘要里列出受影响的键名 (仅键名)。把密码做 percent-encoding (`/` 写成 `%2F`) 即可保住 host 可见。
+
+从 `.env` 派生的两个标量字段 — `envInfo.host` 和 `envInfo.apiTarget` — 会直接渲染进 CLAUDE.md 第 3 节; 若其值被丢弃则为 `null`，该行整体省略，因此 sentinel 绝不会出现在生成文档里。
+
+**未覆盖的部分。** 未展开的 `${VAR}` 模板原样保留 (其中没有真实密钥)。注释，以及被选中的那一个 `.env*` 之外的文件，都不会被读取。scanner 自身的 DB 类型检测只在内存中读 `.env` 原文，从不写出。如果你的项目以上述规则都不认识的形式保存凭据，请提交 issue 并附上那个*形式* (绝不要附值) — 这里列出的每一条规则都是这么来的。
+
+**如何验证。** `init` 之后，在 `claudeos-core/generated/project-analysis.json` 里 `grep -i` 你的密码。它不该在那里。遮蔽规则由 `tests/env-parser.test.js` 中的测试固定，包括曾经真的泄露过的那些形式。
+
 ## 另请参阅
 
+- [stacks.md](stacks.md#env-提取v220) — `.env` 搜索顺序与提取的字段
 - [architecture.md](architecture.md) — staging 机制在上下文中的位置
 - [commands.md](commands.md) — `--force` 与其他 flag
 - [troubleshooting.md](troubleshooting.md) — 从特定错误恢复

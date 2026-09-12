@@ -1,4 +1,4 @@
-# Safety: Re-init で何が保持されるか
+# Safety: Re-init で何が保持されるか、そして `.env` から何が決して出ていかないか
 
 よくある不安として: *「`.claude/rules/` をカスタマイズしました。`npx claudeos-core init` を再実行したら編集が失われますか?」*
 
@@ -195,8 +195,29 @@ CI は Linux / macOS / Windows × Node 18 / 20 を横断して走ります。
 
 ---
 
+## 生成ファイルに決して到達しないもの: `.env` のシークレット
+
+ここまではすべて *あなたのファイル* が ClaudeOS を生き延びる話です。この節は *あなたのシークレット* がそこから出ていかない話です。「このツールは自分の `.env` を LLM が読む何かにコピーするのか?」は safety の問いであり、そのために開かれるのがこのページだからここに置いています。
+
+`init` は `.env*` ファイルを 1 つ読みます (探索順は [stacks.md](stacks.md#env-抽出-v220))。生成される CLAUDE.md が実際の port、host、データベースを書けるようにするためです。パースされた変数は `claudeos-core/generated/project-analysis.json` に書かれ、Pass 3 / Pass 4 のプロンプトはモデルにそのファイルを読むよう指示します。書き込み前に、すべての値へ次の 3 つのルールがこの順で適用されます:
+
+1. **キー名によるリダクション。** `PASSWORD`、`PASS`、`PW`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` などに一致するキーは `***REDACTED***` になります。キー自体は残るので、「この変数が存在する」という事実はドキュメントが述べられます。
+2. **接続文字列内の認証情報マスキング。** 1 つ目のルールが拾わないキー (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`SPRING_DATASOURCE_URL` など) では *認証情報の部分だけ* を書き換え、残りは保持します。DB 種別、host、port、path は読める状態のままです:
+   - URL userinfo: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - クエリ / プロパティのパラメータ: `?user=app&password=x` → `?user=app&password=***`
+   - Go / MySQL DSN: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (`@host:port:SID`、`@(DESCRIPTION=…)`、`jdbc:oracle:oci:` の各形式も同様)
+3. **値ごと破棄 (v2.5.2)。** 2 つ目のルールが認証情報を安全に書き換えられない場合 — パスワードに生の `/`、`?`、`#`、空白が含まれる、数字で始まる、あるいは Oracle DSN の user 部分に `@` が含まれ user とパスワードの境界が定まらない場合 (v2.5.3) — 部分マスクではなく値ごと破棄します (`***REDACTED***`)。host を失うのは、パスワードを漏らすよりはるかに安い失敗です。`init` は Phase 1 のサマリで該当キー名を伝えます (キー名のみ)。host を残したい場合はパスワードを percent-encoding してください (`/` は `%2F`)。
+
+`.env` から導かれるスカラー 2 つ — `envInfo.host` と `envInfo.apiTarget` — は CLAUDE.md 3 節にそのまま描画されます。値が破棄された場合は `null` となり行自体が省かれるため、sentinel が生成ドキュメントに現れることはありません。
+
+**カバーしないもの。** 展開されていない `${VAR}` テンプレートはそのまま残します (生きたシークレットを含まないため)。コメント、および選ばれた 1 つの `.env*` 以外のファイルは読みません。scanner の DB 種別検出は `.env` の生テキストをメモリ上で読むだけで、どこにも書きません。上記のどのルールも認識しない形式で認証情報を保持している場合は、その *形式* を (値は絶対に載せずに) issue に出してください — ここに挙げたルールはすべてそうやって生まれました。
+
+**確認方法。** `init` の後、`claudeos-core/generated/project-analysis.json` に対して自分のパスワードを `grep -i` してください。そこにあってはいけません。マスキングのルールは `tests/env-parser.test.js` のテストで固定されており、かつて実際に漏れた形式もそのまま含まれています。
+
 ## 関連項目
 
+- [stacks.md](stacks.md#env-抽出-v220) — `.env` の探索順と抽出されるフィールド
 - [architecture.md](architecture.md): staging メカニズムの文脈
 - [commands.md](commands.md): `--force` その他のフラグ
 - [troubleshooting.md](troubleshooting.md): 特定のエラーからの復旧

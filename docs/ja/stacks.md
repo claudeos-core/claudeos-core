@@ -41,7 +41,7 @@ scanner は `plan-installer/stack-detector.js` にあります。実際の検出
 
 **検出条件:** `build.gradle` または `pom.xml` に `spring-boot-starter` が含まれる。Java は Gradle の plugin block で Kotlin と区別します。
 
-**Architecture pattern 検出。** scanner はプロジェクトを **5 パターンのいずれか** に分類します:
+**Architecture pattern 検出。** scanner はプロジェクトを **6 パターンのいずれか** に分類します:
 
 | Pattern | 例の構造 |
 |---|---|
@@ -50,8 +50,9 @@ scanner は `plan-installer/stack-detector.js` にあります。実際の検出
 | **C. Layer-then-domain** | `controller/order/sub1/`、`service/order/sub2/` |
 | **D. Domain-then-layer** | `order/sub1/controller/`、`order/sub2/service/` |
 | **E. Hexagonal / DDD** | `domain/`、`application/`、`infrastructure/`、`presentation/` |
+| **F. Package-by-feature** (v2.5.3) | `order/OrderController.java`、`order/OrderService.java`、`order/OrderRepository.java` — layer ディレクトリなし |
 
-パターンは順番に試します (A → B/D → E → C)。scanner には 2 つの精緻化もあります。(1) **root-package detection** は layer を含むファイルの ≥80% をカバーする最長パッケージ prefix を採用 (再実行で deterministic)。(2) **deep-sweep fallback** は Pattern B/D 用で、登録ドメインに対して標準 glob がゼロ件を返した場合、scanner は `**/${domain}/**/*.java` を再 glob し、各ファイルのパスを辿って最も近い layer ディレクトリを探し、`core/{otherDomain}/{layer}/{domain}/` のようなクロスドメイン結合レイアウトを捕捉します。
+パターンは A → B/D → E → C の順に試し、**その後 F がすべてのツリーに対する補助パスとして実行されます**。`*Controller.java` を直下に持ち、先行するどのパターンも取得しなかった feature パッケージを登録するので、混在ツリーでも `order/controller/` のドメインと `payment/PaymentController.java` のドメインが両方残ります。読み取るべき layer ディレクトリがないため、F はクラス名の接尾辞でファイルを数えます (`*Service`、`*Repository`/`*Mapper`/`*Dao`、`*Dto`/`*Entity`/`*Vo`、それ以外は service)。`*Application.java` の隣でベースパッケージ直下に置かれた controller は Initializr の単一パッケージ demo であり、パターン C の規則 (クラス名からドメインを取る) を維持します。 (1) **root-package detection** は layer を含むファイルの ≥80% をカバーする最長パッケージ prefix を採用 (再実行で deterministic)。(2) **deep-sweep fallback** は Pattern B/D 用で、登録ドメインに対して標準 glob がゼロ件を返した場合、scanner は `**/${domain}/**/*.java` を再 glob し、各ファイルのパスを辿って最も近い layer ディレクトリを探し、`core/{otherDomain}/{layer}/{domain}/` のようなクロスドメイン結合レイアウトを捕捉します。
 
 **抽出される事実:**
 - スタック、framework version、ORM (JPA / MyBatis / jOOQ)
@@ -91,7 +92,7 @@ scanner は `plan-installer/scanners/scan-java.js` にあります。
 
 **ソースルート.** `scan-java` は `src/main/java` / `src/main/resources` のパターンを、発見したルートに合わせて書き換えます。`[<module>/]src/main/java` が一つでもあればそれだけを使います。なければ順に、`.classpath` の `kind="src"` エントリ (テストフォルダは除外)、`build.xml` の `<javac srcdir>` (`<property>` の解決込み)、そして `*.java` を含む `src/java`、`src`、`JavaSource`、`java`、`WebContent/WEB-INF/src` です。その後は同じ 5 つのドメインパターンが適用されるので、`src/com/acme/erp/controller/*.java` は `src/main/java` の下にある場合とまったく同じく Pattern C になります。
 
-**既知の制限.** Gradle ファイルはコメントを除去しません (`//` でコメントアウトされた座標も数えられます — Boot でも従来からそうです)。リポジトリ外の親 pom からの継承は解決しません。eGovFrame の `web/` コントローラ層は、まだ Pattern A/B のレイヤ名として認識されません。
+**既知の制限.** Gradle ファイルはコメントを除去しません (`//` でコメントアウトされた座標も数えられます — Boot でも従来からそうです)。リポジトリ外の親 pom からの継承は解決しません。eGovFrame の `web/` コントローラ層は、まだ Pattern A/B のレイヤ名として認識されません。 `controller/impl/` サブディレクトリはパターン A が `impl` という名前のドメインとして登録します。クラス名が `Controller` で終わらない controller (`OrderResource`、`OrderEndpoint`) はパターン F のシグナルではありません — v2.5.3 以降、検出されたバックエンドからドメインが得られない場合は `init` が Phase 2 でそう伝えます。
 
 ヘルパーは `plan-installer/jvm-detect.js` にあります (純粋なテキスト関数、単体テストで分離して検証)。
 
@@ -299,7 +300,7 @@ scanner は `.env*` ファイルを読んで実行時設定を取得し、生成
 7. `.env.local`
 8. `.env.development`
 
-**機密変数の redaction:** `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。 v2.5.2 以降、そのルールで userinfo を書き換えられない値は素通しせず丸ごと破棄されます (`***REDACTED***`)。パスワードに生の `/`、`?`、`#`、空白が含まれる場合や、数字で始まるために切り詰められた authority が `host:port` に見える場合です。host も一緒に失われ、`init` が Phase 1 のサマリで該当するキー名を知らせます (`envInfo.credentialWarnings`、キー名のみ、ルートの `.env` とサブディレクトリ SPA の `.env` の両方)。`envInfo.host` / `envInfo.apiTarget` は sentinel を CLAUDE.md §3 に持ち込まず `null` になります。host を残したい場合はパスワードをパーセントエンコードしてください (`/` は `%2F`)。
+**機密変数の redaction:** `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` などにマッチするキーは、`project-analysis.json` にコピーされる前に自動的に `***REDACTED***` へ置き換わります。それ以外の URL 形式の値 (`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`) は、scheme・host・port・path を残したまま認証情報だけを `***:***` にマスクします (`postgres://***:***@db.internal:5432/app`)。DB の種類は引き続き判別でき、パスワードがファイルに書き出されることはありません。scanner 自身の DB タイプ検出は `.env` の生テキストを直接読むため影響を受けません。 v2.5.2 以降、そのルールで userinfo を書き換えられない値は素通しせず丸ごと破棄されます (`***REDACTED***`)。パスワードに生の `/`、`?`、`#`、空白が含まれる場合や、数字で始まるために切り詰められた authority が `host:port` に見える場合です。host も一緒に失われ、`init` が Phase 1 のサマリで該当するキー名を知らせます (`envInfo.credentialWarnings`、キー名のみ、ルートの `.env` とサブディレクトリ SPA の `.env` の両方)。`envInfo.host` / `envInfo.apiTarget` は sentinel を CLAUDE.md §3 に持ち込まず `null` になります。host を残したい場合はパスワードをパーセントエンコードしてください (`/` は `%2F`)。 認証情報を URL userinfo ではなく connect descriptor の前に置く Oracle JDBC DSN (`jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL`、`…@dbhost:1521:ORCL`、`…@(DESCRIPTION=…)`、`jdbc:oracle:oci:user/pw@ALIAS`) は、v2.5.3 から `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` にマスクされます — host、port、service name はそのまま見えます。
 
 **Port 解決の優先順位:**
 1. Spring Boot の `application.yml` の `server.port`

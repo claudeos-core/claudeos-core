@@ -1,4 +1,4 @@
-# 안전성: re-init 시 보존되는 것
+# 안전성: re-init 시 보존되는 것, 그리고 `.env` 밖으로 절대 나가지 않는 것
 
 자주 듣는 걱정: *"`.claude/rules/`를 customize했어요. `npx claudeos-core init`을 다시 실행하면 편집한 내용이 사라지나요?"*
 
@@ -195,8 +195,29 @@ CI는 Linux / macOS / Windows × Node 18 / 20에서 실행됩니다.
 
 ---
 
+## 생성 파일에 절대 도달하지 않는 것: `.env` 시크릿
+
+위 내용은 전부 *내 파일*이 ClaudeOS를 견디는 이야기입니다. 이 절은 *내 시크릿*이 그 파일 밖으로 나가지 않는 이야기입니다. "이 도구가 내 `.env`를 LLM이 읽는 무언가에 복사하나?"는 안전성 질문이고, 사람들은 그걸 이 페이지에서 찾기 때문에 여기에 둡니다.
+
+`init`은 생성된 CLAUDE.md가 실제 port, host, database를 말할 수 있도록 `.env*` 파일 하나를 읽습니다 (탐색 순서는 [stacks.md](stacks.md#env-추출-v220) 참고). 파싱된 변수는 `claudeos-core/generated/project-analysis.json`에 기록되고, Pass 3 / Pass 4 프롬프트는 모델에게 그 파일을 읽으라고 지시합니다. 기록되기 전에 모든 값에 다음 세 규칙이 이 순서로 적용됩니다:
+
+1. **키 이름 기반 리댁션.** `PASSWORD`, `PASS`, `PW`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` 등에 매치되는 키는 `***REDACTED***`가 됩니다. 키는 살아남으므로 "이 변수가 존재한다"는 사실은 문서가 여전히 말할 수 있습니다.
+2. **연결 문자열 안의 자격 증명 마스킹.** 첫 규칙이 잡지 않는 키(`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `SPRING_DATASOURCE_URL`, …)는 값의 *자격 증명 부분*만 다시 쓰고 나머지는 유지하므로 DB 종류, host, port, path는 읽을 수 있습니다:
+   - URL userinfo: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - 쿼리 / 프로퍼티 파라미터: `?user=app&password=x` → `?user=app&password=***`
+   - Go / MySQL DSN: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (`@host:port:SID`, `@(DESCRIPTION=…)`, `jdbc:oracle:oci:` 형태 포함)
+3. **값 통째로 드롭 (v2.5.2).** 두 번째 규칙이 자격 증명을 안전하게 다시 쓸 수 없을 때 — 비밀번호에 원시 `/`, `?`, `#`, 공백이 있거나 숫자로 시작할 때, 또는 Oracle DSN의 user 부분에 `@`가 들어 있어 user와 비밀번호의 경계를 알 수 없을 때 (v2.5.3) — 값은 부분 마스킹 대신 통째로 버려집니다 (`***REDACTED***`). host를 잃는 것이 비밀번호를 흘리는 것보다 훨씬 싼 실패입니다. `init`은 Phase 1 요약에서 해당 키 이름(값의 어떤 부분도 아닌, 키 이름만)을 알려줍니다. host를 보존하려면 비밀번호를 percent-encoding 하세요 (`/`는 `%2F`).
+
+`.env`에서 파생된 스칼라 필드 둘 — `envInfo.host`, `envInfo.apiTarget` — 은 CLAUDE.md 3절에 바로 렌더링됩니다. 값이 드롭된 경우 `null`이 되어 행 자체가 생략되므로 sentinel이 생성 문서에 나타나는 일은 없습니다.
+
+**다루지 않는 것.** 확장되지 않은 `${VAR}` 템플릿은 그대로 둡니다 (살아있는 시크릿을 담고 있지 않으므로). 주석과, 선택된 `.env*` 한 파일 외의 파일은 읽지 않습니다. scanner의 DB 종류 감지는 `.env` 원문을 메모리에서만 읽고 어디에도 쓰지 않습니다. 위 규칙 중 어느 것도 인식하지 못하는 형태로 자격 증명을 보관하고 있다면, 그 *형태*를(값은 절대 아니고) 이슈로 올려 주세요 — 여기 적힌 규칙 전부가 그렇게 하나씩 생겼습니다.
+
+**확인 방법.** `init` 후 `claudeos-core/generated/project-analysis.json`에서 비밀번호를 `grep -i` 해보세요. 있으면 안 됩니다. 마스킹 규칙은 `tests/env-parser.test.js`에 테스트로 고정돼 있고, 한때 실제로 새어 나갔던 형태들이 그대로 들어 있습니다.
+
 ## See also
 
+- [stacks.md](stacks.md#env-추출-v220) — `.env` 탐색 순서와 추출 필드
 - [architecture.md](architecture.md) — 전체 흐름 안에서 본 staging 메커니즘
 - [commands.md](commands.md) — `--force`와 그 외 flag
 - [troubleshooting.md](troubleshooting.md) — 구체적인 에러 복구 방법

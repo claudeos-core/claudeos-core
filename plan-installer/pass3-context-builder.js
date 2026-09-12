@@ -98,7 +98,7 @@ function summarizeDomains(analysisDomains) {
     if (typeof d.dtos === "number") summary.dtos = d.dtos;
     if (typeof d.pages === "number") summary.pages = d.pages;
     if (typeof d.components === "number") summary.components = d.components;
-    if (d.pattern) summary.pattern = d.pattern;          // Java A-E patterns
+    if (d.pattern) summary.pattern = d.pattern;          // Java A-F patterns (F = package-by-feature)
     if (d.modulePath) summary.modulePath = d.modulePath; // multi-module Java
     if (d.serverType) summary.serverType = d.serverType; // Kotlin CQRS server types
     if (d.domainName) summary.domainName = d.domainName;

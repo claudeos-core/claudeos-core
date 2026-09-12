@@ -690,3 +690,296 @@ describe("scanJavaDomains — legacy source roots", () => {
     assert.deepEqual(backendDomains.map(d => d.name), ["user"]);
   });
 });
+
+// ─── v2.5.3: Pattern F — package-by-feature (no layer directory) ─────────────
+//
+// Until v2.5.3 a domain was REGISTERED only by a layer directory in its path.
+// The deep-sweep catch-all counts layer-less files but only for a domain
+// something else already registered, so the layout Spring's own guide
+// recommends (`com/acme/order/{OrderController,OrderService,OrderRepository}`)
+// yielded zero backend domains, and in a mixed tree the one domain with a
+// `controller/` dir survived while the rest silently vanished.
+
+describe("scanJavaDomains — Pattern F (package-by-feature, v2.5.3)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+  const stack = () => ({ language: "java", buildTool: "gradle" });
+  const byName = (r) => Object.fromEntries(r.backendDomains.map(d => [d.name, d]));
+
+  it("registers each feature package and counts files by class-name suffix", async () => {
+    for (const f of [
+      "order/OrderController.java", "order/OrderService.java", "order/OrderRepository.java", "order/OrderDto.java", "order/OrderEntity.java",
+      "payment/PaymentController.java", "payment/PaymentService.java",
+    ]) touch(path.join(tmp, "src/main/java/com/acme", f));
+
+    const r = await scanJavaDomains(stack(), tmp);
+    const d = byName(r);
+    assert.deepEqual(Object.keys(d).sort(), ["order", "payment"]);
+    assert.equal(d.order.pattern, "F");
+    assert.equal(d.order.controllers, 1);
+    assert.equal(d.order.services, 1);
+    assert.equal(d.order.mappers, 1);
+    assert.equal(d.order.dtos, 2, "Dto + Entity");
+    assert.equal(d.order.totalFiles, 5);
+    assert.equal(d.payment.totalFiles, 2);
+    assert.equal(r.rootPackage, "com.acme", "root package is derived from the feature directories");
+    assert.ok(!("featureDir" in d.order), "internal bookkeeping must not leak into the result");
+  });
+
+  it("neither *Application.java, nor @RestController, nor file count is required — the parent directory is the signal", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/Application.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderService.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => d.name), ["order"]);
+    assert.equal(r.rootPackage, "com.acme");
+  });
+
+  it("mixed tree: a layer-dir domain no longer makes the layer-less ones vanish", async () => {
+    // Pre-v2.5.3 this returned exactly ["legacy"] — order/payment's 4 files were dropped, not misattributed.
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderService.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/payment/PaymentController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/payment/PaymentService.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/legacy/controller/LegacyController.java"));
+
+    const d = byName(await scanJavaDomains(stack(), tmp));
+    assert.deepEqual(Object.keys(d).sort(), ["legacy", "order", "payment"]);
+    assert.equal(d.legacy.pattern, "B");
+    assert.equal(d.legacy.controllers, 1, "the B domain is counted exactly once");
+    assert.equal(d.order.pattern, "F");
+    assert.equal(d.order.totalFiles, 2);
+    assert.equal(d.payment.totalFiles, 2);
+  });
+
+  it("a layer-less controller attaches to a domain the supplementary scan would find, once", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/service/OrderService.java"));
+    const d = byName(await scanJavaDomains(stack(), tmp));
+    assert.deepEqual(Object.keys(d), ["order"]);
+    assert.equal(d.order.controllers, 1);
+    assert.equal(d.order.services, 1);
+    assert.equal(d.order.totalFiles, 2);
+  });
+
+  it("works under Gradle/Maven modules and legacy bare src/ roots, including numbered eGovFrame controllers", async () => {
+    touch(path.join(tmp, "api/src/main/java/com/acme/order/OrderController.java"));
+    touch(path.join(tmp, "api/src/main/java/com/acme/order/OrderService.java"));
+    touch(path.join(tmp, "core/src/main/java/com/acme/billing/BillingController.java"));
+    let d = byName(await scanJavaDomains(stack(), tmp));
+    assert.deepEqual(Object.keys(d).sort(), ["billing", "order"]);
+    assert.equal(d.order.totalFiles, 2);
+
+    cleanup(tmp); tmp = makeTmpDir();
+    touch(path.join(tmp, "src/kr/go/egov/sample/EgovSample2Controller.java"));
+    touch(path.join(tmp, "src/kr/go/egov/sample/EgovSampleServiceImpl.java"));
+    touch(path.join(tmp, "src/kr/go/egov/cmmn/EgovCmmnUtil.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    d = byName(r);
+    assert.deepEqual(Object.keys(d), ["sample"], "cmmn has no controller and is not a domain");
+    assert.equal(d.sample.totalFiles, 2);
+    assert.equal(r.rootPackage, "kr.go.egov");
+  });
+
+  it("does NOT register: base-package controllers (→ Pattern C by class name), layer/adapter/skip directories, or a same-named package elsewhere", async () => {
+    // Initializr single-package demo: controller directly in the base package
+    touch(path.join(tmp, "src/main/java/com/acme/demo/DemoApplication.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/demo/HelloController.java"));
+    let r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => `${d.name}[${d.pattern}]`), ["hello[C]"], "demo must not become a domain");
+    assert.equal(r.rootPackage, "com.acme.demo", "main-class location names the base package");
+
+    cleanup(tmp); tmp = makeTmpDir();
+    // Hexagonal: E owns it, `rest` must not become an F domain
+    touch(path.join(tmp, "src/main/java/com/acme/order/adapter/in/rest/OrderController.java"));
+    r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => `${d.name}[${d.pattern}]`), ["order[E]"]);
+
+    cleanup(tmp); tmp = makeTmpDir();
+    // Same-named package under another parent must not be swept into the feature count
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/legacy/order/OrderLegacyHelper.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/legacy/order/OrderLegacyHelper2.java"));
+    r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => d.name), ["order"]);
+    assert.equal(r.backendDomains[0].totalFiles, 1, "only the feature directory the controller lives in is counted");
+  });
+
+  it("a class name containing `Constructor` does not crash the scan", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderConstructorController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/Constructor.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => d.name), ["order"]);
+    assert.equal(r.backendDomains[0].totalFiles, 2);
+  });
+
+  it("healthy A/B/C/E trees are byte-for-byte unchanged in name, pattern, and counts", async () => {
+    // Pattern A
+    touch(path.join(tmp, "src/main/java/com/acme/controller/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/service/order/OrderService.java"));
+    let r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => `${d.name}[${d.pattern}]${d.controllers}/${d.services}`), ["order[A]1/1"]);
+    // Pattern C
+    cleanup(tmp); tmp = makeTmpDir();
+    touch(path.join(tmp, "src/main/java/com/acme/controller/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/controller/PaymentController.java"));
+    r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => `${d.name}[${d.pattern}]${d.controllers}`).sort(), ["order[C]1", "payment[C]1"]);
+  });
+});
+
+// ─── v2.5.3: a controller file is counted exactly once ───────────────────────
+//
+// Pattern B counted `{d}/controller/X.java`; when the domain had NOTHING else
+// (`standardCount === 0`) the deep-sweep re-globbed `**/{d}/**/*.java`,
+// walked up the same file's path, met `controller`, and counted it again.
+// A scaffold-stage domain therefore reported `controllers: 2` for one file;
+// adding any service/dto file hid the bug by skipping the sweep.
+
+describe("scanJavaDomains — controller-only domain is counted once (v2.5.3)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+  const stack = () => ({ language: "java", buildTool: "gradle" });
+
+  it("controller-only Pattern B domain: controllers=1, totalFiles=1", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/order/controller/OrderController.java"));
+    const [d] = (await scanJavaDomains(stack(), tmp)).backendDomains;
+    assert.equal(d.pattern, "B");
+    assert.equal(d.controllers, 1);
+    assert.equal(d.totalFiles, 1);
+  });
+
+  it("controller-only Pattern D (module/domain) domains: each counted once", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/api/order/controller/OrderApiController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/admin/order/controller/OrderAdminController.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    for (const d of r.backendDomains) {
+      assert.equal(d.pattern, "D", d.name);
+      assert.equal(d.controllers, 1, `${d.name} must be counted once`);
+    }
+  });
+
+  it("the deep-sweep still fires and counts inverted `{layer}/{domain}/` files — without re-counting the controller", async () => {
+    // Pattern B registers `settle` from front/settle/controller/. Its only other file
+    // lives under core/inventory/handler/settle/ (layer before domain), reachable only
+    // via the sweep, and the sweep's glob also returns the controller itself.
+    // Pre-v2.5.3: controllers=2 (the same file twice) + services=1.
+    touch(path.join(tmp, "src/main/java/org/foo/front/settle/controller/SettleController.java"));
+    touch(path.join(tmp, "src/main/java/org/foo/core/inventory/handler/settle/SettleHandler.java"));
+    const settle = (await scanJavaDomains(stack(), tmp)).backendDomains.find(d => d.name === "settle");
+    assert.ok(settle);
+    assert.equal(settle.controllers, 1, "the controller must not be re-counted by the sweep");
+    assert.equal(settle.services, 1, "the inverted handler must still be found by the sweep");
+    assert.equal(settle.totalFiles, 2);
+  });
+});
+
+// ─── v2.5.3 review fixes ─────────────────────────────────────────────────────
+//
+// Three defects found by re-running the v2.5.3 working tree against the v2.5.2
+// scanner on the same fixtures: a nested feature package was counted twice, the
+// base-package rule fired on any single-domain project, and a package named
+// after an Object.prototype member aborted `init`.
+
+describe("scanJavaDomains — Pattern F nesting and base-package rule (v2.5.3 fixes)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+  const stack = () => ({ language: "java", buildTool: "gradle" });
+  const byName = (r) => Object.fromEntries(r.backendDomains.map(d => [d.name, d]));
+  const total = (r) => r.backendDomains.reduce((s, d) => s + d.totalFiles, 0);
+
+  it("a nested feature package is counted by itself only, never by its parent too", async () => {
+    // The F glob is recursive so `order/dto/` belongs to `order` — but
+    // `order/item/` holds a controller, so it is its own domain. Counting its
+    // files in BOTH reported 7 files for 5 (the parent's `services` inflated
+    // while its `controllers` stayed right, the ledger already covering those).
+    for (const f of ["order/OrderController.java", "order/OrderService.java",
+                     "order/item/ItemController.java", "order/item/ItemService.java", "order/item/ItemRepository.java"]) {
+      touch(path.join(tmp, "src/main/java/com/acme", f));
+    }
+    const r = await scanJavaDomains(stack(), tmp);
+    const d = byName(r);
+    assert.equal(d.order.totalFiles, 2, "order owns OrderController + OrderService only");
+    assert.equal(d.order.services, 1);
+    assert.equal(d.item.totalFiles, 3);
+    assert.equal(total(r), 5, "every .java file counted exactly once");
+  });
+
+  it("three levels of nesting still sum to the real file count", async () => {
+    for (const f of ["shop/ShopController.java", "shop/order/OrderController.java",
+                     "shop/order/pay/PayController.java", "shop/order/pay/PayService.java"]) {
+      touch(path.join(tmp, "src/main/java/com/acme", f));
+    }
+    const r = await scanJavaDomains(stack(), tmp);
+    const d = byName(r);
+    assert.deepEqual(Object.keys(d).sort(), ["order", "pay", "shop"]);
+    assert.equal(d.shop.totalFiles, 1);
+    assert.equal(d.order.totalFiles, 1);
+    assert.equal(d.pay.totalFiles, 2);
+    assert.equal(total(r), 4);
+  });
+
+  it("a sub-package with no controller of its own still belongs to the feature", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/dto/OrderDto.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/internal/Helper.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    const [d] = r.backendDomains;
+    assert.equal(d.name, "order");
+    assert.equal(d.pattern, "F");
+    assert.equal(d.totalFiles, 3, "dto/ and internal/ are the feature's own sub-packages");
+  });
+
+  it("a layer-less controller joins the domain that already owns its directory", async () => {
+    // `rootPackage` IS the single domain's directory in a single-domain project,
+    // so the old `relDir === rootPkgPath` signal read `order/` as an Initializr
+    // base package and produced a second domain literally named `orderfacade`.
+    touch(path.join(tmp, "src/main/java/com/acme/order/adapter/in/web/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderFacadeController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/application/OrderService.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => d.name), ["order"], "no `orderfacade` domain");
+    assert.equal(r.backendDomains[0].pattern, "E");
+    assert.equal(r.backendDomains[0].controllers, 2);
+    assert.equal(total(r), 3);
+  });
+
+  it("the Initializr base-package rule still fires — it keys on where *Application.java lives", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/demo/DemoApplication.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/demo/HelloController.java"));
+    let r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => `${d.name}[${d.pattern}]`), ["hello[C]"]);
+
+    // Mixed: base-package controller (C) + layer-dir domain (B) + feature domain (F)
+    cleanup(tmp); tmp = makeTmpDir();
+    touch(path.join(tmp, "src/main/java/com/acme/demo/DemoApplication.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/demo/HomeController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/demo/user/controller/UserController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/demo/pay/PayController.java"));
+    r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(d => `${d.name}[${d.pattern}]`).sort(), ["home[C]", "pay[F]", "user[B]"]);
+    assert.equal(r.backendDomains.find(d => d.name === "user").controllers, 1, "counted once, not twice");
+  });
+
+  it("a package named after an Object.prototype member neither aborts the scan nor pollutes Object", async () => {
+    // `domainPaths["constructor"]` resolved to Object.prototype.constructor, so
+    // `if (!map[d]) map[d] = []` was skipped and `.push` threw — an `init` abort.
+    touch(path.join(tmp, "src/main/java/com/acme/constructor/controller/AController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/controller/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/service/OrderService.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    assert.ok(r.backendDomains.some(d => d.name === "constructor"), "the package is a domain like any other");
+    assert.ok(r.backendDomains.some(d => d.name === "order"));
+    assert.equal(Object.prototype.hasOwnProperty.call(Object, "controllers"), false, "no global mutation");
+
+    cleanup(tmp); tmp = makeTmpDir();
+    // Same through the Pattern F path (no layer directory).
+    touch(path.join(tmp, "src/main/java/com/acme/toString/ToStringController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/order/OrderController.java"));
+    const r2 = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r2.backendDomains.map(d => d.name).sort(), ["order", "toString"]);
+  });
+});

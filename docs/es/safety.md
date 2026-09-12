@@ -1,4 +1,4 @@
-# Safety: Qué se preserva al re-init
+# Safety: Qué se preserva al re-init, y qué nunca sale de tu `.env`
 
 Una duda común: *"Personalicé mi `.claude/rules/`. Si vuelvo a ejecutar `npx claudeos-core init`, ¿pierdo mis ediciones?"*
 
@@ -195,8 +195,29 @@ Si encuentras un caso donde ClaudeOS-Core perdió tus ediciones de una forma que
 
 ---
 
+## Lo que nunca llega a los archivos generados: secretos de `.env`
+
+Todo lo anterior trata de que *tus archivos* sobrevivan a ClaudeOS. Esta sección trata de que *tus secretos* no salgan de ellos. Está aquí porque «¿esta herramienta copia mi `.env` en algo que lee un LLM?» es una pregunta de seguridad, y esta es la página que se abre para eso.
+
+`init` lee un archivo `.env*` (orden de búsqueda en [stacks.md](stacks.md#extracción-de-env-v220)) para que el CLAUDE.md generado indique el puerto, host y base de datos reales. Las variables parseadas se escriben en `claudeos-core/generated/project-analysis.json`, y los prompts de Pass 3 / Pass 4 indican al modelo que lea ese archivo. Antes de escribir, tres reglas se aplican a cada valor, en este orden:
+
+1. **Redacción por nombre de clave.** Una clave que coincida con `PASSWORD`, `PASS`, `PW`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` y similares pasa a `***REDACTED***`. La clave sobrevive, de modo que «esta variable existe» sigue siendo un hecho que la documentación puede afirmar.
+2. **Enmascarado de credenciales dentro de cadenas de conexión.** Para una clave que la primera regla no atrapa (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `SPRING_DATASOURCE_URL`, …) se reescribe solo la *parte de credenciales* y se conserva el resto, de forma que el tipo de BD, host, puerto y ruta siguen siendo legibles:
+   - Userinfo de URL: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - Parámetros de query/propiedad: `?user=app&password=x` → `?user=app&password=***`
+   - DSN de Go/MySQL: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (también las formas `@host:port:SID`, `@(DESCRIPTION=…)` y `jdbc:oracle:oci:`)
+3. **Descarte del valor completo (v2.5.2).** Cuando la segunda regla no puede reescribir la credencial de forma segura — una contraseña con `/`, `?`, `#` o espacio en crudo, que empieza por dígitos, o un DSN de Oracle cuyo segmento de usuario contiene un `@` (v2.5.3) — el valor se descarta entero (`***REDACTED***`) en lugar de enmascararse parcialmente. Perder el host es un fallo mucho más barato que filtrar una contraseña. `init` nombra las claves afectadas en su resumen de Fase 1 (solo nombres de clave). Codifica la contraseña en percent-encoding (`/` como `%2F`) para conservar el host visible.
+
+Dos campos escalares derivados de `.env` — `envInfo.host` y `envInfo.apiTarget` — se renderizan directamente en CLAUDE.md §3; si su valor fue descartado son `null` y la fila se omite, así que el centinela nunca aparece en un documento generado.
+
+**Lo que no se cubre.** Una plantilla `${VAR}` sin expandir se deja intacta (no contiene un secreto vivo). No se leen comentarios ni archivos distintos del único `.env*` seleccionado. La detección de tipo de BD del scanner lee el texto crudo de `.env` en memoria y nunca lo escribe. Si tu proyecto guarda una credencial con una forma que ninguna regla reconoce, abre un issue con la *forma* (nunca el valor) — cada regla listada aquí nació así.
+
+**Cómo comprobarlo.** Tras `init`, haz `grep -i` de tu contraseña en `claudeos-core/generated/project-analysis.json`. No debe estar. Las reglas de enmascarado están fijadas por tests en `tests/env-parser.test.js`, incluidas las formas exactas que una vez se filtraron.
+
 ## Ver también
 
+- [stacks.md](stacks.md#extracción-de-env-v220) — orden de búsqueda de `.env` y campos extraídos
 - [architecture.md](architecture.md): el mecanismo de staging en contexto
 - [commands.md](commands.md): `--force` y otros flags
 - [troubleshooting.md](troubleshooting.md): recuperación de errores específicos

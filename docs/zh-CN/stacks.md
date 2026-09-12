@@ -41,7 +41,7 @@
 
 **何时检测:** `build.gradle` 或 `pom.xml` 包含 `spring-boot-starter`。Java 靠 Gradle 插件块与 Kotlin 区分。
 
-**架构模式检测。** Scanner 把项目归到 **5 种模式之一**:
+**架构模式检测。** Scanner 把项目归到 **6 种模式之一**:
 
 | 模式 | 示例结构 |
 |---|---|
@@ -50,8 +50,9 @@
 | **C. Layer-then-domain** | `controller/order/sub1/`、`service/order/sub2/` |
 | **D. Domain-then-layer** | `order/sub1/controller/`、`order/sub2/service/` |
 | **E. Hexagonal / DDD** | `domain/`、`application/`、`infrastructure/`、`presentation/` |
+| **F. Package-by-feature** (v2.5.3) | `order/OrderController.java`、`order/OrderService.java`、`order/OrderRepository.java` — 没有层目录 |
 
-按顺序尝试(A → B/D → E → C)。Scanner 还有两项细化:(1)**root-package 检测** 选取覆盖 ≥80% 含 layer 文件的最长 package prefix(跨重跑 deterministic);(2)**deep-sweep fallback** 用于 Pattern B/D:当标准 glob 在某个已注册域上返回零文件时,scanner 重新 glob `**/${domain}/**/*.java`,沿每个文件路径找最近的 layer 目录,捕获跨域耦合布局如 `core/{otherDomain}/{layer}/{domain}/`。
+模式按 A → B/D → E → C 的顺序尝试；**随后 F 会作为补充遍历在每一棵树上运行**，注册那些直接包含 `*Controller.java` 且未被前面任何模式认领的 feature 包。因此混合树中 `order/controller/` 的 domain 和 `payment/PaymentController.java` 的 domain 都能保留。这里没有层目录可读，所以 F 依据类名后缀计数 (`*Service`、`*Repository`/`*Mapper`/`*Dao`、`*Dto`/`*Entity`/`*Vo`，其余计为 service)。紧挨 `*Application.java` 直接放在基础包中的 controller 属于 Initializr 单包 demo，仍沿用模式 C 的规则 (从类名取 domain)。Scanner 还有两项细化:(1)**root-package 检测** 选取覆盖 ≥80% 含 layer 文件的最长 package prefix(跨重跑 deterministic);(2)**deep-sweep fallback** 用于 Pattern B/D:当标准 glob 在某个已注册域上返回零文件时,scanner 重新 glob `**/${domain}/**/*.java`,沿每个文件路径找最近的 layer 目录,捕获跨域耦合布局如 `core/{otherDomain}/{layer}/{domain}/`。
 
 **提取的事实:**
 - Stack、framework version、ORM(JPA / MyBatis / jOOQ)
@@ -91,7 +92,7 @@ scanner 在 `plan-installer/scanners/scan-java.js`。
 
 **源码根目录。** `scan-java` 会按发现的根目录改写自己的 `src/main/java` / `src/main/resources` 模式。只要存在任意 `[<module>/]src/main/java`，就只用这些。否则依次是：`.classpath` 的 `kind="src"` 条目 (排除测试目录)、`build.xml` 的 `<javac srcdir>` (含 `<property>` 解析)，然后是含有 `*.java` 的 `src/java`、`src`、`JavaSource`、`java`、`WebContent/WEB-INF/src`。之后套用的仍是同样的五种 domain 模式，所以 `src/com/acme/erp/controller/*.java` 与它位于 `src/main/java` 之下时一样是 Pattern C。
 
-**已知限制。** Gradle 文件不做注释剥离 (被 `//` 注释掉的坐标仍会计入 — 这一点对 Boot 向来如此)。不解析仓库之外父 pom 的继承。eGovFrame 的 `web/` 控制器层尚未被 Pattern A/B 识别为层名。
+**已知限制。** Gradle 文件不做注释剥离 (被 `//` 注释掉的坐标仍会计入 — 这一点对 Boot 向来如此)。不解析仓库之外父 pom 的继承。eGovFrame 的 `web/` 控制器层尚未被 Pattern A/B 识别为层名。 `controller/impl/` 子目录会被模式 A 注册为名为 `impl` 的 domain。类名不以 `Controller` 结尾的 controller (`OrderResource`、`OrderEndpoint`) 不是模式 F 的信号 — 从 v2.5.3 起，当检测到后端却得不到任何 domain 时，`init` 会在 Phase 2 明确告知。
 
 辅助函数在 `plan-installer/jvm-detect.js` (纯文本函数，有独立的单元测试)。
 
@@ -299,7 +300,7 @@ scanner 读 `.env*` 文件里的运行时配置,这样生成的文档能反映�
 7. `.env.local`
 8. `.env.development`
 
-**敏感变量脱敏:** 匹配 `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。 自 v2.5.2 起,该规则无法改写其 userinfo 的值不再原样通过,而是被整体丢弃(`***REDACTED***`):密码中含有未编码的 `/`、`?`、`#` 或空格,或者密码以数字开头导致被截断的 authority 看起来像 `host:port`。host 也会随之丢失,`init` 会在 Phase 1 摘要中列出受影响的 key 名(`envInfo.credentialWarnings`,仅 key 名,涵盖根 `.env` 与子目录 SPA 自己的 `.env`)。`envInfo.host` / `envInfo.apiTarget` 会变成 `null`,而不是把 sentinel 带进 CLAUDE.md §3。请对密码做 percent-encoding(`/` 写作 `%2F`)以保留 host。
+**敏感变量脱敏:** 匹配 `PASSWORD`、`PASS`、`PW`、`PASSPHRASE`、`SECRET`、`TOKEN`、`API_KEY`、`CREDENTIAL`、`PRIVATE_KEY`、`JWT_SECRET`、`SSH_KEY`、`MASTER_KEY`、`SERVICE_ACCOUNT` 等的键,复制到 `project-analysis.json` 前会自动脱敏为 `***REDACTED***`。其他所有 URL 形态的值(`DATABASE_URL`、`REDIS_URL`、`MONGO_URI`、`jdbc:postgresql://…`)只把凭据脱敏为 `***:***`,scheme、host、port 和 path 原样保留(`postgres://***:***@db.internal:5432/app`)。DB 类型仍然可辨认,而密码永远不会写进文件。scanner 自己的 DB 类型检测直接读 `.env` 原文,不受影响。 自 v2.5.2 起,该规则无法改写其 userinfo 的值不再原样通过,而是被整体丢弃(`***REDACTED***`):密码中含有未编码的 `/`、`?`、`#` 或空格,或者密码以数字开头导致被截断的 authority 看起来像 `host:port`。host 也会随之丢失,`init` 会在 Phase 1 摘要中列出受影响的 key 名(`envInfo.credentialWarnings`,仅 key 名,涵盖根 `.env` 与子目录 SPA 自己的 `.env`)。`envInfo.host` / `envInfo.apiTarget` 会变成 `null`,而不是把 sentinel 带进 CLAUDE.md §3。请对密码做 percent-encoding(`/` 写作 `%2F`)以保留 host。 把凭据放在 connect descriptor 之前、而非作为 URL userinfo 的 Oracle JDBC DSN (`jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL`、`…@dbhost:1521:ORCL`、`…@(DESCRIPTION=…)`、`jdbc:oracle:oci:user/pw@ALIAS`)，自 v2.5.3 起会被遮蔽为 `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` — host、port 和 service name 仍然可见。
 
 **端口解析优先级:**
 1. Spring Boot `application.yml` 的 `server.port`

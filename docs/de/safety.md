@@ -1,4 +1,4 @@
-# Sicherheit: Was bei Re-init erhalten bleibt
+# Sicherheit: Was bei Re-init erhalten bleibt — und was Ihre `.env` nie verlässt
 
 Eine häufige Sorge: _„Ich habe meine `.claude/rules/` angepasst. Wenn ich `npx claudeos-core init` erneut ausführe, gehen meine Änderungen dann verloren?"_
 
@@ -195,8 +195,29 @@ Falls Sie einen Fall finden, in dem ClaudeOS-Core Ihre Änderungen auf eine Weis
 
 ---
 
+## Was nie in die generierten Dateien gelangt: `.env`-Secrets
+
+Alles bisher handelt davon, dass *Ihre Dateien* ClaudeOS überleben. Dieser Abschnitt handelt davon, dass *Ihre Secrets* sie nicht verlassen. Er steht hier, weil „Kopiert dieses Tool meine `.env` in etwas, das ein LLM liest?" eine Sicherheitsfrage ist — und das ist die Seite, die man dafür aufschlägt.
+
+`init` liest eine `.env*`-Datei (Suchreihenfolge in [stacks.md](stacks.md#env-extraktion-v220)), damit die generierte CLAUDE.md den echten Port, Host und die echte Datenbank nennen kann. Die geparsten Variablen landen in `claudeos-core/generated/project-analysis.json`, und die Prompts von Pass 3 / Pass 4 weisen das Modell an, diese Datei zu lesen. Vor dem Schreiben laufen drei Regeln über jeden Wert, in dieser Reihenfolge:
+
+1. **Redaction nach Schlüsselname.** Ein Schlüssel, der auf `PASSWORD`, `PASS`, `PW`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` und Ähnliches passt, wird zu `***REDACTED***`. Der Schlüssel bleibt erhalten, damit „diese Variable existiert" weiterhin eine Aussage ist, die die Doku treffen kann.
+2. **Maskierung der Zugangsdaten in Connection-Strings.** Bei Schlüsseln, die Regel 1 nicht erfasst (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `SPRING_DATASOURCE_URL`, …), wird nur der *Zugangsdaten-Teil* umgeschrieben, der Rest bleibt lesbar — DB-Typ, Host, Port und Pfad:
+   - URL-Userinfo: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - Query-/Property-Parameter: `?user=app&password=x` → `?user=app&password=***`
+   - Go-/MySQL-DSN: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (ebenso die Formen `@host:port:SID`, `@(DESCRIPTION=…)` und `jdbc:oracle:oci:`)
+3. **Kompletter Wertverwurf (v2.5.2).** Wenn Regel 2 die Zugangsdaten nicht sicher umschreiben kann — ein Passwort mit rohem `/`, `?`, `#` oder Leerzeichen, eines, das mit Ziffern beginnt, oder ein Oracle-DSN, dessen User-Segment selbst ein `@` enthält (v2.5.3) — wird der Wert ganz verworfen (`***REDACTED***`) statt teilweise maskiert. Ein verlorener Host ist ein weit billigerer Fehlschlag als ein geleaktes Passwort. `init` nennt die betroffenen Schlüssel in der Phase-1-Zusammenfassung (nur Schlüsselnamen). Percent-encodieren Sie das Passwort (`/` als `%2F`), um den Host sichtbar zu halten.
+
+Zwei aus `.env` abgeleitete Skalarfelder — `envInfo.host` und `envInfo.apiTarget` — werden direkt in CLAUDE.md §3 gerendert; wurde ihr Wert verworfen, sind sie `null` und die Zeile entfällt, sodass der Sentinel nie in einem generierten Dokument auftaucht.
+
+**Was nicht abgedeckt ist.** Ein nicht expandiertes `${VAR}`-Template bleibt unangetastet (es enthält kein echtes Secret). Kommentare und andere Dateien als die eine ausgewählte `.env*` werden nicht gelesen. Die DB-Typ-Erkennung des Scanners liest den rohen `.env`-Text im Speicher und schreibt ihn nie. Wenn Ihr Projekt Zugangsdaten in einer Form hält, die keine der Regeln erkennt, öffnen Sie bitte ein Issue mit der *Form* (niemals dem Wert) — jede hier gelistete Regel ist genau so entstanden.
+
+**Wie Sie es prüfen.** Nach `init`: `grep -i` Ihr Passwort in `claudeos-core/generated/project-analysis.json`. Es darf nicht da sein. Die Maskierungsregeln sind durch Tests in `tests/env-parser.test.js` fixiert, inklusive der Formen, die einmal geleakt sind.
+
 ## Siehe auch
 
+- [stacks.md](stacks.md#env-extraktion-v220) — `.env`-Suchreihenfolge und extrahierte Felder
 - [architecture.md](architecture.md): der Staging-Mechanismus im Kontext
 - [commands.md](commands.md): `--force` und andere Flags
 - [troubleshooting.md](troubleshooting.md): Wiederherstellung bei spezifischen Fehlern

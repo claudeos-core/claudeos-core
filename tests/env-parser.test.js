@@ -630,3 +630,128 @@ test("an @ in a query string does not disable the backstop", () => {
     assert.notStrictEqual(M(v), "***REDACTED***", `must not redact: ${v}`);
   }
 });
+
+// ─── v2.5.3: Oracle JDBC DSN credentials ─────────────────────────────────────
+//
+// `jdbc:oracle:thin:user/pw@…` carries credentials before the connect
+// descriptor, not as URL userinfo. The `://` gate never matched it, the
+// scheme-less branch only knows the Go/MySQL `@tcp(` shape, and neither
+// SPRING_DATASOURCE_URL nor JDBC_URL trips a key-name rule — so v2.5.0–2.5.2
+// wrote the password verbatim into project-analysis.json. Standard shape in
+// the pre-Boot SI trees v2.5.1 opened up.
+test("v2.5.3: Oracle thin/oci DSN credentials are masked, descriptor kept", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  const cases = [
+    ["jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL", "jdbc:oracle:thin:***/***@//dbhost:1521/ORCL"],   // EZConnect
+    ["jdbc:oracle:thin:scott/tiger@dbhost:1521:ORCL", "jdbc:oracle:thin:***/***@dbhost:1521:ORCL"],       // SID form
+    ["jdbc:oracle:thin:scott/tiger@(DESCRIPTION=(ADDRESS=(HOST=h)))", "jdbc:oracle:thin:***/***@(DESCRIPTION=(ADDRESS=(HOST=h)))"],
+    ["jdbc:oracle:oci:scott/tiger@PRODTNS", "jdbc:oracle:oci:***/***@PRODTNS"],
+    ["jdbc:oracle:oci8:scott/tiger@PRODTNS", "jdbc:oracle:oci8:***/***@PRODTNS"],
+    ["JDBC:ORACLE:THIN:SCOTT/TIGER@//h:1521/X", "JDBC:ORACLE:THIN:***/***@//h:1521/X"],                  // case-insensitive
+    ["jdbc:oracle:thin:scott/p/w@//h/X", "jdbc:oracle:thin:***/***@//h/X"],                              // `/` in password
+    ["jdbc:oracle:thin:scott/ti@ger@//h/X", "jdbc:oracle:thin:***/***@//h/X"],                           // `@` in password, EZConnect anchor
+    ["jdbc:oracle:thin:scott/ti@ger@(DESCRIPTION=x)", "jdbc:oracle:thin:***/***@(DESCRIPTION=x)"],       // `@` in password, TNS anchor
+  ];
+  for (const [input, expected] of cases) {
+    assert.strictEqual(M(input), expected, `mask: ${input}`);
+  }
+});
+
+test("v2.5.3: credential-free Oracle DSNs and parameter-form credentials are unchanged / handled by PARAM_RE", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "jdbc:oracle:thin:@//dbhost:1521/ORCL",
+    "jdbc:oracle:thin:@dbhost:1521:ORCL",
+    "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(HOST=h)))",
+    "jdbc:oracle:oci:@PRODTNS",
+  ]) {
+    assert.strictEqual(M(v), v, `must not touch: ${v}`);
+  }
+  assert.strictEqual(
+    M("jdbc:oracle:thin:@//h/X?user=scott&password=tiger"),
+    "jdbc:oracle:thin:@//h/X?user=scott&password=***",
+  );
+});
+
+test("v2.5.3: Oracle rule does not disturb the URL, DSN, or scheme-less branches", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  assert.strictEqual(M("postgres://app:pa/ss@db:5432/app"), "***REDACTED***");
+  assert.strictEqual(M("jdbc:postgresql://db/app?user=a&password=b"), "jdbc:postgresql://db/app?user=a&password=***");
+  assert.strictEqual(M("jdbc:mysql://u:p@h:3306/db"), "jdbc:mysql://***:***@h:3306/db");
+  assert.strictEqual(M("u:p@tcp(h:3306)/db"), "***:***@tcp(h:3306)/db");
+  assert.strictEqual(M("https://cdn.example.com/npm/@scope/pkg"), "https://cdn.example.com/npm/@scope/pkg");
+  assert.strictEqual(M("mailto:ops@example.com"), "mailto:ops@example.com");
+});
+
+test("v2.5.3: Oracle DSN under SPRING_DATASOURCE_URL is masked through redactSensitiveVars", () => {
+  const { redactSensitiveVars } = require("../lib/env-parser");
+  const out = redactSensitiveVars({ SPRING_DATASOURCE_URL: "jdbc:oracle:thin:scott/tiger@//ora.internal:1521/ORCL", PORT: "8080" });
+  assert.strictEqual(out.SPRING_DATASOURCE_URL, "jdbc:oracle:thin:***/***@//ora.internal:1521/ORCL");
+  assert.ok(!JSON.stringify(out).includes("tiger"), "password must not survive anywhere");
+  assert.strictEqual(out.PORT, "8080");
+});
+
+// ─── v2.5.3 review fixes: the Oracle branch must not be an escape hatch ──────
+//
+// Two gaps found by diffing the v2.5.3 working tree against v2.5.2 over a
+// 35-value corpus: returning straight from the Oracle branch skipped the
+// parameter rule, and every shape the Oracle anchor could not resolve fell
+// through to the `://` gate — which cannot see an Oracle DSN either — and
+// travelled to project-analysis.json verbatim.
+
+test("v2.5.3: the parameter rule still runs on a masked Oracle DSN", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  assert.strictEqual(
+    M("jdbc:oracle:thin:scott/tiger@//h:1521/X?password=tiger"),
+    "jdbc:oracle:thin:***/***@//h:1521/X?password=***",
+  );
+  // A non-credential property is untouched.
+  assert.strictEqual(
+    M("jdbc:oracle:thin:scott/tiger@//h:1521/X?oracle.jdbc.ReadTimeout=1000"),
+    "jdbc:oracle:thin:***/***@//h:1521/X?oracle.jdbc.ReadTimeout=1000",
+  );
+});
+
+test("v2.5.3: an Oracle DSN whose credential boundary cannot be located is dropped WHOLE", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "jdbc:oracle:thin:usr@tenancy/tiger@//h:1521/X",  // `@` in the user (Oracle Cloud / IAM shape)
+    "jdbc:oracle:thin:/tiger@//h/X",                  // no user segment
+    "jdbc:oracle:thin:scott/tiger@",                  // no descriptor after the `@`
+  ]) {
+    assert.strictEqual(M(v), "***REDACTED***", `must be dropped whole: ${v}`);
+  }
+});
+
+test("v2.5.3: the whole-value drop does not swallow credential-free Oracle values", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "jdbc:oracle:thin:@//h:1521/X",
+    "jdbc:oracle:thin:@h:1521:SID",
+    "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(HOST=h)))",
+    "jdbc:oracle:oci:@PRODTNS",
+    "jdbc:oracle:thin:@tnsalias?TNS_ADMIN=/opt/wallet",
+    "jdbc:oracle:thin:@ldap://oid:389/cn=x,cn=OracleContext",
+    "jdbc:oracle:thin:PRODTNS",                       // alias only: no `/`, no `@`
+  ]) {
+    assert.strictEqual(M(v), v, `must not touch: ${v}`);
+  }
+});
+
+test("v2.5.3: a dropped Oracle value is named in credentialWarnings, not silently swallowed", () => {
+  const { readStackEnvInfo } = require("../lib/env-parser");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ccore-env-oracle-"));
+  try {
+    fs.writeFileSync(path.join(dir, ".env.example"),
+      "ORACLE_IAM_URL=jdbc:oracle:thin:usr@tenancy/tiger@//ora:1521/PRD\n" +
+      "OK_URL=jdbc:oracle:thin:scott/tiger@//ora:1521/ORCL\n" +
+      "PORT=8080\n");
+    const info = readStackEnvInfo(dir);
+    assert.strictEqual(info.vars.ORACLE_IAM_URL, "***REDACTED***");
+    assert.strictEqual(info.vars.OK_URL, "jdbc:oracle:thin:***/***@//ora:1521/ORCL");
+    assert.deepStrictEqual(info.credentialWarnings, ["ORACLE_IAM_URL"]);
+    assert.ok(!JSON.stringify(info).includes("tiger"), "the password must not survive anywhere");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

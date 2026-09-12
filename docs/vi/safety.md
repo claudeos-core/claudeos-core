@@ -1,4 +1,4 @@
-# Safety: Cái gì được giữ khi re-init
+# Safety: Cái gì được giữ khi re-init, và cái gì không bao giờ rời khỏi `.env` của bạn
 
 Một lo ngại phổ biến: *"Tôi đã tùy biến `.claude/rules/`. Chạy lại `npx claudeos-core init` có mất chỉnh sửa không?"*
 
@@ -195,8 +195,29 @@ Nếu phát hiện trường hợp ClaudeOS-Core làm mất chỉnh sửa theo c
 
 ---
 
+## Cái không bao giờ tới được file được sinh ra: secret trong `.env`
+
+Mọi thứ ở trên nói về việc *file của bạn* sống sót qua ClaudeOS. Mục này nói về việc *secret của bạn* không rời khỏi chúng. Nó nằm ở đây vì "công cụ này có copy `.env` của tôi vào thứ mà LLM đọc không?" là một câu hỏi về safety, và đây chính là trang người ta mở ra để tìm câu trả lời.
+
+`init` đọc một file `.env*` (thứ tự tìm xem [stacks.md](stacks.md#trích-xuất-env-v220)) để CLAUDE.md được sinh ra nêu đúng port, host và database thật. Các biến đã parse được ghi vào `claudeos-core/generated/project-analysis.json`, và prompt của Pass 3 / Pass 4 yêu cầu model đọc file đó. Trước khi ghi, ba quy tắc chạy trên mọi giá trị, theo thứ tự này:
+
+1. **Che theo tên key.** Key khớp `PASSWORD`, `PASS`, `PW`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` và tương tự sẽ thành `***REDACTED***`. Key vẫn còn, nên "biến này tồn tại" vẫn là điều tài liệu có thể nói.
+2. **Che credential bên trong connection string.** Với key mà quy tắc đầu không bắt (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `SPRING_DATASOURCE_URL`, …), chỉ *phần credential* bị viết lại và phần còn lại được giữ, nên loại DB, host, port và path vẫn đọc được:
+   - URL userinfo: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - Tham số query / property: `?user=app&password=x` → `?user=app&password=***`
+   - DSN Go / MySQL: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (cả các dạng `@host:port:SID`, `@(DESCRIPTION=…)` và `jdbc:oracle:oci:`)
+3. **Bỏ nguyên giá trị (v2.5.2).** Khi quy tắc thứ hai không thể viết lại credential một cách an toàn — mật khẩu chứa `/`, `?`, `#` hoặc khoảng trắng thô, bắt đầu bằng chữ số, hoặc DSN Oracle có phần user chứa `@` (v2.5.3) — giá trị bị bỏ nguyên (`***REDACTED***`) thay vì che một phần. Mất host là thất bại rẻ hơn nhiều so với rò mật khẩu. `init` nêu tên các key bị ảnh hưởng trong tóm tắt Phase 1 (chỉ tên key). Percent-encode mật khẩu (`/` thành `%2F`) để giữ host hiện ra.
+
+Hai field vô hướng dẫn xuất từ `.env` — `envInfo.host` và `envInfo.apiTarget` — được render thẳng vào CLAUDE.md §3; nếu giá trị bị bỏ thì chúng là `null` và dòng đó được lược, nên sentinel không bao giờ xuất hiện trong tài liệu được sinh ra.
+
+**Cái không được bao phủ.** Template `${VAR}` chưa expand được để nguyên (nó không chứa secret sống). Comment và các file khác ngoài một `.env*` đã chọn thì không đọc. Việc phát hiện loại DB của scanner đọc text thô của `.env` trong bộ nhớ và không bao giờ ghi ra. Nếu dự án của bạn giữ credential ở dạng mà không quy tắc nào ở trên nhận ra, hãy mở issue kèm *dạng* đó (tuyệt đối không kèm giá trị) — mọi quy tắc liệt kê ở đây đều ra đời như vậy.
+
+**Cách kiểm tra.** Sau `init`, `grep -i` mật khẩu của bạn trong `claudeos-core/generated/project-analysis.json`. Nó không được có ở đó. Các quy tắc che được ghim bằng test trong `tests/env-parser.test.js`, gồm cả những dạng từng rò rỉ.
+
 ## Xem thêm
 
+- [stacks.md](stacks.md#trích-xuất-env-v220) — thứ tự tìm `.env` và các field được trích
 - [architecture.md](architecture.md): cơ chế staging trong context
 - [commands.md](commands.md): `--force` và các flag khác
 - [troubleshooting.md](troubleshooting.md): phục hồi từ các lỗi cụ thể

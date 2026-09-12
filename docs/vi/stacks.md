@@ -41,7 +41,7 @@ Scanner nằm ở `plan-installer/stack-detector.js` nếu muốn đọc logic p
 
 **Phát hiện khi:** `build.gradle` hoặc `pom.xml` chứa `spring-boot-starter`. Java nhận diện riêng với Kotlin qua khối plugin Gradle.
 
-**Phát hiện architecture pattern.** Scanner xếp dự án vào **một trong 5 pattern**:
+**Phát hiện architecture pattern.** Scanner xếp dự án vào **một trong 6 pattern**:
 
 | Pattern | Cấu trúc ví dụ |
 |---|---|
@@ -50,8 +50,9 @@ Scanner nằm ở `plan-installer/stack-detector.js` nếu muốn đọc logic p
 | **C. Layer-then-domain** | `controller/order/sub1/`, `service/order/sub2/` |
 | **D. Domain-then-layer** | `order/sub1/controller/`, `order/sub2/service/` |
 | **E. Hexagonal / DDD** | `domain/`, `application/`, `infrastructure/`, `presentation/` |
+| **F. Package-by-feature** (v2.5.3) | `order/OrderController.java`, `order/OrderService.java`, `order/OrderRepository.java` — không có thư mục layer |
 
-Pattern thử theo thứ tự (A → B/D → E → C). Scanner còn có hai tinh chỉnh: (1) **root-package detection** chọn prefix package dài nhất phủ ≥80% các tệp có layer (deterministic xuyên các lần chạy lại); (2) **deep-sweep fallback** cho Pattern B/D: khi glob tiêu chuẩn trả về 0 tệp cho một domain đã đăng ký, scanner re-glob `**/${domain}/**/*.java` và đi qua đường dẫn từng tệp để tìm thư mục layer gần nhất, bắt được các layout coupling cross-domain như `core/{otherDomain}/{layer}/{domain}/`.
+Các pattern được thử theo thứ tự A → B/D → E → C; **sau đó F chạy như một lượt bổ sung trên mọi cây**, đăng ký từng package feature chứa trực tiếp một `*Controller.java` mà chưa pattern nào trước đó nhận. Nhờ vậy cây hỗn hợp giữ được cả domain `order/controller/` lẫn domain `payment/PaymentController.java`. Không có thư mục layer để đọc, nên F đếm file theo hậu tố tên class (`*Service`, `*Repository`/`*Mapper`/`*Dao`, `*Dto`/`*Entity`/`*Vo`, còn lại tính là service). Controller nằm thẳng trong package gốc cạnh `*Application.java` là demo một-package của Initializr và giữ quy tắc của pattern C (lấy domain từ tên class). (1) **root-package detection** chọn prefix package dài nhất phủ ≥80% các tệp có layer (deterministic xuyên các lần chạy lại); (2) **deep-sweep fallback** cho Pattern B/D: khi glob tiêu chuẩn trả về 0 tệp cho một domain đã đăng ký, scanner re-glob `**/${domain}/**/*.java` và đi qua đường dẫn từng tệp để tìm thư mục layer gần nhất, bắt được các layout coupling cross-domain như `core/{otherDomain}/{layer}/{domain}/`.
 
 **Sự kiện trích xuất:**
 - Stack, framework version, ORM (JPA / MyBatis / jOOQ)
@@ -91,7 +92,7 @@ Scanner ở `plan-installer/scanners/scan-java.js`.
 
 **Gốc source.** `scan-java` viết lại các pattern `src/main/java` / `src/main/resources` theo gốc tìm được. Nếu tồn tại bất kỳ `[<module>/]src/main/java` nào thì chỉ dùng chúng. Nếu không, theo thứ tự: các mục `kind="src"` trong `.classpath` (loại trừ thư mục test), `<javac srcdir>` trong `build.xml` (có phân giải `<property>`), rồi `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src` nếu chứa `*.java`. Sau đó vẫn là năm domain pattern như cũ, nên `src/com/acme/erp/controller/*.java` là Pattern C y hệt như khi nằm dưới `src/main/java`.
 
-**Giới hạn đã biết.** File Gradle không được bóc comment (một toạ độ bị `//` vẫn được tính — với Boot xưa nay vẫn vậy). Không phân giải kế thừa từ pom cha nằm ngoài repository. Lớp controller `web/` của eGovFrame chưa được Pattern A/B nhận là tên lớp.
+**Giới hạn đã biết.** File Gradle không được bóc comment (một toạ độ bị `//` vẫn được tính — với Boot xưa nay vẫn vậy). Không phân giải kế thừa từ pom cha nằm ngoài repository. Lớp controller `web/` của eGovFrame chưa được Pattern A/B nhận là tên lớp. Thư mục con `controller/impl/` được pattern A đăng ký thành một domain tên `impl`. Controller có tên class không kết thúc bằng `Controller` (`OrderResource`, `OrderEndpoint`) không phải tín hiệu của pattern F — từ v2.5.3, `init` sẽ nói rõ điều đó ở phase 2 khi một backend đã được phát hiện nhưng không cho ra domain nào.
 
 Các helper nằm trong `plan-installer/jvm-detect.js` (hàm xử lý văn bản thuần, có unit test riêng).
 
@@ -299,7 +300,7 @@ Scanner đọc tệp `.env*` lấy cấu hình runtime, để tài liệu sinh r
 7. `.env.local`
 8. `.env.development`
 
-**Redact biến nhạy cảm:** key khớp `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng. Từ v2.5.2, giá trị mà quy tắc đó không thể viết lại phần userinfo sẽ bị bỏ NGUYÊN (`***REDACTED***`) thay vì đi qua: mật khẩu chứa `/`, `?`, `#` hoặc dấu cách thô, hoặc chỉ đơn giản bắt đầu bằng chữ số khiến authority bị cắt trông như `host:port`. Host mất theo, và `init` nêu tên các key bị ảnh hưởng trong tóm tắt Phase 1 (`envInfo.credentialWarnings`, chỉ tên key, cho cả `.env` gốc lẫn `.env` riêng của SPA trong thư mục con). `envInfo.host` / `envInfo.apiTarget` trở thành `null` thay vì mang sentinel vào §3 của CLAUDE.md. Hãy percent-encode mật khẩu (`/` thành `%2F`) để giữ lại host.
+**Redact biến nhạy cảm:** key khớp `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT`, v.v. tự động redact thành `***REDACTED***` trước khi sao vào `project-analysis.json`. Mọi giá trị dạng URL khác (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`) được che phần thông tin đăng nhập thành `***:***`, còn scheme, host, port và path giữ nguyên (`postgres://***:***@db.internal:5432/app`): vẫn nhận ra được loại DB, còn mật khẩu không bao giờ vào tệp. Phần phát hiện loại DB của chính scanner đọc trực tiếp văn bản `.env` gốc nên không bị ảnh hưởng. Từ v2.5.2, giá trị mà quy tắc đó không thể viết lại phần userinfo sẽ bị bỏ NGUYÊN (`***REDACTED***`) thay vì đi qua: mật khẩu chứa `/`, `?`, `#` hoặc dấu cách thô, hoặc chỉ đơn giản bắt đầu bằng chữ số khiến authority bị cắt trông như `host:port`. Host mất theo, và `init` nêu tên các key bị ảnh hưởng trong tóm tắt Phase 1 (`envInfo.credentialWarnings`, chỉ tên key, cho cả `.env` gốc lẫn `.env` riêng của SPA trong thư mục con). `envInfo.host` / `envInfo.apiTarget` trở thành `null` thay vì mang sentinel vào §3 của CLAUDE.md. Hãy percent-encode mật khẩu (`/` thành `%2F`) để giữ lại host. DSN Oracle JDBC mang thông tin đăng nhập trước connect descriptor thay vì dưới dạng userinfo của URL (`jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL`, `…@dbhost:1521:ORCL`, `…@(DESCRIPTION=…)`, `jdbc:oracle:oci:user/pw@ALIAS`) được che từ v2.5.3 thành `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` — host, port và service name vẫn hiện.
 
 **Thứ tự ưu tiên xác định port:**
 1. `server.port` của Spring Boot `application.yml`

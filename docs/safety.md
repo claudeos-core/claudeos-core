@@ -1,4 +1,4 @@
-# Safety: What Gets Preserved on Re-init
+# Safety: What Gets Preserved on Re-init, and What Never Leaves Your `.env`
 
 A common worry: *"I customized my `.claude/rules/`. If I run `npx claudeos-core init` again, will I lose my edits?"*
 
@@ -193,8 +193,29 @@ If you find a case where ClaudeOS-Core lost your edits in a way that contradicts
 
 ---
 
+## What never reaches the generated files: `.env` secrets
+
+Everything above is about *your files* surviving ClaudeOS. This section is about *your secrets* not leaving them. It lives here because "does this tool copy my `.env` into something an LLM reads?" is a safety question, and people look for it on this page.
+
+`init` reads one `.env*` file (see [stacks.md](stacks.md#env-extraction-v220) for the search order) so the generated CLAUDE.md can state the real port, host and database. The parsed variables are written into `claudeos-core/generated/project-analysis.json`, and the Pass 3 / Pass 4 prompts instruct the model to read that file. Three rules run on every value before it is written, in this order:
+
+1. **Key-name redaction.** A key matching `PASSWORD`, `PASS`, `PW`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` and similar becomes `***REDACTED***`. The key survives so "this variable exists" is still a fact the docs can state.
+2. **Credential masking inside connection strings.** For a key the first rule does not catch (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `SPRING_DATASOURCE_URL`, …) the *credential part* of the value is rewritten and the rest is kept, so the DB type, host, port and path remain readable:
+   - URL userinfo: `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - Query / property parameters: `?user=app&password=x` → `?user=app&password=***`
+   - Go / MySQL DSN: `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3): `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (also the `@host:port:SID`, `@(DESCRIPTION=…)` and `jdbc:oracle:oci:` forms)
+3. **Whole-value drop (v2.5.2).** When the second rule cannot rewrite the credential safely — a password containing a raw `/`, `?`, `#` or space, one that begins with digits, or an Oracle DSN whose user segment itself contains `@` (v2.5.3) — the value is dropped whole (`***REDACTED***`) rather than partially masked. A lost host is a far cheaper failure than a leaked password. `init` names the affected keys in its Phase 1 summary (key names only). Percent-encode the password (`/` as `%2F`) to keep the host visible.
+
+Two scalar fields derived from `.env` — `envInfo.host` and `envInfo.apiTarget` — are rendered straight into CLAUDE.md §3; when their value was dropped they are `null` and the row is omitted, so the sentinel never appears in a generated document.
+
+**What is not covered.** An unexpanded `${VAR}` template is left alone (it holds no live secret). Comments and files other than the one selected `.env*` are not read. The scanner's DB-type detection reads the raw `.env` text in memory and never writes it. If your project keeps a credential in a shape none of the rules above recognize, please open an issue with the *shape* (never the value) — every rule listed here came from one.
+
+**How to check.** After `init`, `grep -i` your password in `claudeos-core/generated/project-analysis.json`. It must not be there. The masking rules are pinned by tests in `tests/env-parser.test.js`, including the exact shapes that once leaked.
+
 ## See also
 
 - [architecture.md](architecture.md) — the staging mechanism in context
+- [stacks.md](stacks.md#env-extraction-v220) — `.env` search order and extracted fields
 - [commands.md](commands.md) — `--force` and other flags
 - [troubleshooting.md](troubleshooting.md) — recovery from specific errors

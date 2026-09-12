@@ -41,7 +41,7 @@
 
 **감지 조건:** `build.gradle` 또는 `pom.xml`에 `spring-boot-starter`가 포함되어 있을 때. Gradle plugin block을 보고 Java를 Kotlin과 분리해서 식별합니다.
 
-**아키텍처 패턴 감지.** scanner는 프로젝트를 **5개 패턴 중 하나로** 분류합니다:
+**아키텍처 패턴 감지.** scanner는 프로젝트를 **6개 패턴 중 하나로** 분류합니다:
 
 | Pattern | 예시 구조 |
 |---|---|
@@ -50,8 +50,9 @@
 | **C. Layer-then-domain** | `controller/order/sub1/`, `service/order/sub2/` |
 | **D. Domain-then-layer** | `order/sub1/controller/`, `order/sub2/service/` |
 | **E. Hexagonal / DDD** | `domain/`, `application/`, `infrastructure/`, `presentation/` |
+| **F. Package-by-feature** (v2.5.3) | `order/OrderController.java`, `order/OrderService.java`, `order/OrderRepository.java` — 레이어 디렉토리 없음 |
 
-패턴은 A → B/D → E → C 순서로 시도합니다. scanner에는 두 가지 보정이 들어 있습니다. (1) **root-package detection** — layer가 있는 파일의 80% 이상을 포함하는 가장 긴 package prefix를 선택합니다 (재실행해도 결과가 같습니다). (2) **deep-sweep fallback** (Pattern B/D 전용) — 표준 glob이 등록된 도메인에서 파일을 한 개도 찾지 못하면 `**/${domain}/**/*.java`로 다시 glob을 돌리고, 각 파일 경로를 따라 올라가며 가장 가까운 layer 디렉토리를 찾습니다. `core/{otherDomain}/{layer}/{domain}/` 같은 cross-domain coupling layout도 이렇게 잡아냅니다.
+패턴은 A → B/D → E → C 순서로 시도하고, **F는 모든 트리에서 보조 패스로 한 번 더 돕니다.** `*Controller.java`를 직접 담고 있으면서 앞선 패턴이 가져가지 않은 feature 패키지를 등록하므로, `order/controller/` 도메인과 `payment/PaymentController.java` 도메인이 섞인 트리에서 양쪽 다 살아남습니다. F는 읽을 레이어 디렉토리가 없으므로 클래스 이름 접미사로 파일을 셉니다 (`*Service`, `*Repository`/`*Mapper`/`*Dao`, `*Dto`/`*Entity`/`*Vo`, 나머지는 service). `*Application.java` 옆 베이스 패키지에 직접 놓인 컨트롤러는 Initializr 단일 패키지 데모 형태이므로 Pattern C 규칙(클래스 이름에서 도메인 추출)을 유지합니다. scanner에는 두 가지 보정이 들어 있습니다. (1) **root-package detection** — layer가 있는 파일의 80% 이상을 포함하는 가장 긴 package prefix를 선택합니다 (재실행해도 결과가 같습니다). (2) **deep-sweep fallback** (Pattern B/D 전용) — 표준 glob이 등록된 도메인에서 파일을 한 개도 찾지 못하면 `**/${domain}/**/*.java`로 다시 glob을 돌리고, 각 파일 경로를 따라 올라가며 가장 가까운 layer 디렉토리를 찾습니다. `core/{otherDomain}/{layer}/{domain}/` 같은 cross-domain coupling layout도 이렇게 잡아냅니다.
 
 **추출되는 사실:**
 - 스택, 프레임워크 버전, ORM (JPA / MyBatis / jOOQ)
@@ -91,7 +92,7 @@ scanner 코드는 `plan-installer/scanners/scan-java.js`에 있습니다.
 
 **소스 루트.** `scan-java` 는 `src/main/java` / `src/main/resources` 패턴을 발견된 루트에 맞춰 다시 씁니다. `[<module>/]src/main/java` 가 하나라도 있으면 그것만 사용합니다. 없으면 순서대로: `.classpath` 의 `kind="src"` 항목 (테스트 폴더 제외), `build.xml` 의 `<javac srcdir>` (`<property>` 해석 포함), 그다음 `*.java` 를 담고 있는 `src/java`, `src`, `JavaSource`, `java`, `WebContent/WEB-INF/src`. 이후 동일한 5개 도메인 패턴이 적용되므로 `src/com/acme/erp/controller/*.java` 는 `src/main/java` 아래에 있을 때와 똑같이 Pattern C 입니다.
 
-**알려진 한계.** Gradle 파일은 주석을 제거하지 않습니다 (`//` 로 주석 처리된 좌표도 계산됨 — Boot 에서도 늘 그랬습니다). 리포지토리 밖 부모 pom 으로부터의 상속은 해석하지 않습니다. eGovFrame 의 `web/` 컨트롤러 레이어는 아직 Pattern A/B 의 레이어 이름으로 인식되지 않습니다.
+**알려진 한계.** Gradle 파일은 주석을 제거하지 않습니다 (`//` 로 주석 처리된 좌표도 계산됨 — Boot 에서도 늘 그랬습니다). 리포지토리 밖 부모 pom 으로부터의 상속은 해석하지 않습니다. eGovFrame 의 `web/` 컨트롤러 레이어는 아직 Pattern A/B 의 레이어 이름으로 인식되지 않습니다. `controller/impl/` 하위 디렉토리는 Pattern A 가 `impl` 이라는 도메인으로 등록합니다. 클래스 이름이 `Controller` 로 끝나지 않는 컨트롤러(`OrderResource`, `OrderEndpoint`)는 Pattern F 의 신호가 아닙니다 — v2.5.3 부터는 감지된 백엔드에서 도메인이 0개면 `init` 이 Phase 2 에서 그렇다고 알려줍니다.
 
 헬퍼는 `plan-installer/jvm-detect.js` 에 있습니다 (순수 텍스트 함수, 단위 테스트로 격리 검증).
 
@@ -299,7 +300,7 @@ scanner는 `.env*` 파일을 읽어 런타임 설정을 가져옵니다. 생성�
 7. `.env.local`
 8. `.env.development`
 
-**민감 변수 마스킹:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다. v2.5.2부터, 그 규칙으로 userinfo를 다시 쓸 수 없는 값은 그대로 통과시키지 않고 통째로 버립니다 (`***REDACTED***`). 비밀번호에 원시 `/`, `?`, `#`, 공백이 들어 있거나, 숫자로 시작해서 잘린 authority가 `host:port`로 읽히는 경우입니다. host도 함께 사라지며, `init`이 Phase 1 요약에서 해당 키 이름을 알려줍니다 (`envInfo.credentialWarnings`, 키 이름만, 루트 `.env`와 하위 SPA의 `.env` 양쪽). `envInfo.host` / `envInfo.apiTarget`은 sentinel을 CLAUDE.md 3절로 흘리지 않고 `null`이 됩니다. host를 보존하려면 비밀번호를 percent-encoding 하세요 (`/`는 `%2F`).
+**민감 변수 마스킹:** `PASSWORD`, `PASS`, `PW`, `PASSPHRASE`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` 등에 매치되는 키는 `project-analysis.json`에 복사되기 전에 자동으로 `***REDACTED***`로 가립니다. 그 밖의 URL 형태 값 (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `jdbc:postgresql://…`)은 자격 증명만 `***:***`로 가리고 scheme, host, port, path는 그대로 둡니다 (`postgres://***:***@db.internal:5432/app`). DB 종류는 여전히 알아볼 수 있고 비밀번호는 파일에 도달하지 않습니다. 자격 증명을 URL userinfo 가 아니라 connect descriptor 앞에 싣는 Oracle JDBC DSN (`jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL`, `…@dbhost:1521:ORCL`, `…@(DESCRIPTION=…)`, `jdbc:oracle:oci:user/pw@ALIAS`)은 v2.5.3부터 `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL`로 가립니다 — host, port, service name은 그대로 보입니다. scanner 자체의 DB 종류 감지는 `.env` 원문을 직접 읽으므로 영향을 받지 않습니다. v2.5.2부터, 그 규칙으로 userinfo를 다시 쓸 수 없는 값은 그대로 통과시키지 않고 통째로 버립니다 (`***REDACTED***`). 비밀번호에 원시 `/`, `?`, `#`, 공백이 들어 있거나, 숫자로 시작해서 잘린 authority가 `host:port`로 읽히는 경우입니다. host도 함께 사라지며, `init`이 Phase 1 요약에서 해당 키 이름을 알려줍니다 (`envInfo.credentialWarnings`, 키 이름만, 루트 `.env`와 하위 SPA의 `.env` 양쪽). `envInfo.host` / `envInfo.apiTarget`은 sentinel을 CLAUDE.md 3절로 흘리지 않고 `null`이 됩니다. host를 보존하려면 비밀번호를 percent-encoding 하세요 (`/`는 `%2F`).
 
 **Port 결정 우선순위:**
 1. Spring Boot `application.yml`의 `server.port`

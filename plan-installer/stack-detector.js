@@ -10,6 +10,7 @@ const path = require("path");
 const { glob } = require("glob");
 const { readFileSafe, readJsonSafe, existsSafe } = require("../lib/safe-fs");
 const { readStackEnvInfo, extractPort } = require("../lib/env-parser");
+const { hasBackendStack } = require("../lib/stack-shape");
 const JVM = require("./jvm-detect");
 
 // ─── Lookup tables ──────────────────────────────────────────────
@@ -1591,7 +1592,7 @@ async function detectStack(ROOT) {
     const backendOnlyVars = Object.fromEntries(Object.entries(vars).filter(([k]) => !feKeys.includes(k)));
     const backendPort = extractPort(backendOnlyVars);
     const frontendPort = feKeys.length ? extractPort(Object.fromEntries(feKeys.map(k => [k, vars[k]]))) : null;
-    const hasBackend = (!!stack.framework && stack.framework !== "vite") || ["java", "kotlin", "python"].includes(stack.language);
+    const hasBackend = hasBackendStack(stack); // v2.5.3 — shared with plan-installer's Phase 2 warning
     if (!stack.port) {
       const p = hasBackend ? backendPort : envInfo.port;
       if (p) stack.port = p;

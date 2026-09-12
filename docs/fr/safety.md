@@ -1,4 +1,4 @@
-# Sécurité : Ce qui est préservé lors d'un re-init
+# Sécurité : Ce qui est préservé lors d'un re-init, et ce qui ne quitte jamais ton `.env`
 
 Une inquiétude classique : *« J'ai customisé mon `.claude/rules/`. Si je relance `npx claudeos-core init`, vais-je perdre mes éditions ? »*
 
@@ -195,8 +195,29 @@ En cas de perte d'éditions par ClaudeOS-Core qui contredit ce document, c'est u
 
 ---
 
+## Ce qui n'atteint jamais les fichiers générés : les secrets du `.env`
+
+Tout ce qui précède concerne la survie de *tes fichiers* face à ClaudeOS. Cette section concerne le fait que *tes secrets* n'en sortent pas. Elle est ici parce que « est-ce que cet outil copie mon `.env` dans quelque chose que lit un LLM ? » est une question de sécurité, et c'est cette page qu'on ouvre pour ça.
+
+`init` lit un fichier `.env*` (ordre de recherche dans [stacks.md](stacks.md#extraction-env-v220)) afin que le CLAUDE.md généré indique le vrai port, le vrai hôte et la vraie base. Les variables analysées sont écrites dans `claudeos-core/generated/project-analysis.json`, et les prompts de Pass 3 / Pass 4 demandent au modèle de lire ce fichier. Avant écriture, trois règles s'appliquent à chaque valeur, dans cet ordre :
+
+1. **Rédaction par nom de clé.** Une clé correspondant à `PASSWORD`, `PASS`, `PW`, `SECRET`, `TOKEN`, `API_KEY`, `CREDENTIAL`, `PRIVATE_KEY`, `JWT_SECRET`, `SSH_KEY`, `MASTER_KEY`, `SERVICE_ACCOUNT` et similaires devient `***REDACTED***`. La clé subsiste, si bien que « cette variable existe » reste un fait que la doc peut énoncer.
+2. **Masquage des identifiants dans les chaînes de connexion.** Pour une clé que la première règle n'attrape pas (`DATABASE_URL`, `REDIS_URL`, `MONGO_URI`, `SPRING_DATASOURCE_URL`, …), seule la *partie identifiants* est réécrite et le reste est conservé, de sorte que le type de base, l'hôte, le port et le chemin restent lisibles :
+   - Userinfo d'URL : `postgres://app:s3cret@db:5432/app` → `postgres://***:***@db:5432/app`
+   - Paramètres de query/propriété : `?user=app&password=x` → `?user=app&password=***`
+   - DSN Go/MySQL : `user:pw@tcp(host:3306)/db` → `***:***@tcp(host:3306)/db`
+   - Oracle JDBC (v2.5.3) : `jdbc:oracle:thin:scott/tiger@//dbhost:1521/ORCL` → `jdbc:oracle:thin:***/***@//dbhost:1521/ORCL` (également les formes `@host:port:SID`, `@(DESCRIPTION=…)` et `jdbc:oracle:oci:`)
+3. **Abandon de la valeur entière (v2.5.2).** Quand la deuxième règle ne peut pas réécrire l'identifiant sans risque — un mot de passe contenant un `/`, `?`, `#` ou espace brut, commençant par des chiffres, ou un DSN Oracle dont le segment utilisateur contient lui-même un `@` (v2.5.3) — la valeur est abandonnée en entier (`***REDACTED***`) plutôt que masquée partiellement. Perdre l'hôte est un échec bien moins coûteux qu'un mot de passe fuité. `init` nomme les clés concernées dans son résumé de phase 1 (noms de clés uniquement). Encode le mot de passe en percent-encoding (`/` en `%2F`) pour garder l'hôte visible.
+
+Deux champs scalaires dérivés du `.env` — `envInfo.host` et `envInfo.apiTarget` — sont rendus directement dans CLAUDE.md §3 ; si leur valeur a été abandonnée ils valent `null` et la ligne est omise, si bien que la sentinelle n'apparaît jamais dans un document généré.
+
+**Ce qui n'est pas couvert.** Un template `${VAR}` non développé est laissé tel quel (il ne contient aucun secret vivant). Les commentaires et les fichiers autres que l'unique `.env*` retenu ne sont pas lus. La détection du type de base par le scanner lit le texte brut du `.env` en mémoire et ne l'écrit jamais. Si ton projet garde un identifiant sous une forme qu'aucune règle ci-dessus ne reconnaît, ouvre une issue avec la *forme* (jamais la valeur) — chaque règle listée ici vient de là.
+
+**Comment vérifier.** Après `init`, fais un `grep -i` de ton mot de passe dans `claudeos-core/generated/project-analysis.json`. Il ne doit pas y être. Les règles de masquage sont figées par des tests dans `tests/env-parser.test.js`, y compris les formes exactes qui ont fui autrefois.
+
 ## Voir aussi
 
+- [stacks.md](stacks.md#extraction-env-v220) — ordre de recherche `.env` et champs extraits
 - [architecture.md](architecture.md) : le mécanisme de staging dans son contexte
 - [commands.md](commands.md) : `--force` et autres flags
 - [troubleshooting.md](troubleshooting.md) : récupération d'erreurs spécifiques

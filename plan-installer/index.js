@@ -12,6 +12,7 @@
 
 const path = require("path");
 const { ensureDir, writeFileSafe } = require("../lib/safe-fs");
+const { hasBackendStack, hasFrontendStack } = require("../lib/stack-shape");
 const { detectStack } = require("./stack-detector");
 const { scanStructure } = require("./structure-scanner");
 const { splitDomainGroups, determineActiveDomains, selectTemplates } = require("./domain-grouper");
@@ -78,9 +79,44 @@ async function main() {
   console.log(`    Total:       ${domains.length} domains`);
   if (rootPackage) console.log(`    Package:     ${rootPackage}`);
   if (frontend.exists) console.log(`    Components:  ${frontend.components} components, ${frontend.pages} pages, ${frontend.hooks} hooks`);
-  if (backendDomains.length === 0 && frontendDomains.length === 0) {
+  // v2.5.3 — Warn per side, keyed on what Phase 1 actually detected.
+  //
+  // The former gate was `backend === 0 && frontend === 0`. That was right
+  // for what it protected — a Next.js-only project legitimately has zero
+  // backend domains, a Spring-only project zero frontend domains, and a
+  // plain `||` would warn on every one of them (verified: it fired on all
+  // eight fixtures in the v2.5.3 audit, five of them healthy). But it was
+  // also silent in the case that matters: a Spring Boot + Next.js repo
+  // whose Java scanner returned nothing produced a frontend-only document
+  // set with no warning at all, because the frontend count kept the total
+  // above zero. The right key is not the other side's count but whether
+  // Phase 1 said this side exists — `hasBackendStack` (the same predicate
+  // stack-detector uses to split ports) and `stack.frontend`.
+  //
+  // A zero TOTAL is reported first and unconditionally. Keying the whole
+  // block on the per-side predicates dropped the original message for a
+  // project Phase 1 recognized NEITHER side of — a bare repository, a plain
+  // Node script, a TypeScript library — which then produced zero domains,
+  // skipped Pass 1, and said nothing at all. That is the case the warning
+  // existed for. It also keeps the per-side messages honest: "Pass 1 will
+  // analyze the frontend only" is false when there is no frontend either.
+  const missingBackend = hasBackendStack(stack) && backendDomains.length === 0;
+  const missingFrontend = hasFrontendStack(stack) && frontendDomains.length === 0;
+  const backendLabel = `${stack.language || "unknown"}${stack.framework ? " / " + stack.framework : ""}`;
+  if (domains.length === 0) {
     console.warn("\n  ⚠️  No domains detected.");
-    console.warn("  Pass 1 will be skipped. Generated output may be minimal.\n");
+    console.warn("  Pass 1 will be skipped. Generated output may be minimal.");
+    if (missingBackend) console.warn(`  Phase 1 detected a backend (${backendLabel}) whose layout the scanner did not recognize.`);
+    if (missingFrontend) console.warn(`  Phase 1 detected a frontend (${stack.frontend}) whose layout the scanner did not recognize.`);
+    if (missingBackend || missingFrontend) console.warn("  Please open an issue with the directory shape.");
+    console.warn("");
+  } else if (missingBackend) {
+    console.warn(`\n  ⚠️  Backend detected (${backendLabel}) but no backend domains were found.`);
+    console.warn("  Pass 1 will analyze the frontend only; backend Standards/Rules/Skills will be missing.");
+    console.warn("  If the backend has a layout the scanner does not recognize, please open an issue with its directory shape.\n");
+  } else if (missingFrontend) {
+    console.warn(`\n  ⚠️  Frontend detected (${stack.frontend}) but no frontend domains were found.`);
+    console.warn("  Pass 1 will analyze the backend only; frontend Standards/Rules/Skills will be missing.\n");
   }
   console.log();
 

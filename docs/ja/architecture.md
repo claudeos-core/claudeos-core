@@ -153,7 +153,7 @@ Claude が完了した後、Node.js コードが 5 つの validator を通して
 | `content-validator` | 10 のコンテンツレベル検査: 必須ファイルの存在、standards/skills で引用したパスが実在すること、MANIFEST の整合性。 |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 の JSON 出力が well-formed で、期待されるキーを含むか。 |
 | `plan-validator` | (レガシー) 保存された plan ファイルとディスクを比較。Master plan 生成は v2.1.0 で削除したため、現在はほぼ no-op で、後方互換のため残しています。 |
-| `sync-checker` | 追跡ディレクトリ配下のディスクファイルが `sync-map.json` の登録と一致するか (orphaned vs. unregistered)。 |
+| `sync-checker` | 追跡ディレクトリ配下のディスクファイルが `sync-map.json` の登録と一致するか (orphaned vs. unregistered)。v2.1.0 以降は休止: `sync-map.json` が空で書き出されるため、何も検査せずに pass します — v2.1.0 より前の `claudeos-core/plan/` が残っている場合のみ例外です。 |
 
 これらには **3 段階の severity** があります:
 

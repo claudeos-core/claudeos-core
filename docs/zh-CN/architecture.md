@@ -153,7 +153,7 @@ Claude 跑完后,Node.js 代码用 5 个 validator 验证输出。**全部不调
 | `content-validator` | 10 项内容级检查:必需文件存在、standards/skills 中引用的路径真实存在、MANIFEST 一致性。 |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 的 JSON 输出是 well-formed 且包含期望的键。 |
 | `plan-validator` | (Legacy)对比保存的 plan 与 disk。v2.1.0 移除了 master plan 生成,现在大多数情况下是 no-op,为向后兼容保留。 |
-| `sync-checker` | 受跟踪目录下 disk 文件与 `sync-map.json` 注册项的一致性(orphaned vs. unregistered)。 |
+| `sync-checker` | 受跟踪目录下 disk 文件与 `sync-map.json` 注册项的一致性(orphaned vs. unregistered)。自 v2.1.0 起休眠:`sync-map.json` 以空写出,因此不做检查即通过 —— 除非项目里还留着 v2.1.0 之前的 `claudeos-core/plan/`。 |
 
 它们有 **3 档严重度**:
 

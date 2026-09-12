@@ -22,7 +22,7 @@ ClaudeOS-Core を特徴づけるポイント:
 
 - **実際のソースコードを読む** (deterministic な Node.js scanner で、LLM にスタックを推測させない)。
 - **4-pass の Claude パイプライン** で事実注入型プロンプトを構成 (パスや慣習を一度抽出して再利用)。
-- **5 つの post-generation validator**: `claude-md-validator` で構造、`content-validator` でパス記述とコンテンツ、`pass-json-validator` で中間 JSON、`plan-validator` で legacy plan ファイル、`sync-checker` で disk と sync-map の整合性をチェック。
+- **5 つの post-generation validator**: `claude-md-validator` で構造、`content-validator` でパス記述とコンテンツ、`pass-json-validator` で中間 JSON、`plan-validator` で legacy plan ファイル、`sync-checker` で disk と sync-map の整合性をチェック (v2.1.0 以降は休止)。
 - **10 言語の出力** に対応し、language-invariant な検証で品質を担保する。
 - **プロジェクト固有の出力**: CLAUDE.md、`.claude/rules/`、standards、skills、guides、memory layer。すべてコードから導出し、プリセットバンドルから持ってこない。
 

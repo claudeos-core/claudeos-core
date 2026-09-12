@@ -121,6 +121,8 @@ Conservé dans la suite de validators pour les utilisateurs qui maintiennent à 
 
 ### 5. `sync-checker` — Cohérence Disque ↔ Master Plan
 
+> **Dormant depuis la v2.1.0.** L'agrégation du master plan a été retirée : `manifest-generator` écrit `sync-map.json` avec une liste de correspondances vide et `sync-checker` sort par anticipation avec `pass`, avant même d'exécuter l'une des deux étapes ci-dessous. Ce qui est décrit ici est le mécanisme tel qu'implémenté, mais il ne s'exécute pas, sauf si le projet conserve un répertoire `claudeos-core/plan/` antérieur à la v2.1.0, que `init` laisse volontairement intact. Un `pass` de ce vérificateur signifie « rien à valider », pas « vérifié ».
+
 Vérifie que les fichiers enregistrés dans `sync-map.json` (écrit par `manifest-generator`) matchent les fichiers réellement sur disque. Check bidirectionnel sur les 7 répertoires trackés. Vit dans `sync-checker/`.
 
 **Check en deux étapes :**

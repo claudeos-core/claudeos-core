@@ -121,6 +121,8 @@ Sigue en la suite de validators para usuarios que mantienen archivos de plan a m
 
 ### 5. `sync-checker` — Consistencia disco ↔ Master Plan
 
+> **Inactivo desde v2.1.0.** Se eliminó la agregación del master plan, así que `manifest-generator` escribe `sync-map.json` con una lista de mapeos vacía y `sync-checker` sale antes con `pass`, sin llegar a ejecutar ninguno de los dos pasos siguientes. Lo descrito aquí es el mecanismo tal como está implementado, pero no se ejecuta salvo que el proyecto conserve un directorio `claudeos-core/plan/` anterior a v2.1.0, que `init` deja intacto a propósito. Un `pass` de este verificador significa «no hay nada que validar», no «verificado».
+
 Verifica que los archivos registrados en `sync-map.json` (lo escribe `manifest-generator`) coincidan con los archivos realmente en disco. Check bidireccional sobre los 7 directorios rastreados. Vive en `sync-checker/`.
 
 **Check de dos pasos:**

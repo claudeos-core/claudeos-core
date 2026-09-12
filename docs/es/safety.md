@@ -213,6 +213,8 @@ Dos campos escalares derivados de `.env` — `envInfo.host` y `envInfo.apiTarget
 
 **Lo que no se cubre.** Una plantilla `${VAR}` sin expandir se deja intacta (no contiene un secreto vivo). No se leen comentarios ni archivos distintos del único `.env*` seleccionado. La detección de tipo de BD del scanner lee el texto crudo de `.env` en memoria y nunca lo escribe. Si tu proyecto guarda una credencial con una forma que ninguna regla reconoce, abre un issue con la *forma* (nunca el valor) — cada regla listada aquí nació así.
 
+**Estas reglas solo cubren los archivos `.env*`.** Una credencial escrita en un archivo de configuración del framework —`application.yml`, `application.properties`, `appsettings.json`, un perfil de Spring, un `settings.py` de Django— **no** se enmascara, porque el scanner lee esos archivos en busca de datos como el puerto del servidor y nunca copia sus valores a `project-analysis.json`. Pero los Pass 1 a 3 leen tu árbol de fuentes directamente, así que una contraseña en texto plano commiteada en un archivo de configuración es visible para el modelo y puede acabar citada en un documento generado. Mantén los secretos fuera de la configuración que commiteas. Ten en cuenta que el paso **Cómo comprobarlo** de más abajo no los encontrará: nunca llegan a `project-analysis.json`. Haz grep de los *documentos* generados: `CLAUDE.md`, `claudeos-core/**/*.md` y `.claude/rules/**/*.md`.
+
 **Cómo comprobarlo.** Tras `init`, haz `grep -i` de tu contraseña en `claudeos-core/generated/project-analysis.json`. No debe estar. Las reglas de enmascarado están fijadas por tests en `tests/env-parser.test.js`, incluidas las formas exactas que una vez se filtraron.
 
 ## Ver también

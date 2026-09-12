@@ -213,6 +213,8 @@ CI Linux / macOS / Windows × Node 18 / 20 पर चलता है.
 
 **जो cover नहीं है.** Expand न हुआ `${VAR}` template वैसे ही छोड़ा जाता है (उसमें live secret नहीं है)। Comments और चुनी गई एक `.env*` के अलावा कोई file नहीं पढ़ी जाती। Scanner की DB-type detection `.env` का raw text memory में पढ़ती है और कहीं लिखती नहीं। अगर आपका project credential ऐसे रूप में रखता है जिसे ऊपर का कोई नियम नहीं पहचानता, तो कृपया उस *रूप* के साथ issue खोलें (value के साथ कभी नहीं) — यहाँ लिखा हर नियम इसी तरह बना है।
 
+**ये नियम सिर्फ़ `.env*` files पर लागू होते हैं।** Framework config file में लिखा credential — `application.yml`, `application.properties`, `appsettings.json`, कोई Spring profile, Django का `settings.py` — mask **नहीं** होता, क्योंकि scanner उन files से सिर्फ़ server port जैसे facts पढ़ता है और उनकी values कभी `project-analysis.json` में copy नहीं करता। लेकिन Pass 1 से Pass 3 आपका source tree सीधे पढ़ते हैं, इसलिए config file में commit किया गया plaintext password model को दिखता है और generated document में quote हो सकता है। Secrets को commit होने वाले config से बाहर रखें। ध्यान दें कि नीचे का **कैसे जाँचें** step इन्हें नहीं पकड़ेगा: ये `project-analysis.json` तक पहुँचते ही नहीं। इसके बजाय generated *documents* को grep करें: `CLAUDE.md`, `claudeos-core/**/*.md` और `.claude/rules/**/*.md`।
+
 **कैसे जाँचें.** `init` के बाद `claudeos-core/generated/project-analysis.json` में अपना password `grep -i` करें। वह वहाँ नहीं होना चाहिए। Masking नियम `tests/env-parser.test.js` के tests से pin हैं, उन रूपों समेत जो कभी leak हुए थे।
 
 ## यह भी देखें

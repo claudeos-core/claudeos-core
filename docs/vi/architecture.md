@@ -153,7 +153,7 @@ Sau khi Claude xong, code Node.js xác minh đầu ra qua 5 validator. **Không 
 | `content-validator` | 10 kiểm tra mức nội dung: tệp bắt buộc tồn tại, đường dẫn nêu trong standards/skills là thực, MANIFEST nhất quán. |
 | `pass-json-validator` | Output JSON Pass 1 / 2 / 3 / 4 đúng cú pháp và chứa các key kỳ vọng. |
 | `plan-validator` | (Legacy) So sánh tệp plan đã lưu với đĩa. Sinh master plan đã gỡ ở v2.1.0, nên giờ chủ yếu là no-op, giữ lại cho tương thích ngược. |
-| `sync-checker` | Tệp đĩa trong các thư mục theo dõi khớp với đăng ký trong `sync-map.json` (orphaned vs. unregistered). |
+| `sync-checker` | Tệp đĩa trong các thư mục theo dõi khớp với đăng ký trong `sync-map.json` (orphaned vs. unregistered). Ngưng hoạt động từ v2.1.0: `sync-map.json` được ghi rỗng nên nó pass mà không kiểm tra gì — trừ khi vẫn còn `claudeos-core/plan/` từ trước v2.1.0. |
 
 Có **3 mức nghiêm trọng**:
 

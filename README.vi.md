@@ -344,7 +344,7 @@ Pipeline gồm **ba giai đoạn**, code có mặt ở cả hai phía của lờ
 - `content-validator` chạy 10 kiểm tra nội dung, gồm verify path-claim (`STALE_PATH` bắt được tham chiếu `src/...` bịa đặt) và phát hiện MANIFEST drift.
 - `pass-json-validator` kiểm tra JSON well-formedness của Pass 1/2/3/4 cùng số section theo từng stack.
 - `plan-validator` so plan với disk (legacy, gần như no-op từ v2.1.0).
-- `sync-checker` đối chiếu disk với `sync-map.json` qua 7 thư mục được track.
+- `sync-checker` đối chiếu disk với `sync-map.json` qua 7 thư mục được track. **Ngưng hoạt động từ v2.1.0:** phần tổng hợp master plan đã bị bỏ nên `sync-map.json` được ghi với danh sách mapping rỗng, và checker này trả về `pass` mà không kiểm tra gì. Nó được giữ lại chỉ vì tương thích ngược; hãy đọc kết quả của nó là “không áp dụng”, đừng coi là bằng chứng. Ngoại lệ duy nhất là dự án nâng cấp từ trước v2.1.0 mà vẫn còn thư mục `claudeos-core/plan/`: `init` không đụng tới thư mục đó, nên map được điền và phép kiểm tra chạy thật.
 
 Có ba mức severity (`fail` / `warn` / `advisory`), nhờ vậy các warning kiểu hallucination LLM mà dev tự sửa được sẽ không bao giờ làm kẹt CI.
 
@@ -415,7 +415,7 @@ Sau khi Claude viết xong docs, đến lượt code kiểm tra lại. Năm vali
 | `content-validator` | Path claim có thật trong code; manifest nhất quán | `health` (advisory) |
 | `pass-json-validator` | Output Pass 1 / 2 / 3 / 4 là JSON hợp lệ | `health` (warn) |
 | `plan-validator` | Plan đã lưu khớp với disk | `health` (fail-on-error) |
-| `sync-checker` | File trên disk khớp với đăng ký trong `sync-map.json` (phát hiện orphaned/unregistered) | `health` (fail-on-error) |
+| `sync-checker` | File trên disk khớp với đăng ký trong `sync-map.json` (phát hiện orphaned/unregistered) — **ngưng hoạt động trừ khi dự án còn giữ `claudeos-core/plan/` từ trước v2.1.0** | `health` (fail-on-error) |
 
 `health-checker` điều phối bốn runtime validator theo ba mức severity (fail / warn / advisory) và thoát với mã phù hợp cho CI. Riêng `claude-md-validator` chạy độc lập qua lệnh `lint`, vì cấu trúc bị drift là tín hiệu cần re-init, không phải warning mềm. Có thể chạy bất kỳ lúc nào.
 

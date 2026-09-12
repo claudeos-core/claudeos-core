@@ -121,6 +121,8 @@ pass2 check **stack-aware** है: backend/kotlin/cqrs determine करने �
 
 ### 5. `sync-checker` — Disk ↔ Master Plan consistency
 
+> **v2.1.0 से निष्क्रिय।** master plan aggregation हटा दिया गया, इसलिए `manifest-generator` `sync-map.json` को खाली mapping list के साथ लिखता है और `sync-checker` नीचे दिए दोनों steps चलाने से पहले ही `pass` के साथ बाहर निकल जाता है। यहाँ जो बताया गया है वह लागू किया गया mechanism ही है, लेकिन यह तब तक नहीं चलता जब तक project में v2.1.0 से पुरानी `claudeos-core/plan/` directory न बची हो, जिसे `init` जानबूझकर नहीं छूता। इस checker का `pass` का मतलब “जाँचने को कुछ नहीं” है, “जाँचा गया” नहीं।
+
 Verify करता है कि `sync-map.json` (manifest-generator ने लिखा) में registered files actually disk की files से match होती हैं. 7 tracked directories में bidirectional check. `sync-checker/` में रहता है.
 
 **Two-step check:**

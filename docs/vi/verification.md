@@ -121,6 +121,8 @@ Vẫn giữ trong bộ validator cho người tự bảo trì tệp plan để b
 
 ### 5. `sync-checker` — nhất quán đĩa ↔ `sync-map.json`
 
+> **Ngưng hoạt động từ v2.1.0.** Phần tổng hợp master plan đã bị bỏ nên `manifest-generator` ghi `sync-map.json` với danh sách mapping rỗng, và `sync-checker` thoát sớm với `pass` trước khi chạy bất kỳ bước nào bên dưới. Những gì mô tả ở đây là cơ chế đúng như đã cài đặt, nhưng nó không chạy trừ khi dự án còn giữ thư mục `claudeos-core/plan/` từ trước v2.1.0 — thứ mà `init` cố ý không đụng tới. `pass` từ checker này nghĩa là “không có gì để kiểm tra”, không phải “đã kiểm tra”.
+
 Xác minh các tệp đăng ký trong `sync-map.json` (do `manifest-generator` ghi) khớp với tệp thực tế trên đĩa. Kiểm tra hai chiều qua 7 thư mục theo dõi. Nằm ở `sync-checker/`.
 
 **Kiểm tra hai bước:**

@@ -121,6 +121,8 @@ ad-hoc なバックアップ目的で plan ファイルを手動メンテして�
 
 ### 5. `sync-checker` — Disk ↔ Master Plan の整合性
 
+> **v2.1.0 以降は休止状態です。** master plan の集約が削除されたため `manifest-generator` は `sync-map.json` を空のマッピングで書き出し、`sync-checker` は以下の 2 ステップを実行する前に `pass` で早期終了します。ここに書かれているのは実装されたメカニズムそのものですが、v2.1.0 より前から残る `claudeos-core/plan/` ディレクトリ (init は意図的に触れません) がプロジェクトにない限り、実行されません。このチェッカーの `pass` は「検証済み」ではなく「検査対象なし」を意味します。
+
 `sync-map.json` (`manifest-generator` が書きます) に登録されたファイルがディスクに実在するかを検証します。7 つの追跡ディレクトリにわたる双方向チェックです。`sync-checker/` にあります。
 
 **2 ステップ検査:**

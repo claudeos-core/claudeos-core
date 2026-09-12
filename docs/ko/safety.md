@@ -213,6 +213,8 @@ CI는 Linux / macOS / Windows × Node 18 / 20에서 실행됩니다.
 
 **다루지 않는 것.** 확장되지 않은 `${VAR}` 템플릿은 그대로 둡니다 (살아있는 시크릿을 담고 있지 않으므로). 주석과, 선택된 `.env*` 한 파일 외의 파일은 읽지 않습니다. scanner의 DB 종류 감지는 `.env` 원문을 메모리에서만 읽고 어디에도 쓰지 않습니다. 위 규칙 중 어느 것도 인식하지 못하는 형태로 자격 증명을 보관하고 있다면, 그 *형태*를(값은 절대 아니고) 이슈로 올려 주세요 — 여기 적힌 규칙 전부가 그렇게 하나씩 생겼습니다.
 
+**이 규칙들은 `.env*` 파일에만 적용됩니다.** 프레임워크 설정 파일에 적힌 자격 증명 — `application.yml`, `application.properties`, `appsettings.json`, Spring 프로파일, Django `settings.py` — 은 마스킹되지 **않습니다**. 스캐너는 그런 파일에서 서버 port 같은 사실만 읽고 값을 `project-analysis.json`에 복사하지 않기 때문입니다. 하지만 Pass 1~3은 소스 트리를 직접 읽으므로, 설정 파일에 커밋된 평문 비밀번호는 모델에게 보이고 생성된 문서에 인용될 수 있습니다. 비밀은 커밋되는 설정에서 빼두세요. 아래 **확인 방법** 단계로는 이것들을 찾을 수 없습니다 — 애초에 `project-analysis.json`에 들어가지 않기 때문입니다. 대신 생성된 *문서* 쪽을 grep하세요: `CLAUDE.md`, `claudeos-core/**/*.md`, `.claude/rules/**/*.md`.
+
 **확인 방법.** `init` 후 `claudeos-core/generated/project-analysis.json`에서 비밀번호를 `grep -i` 해보세요. 있으면 안 됩니다. 마스킹 규칙은 `tests/env-parser.test.js`에 테스트로 고정돼 있고, 한때 실제로 새어 나갔던 형태들이 그대로 들어 있습니다.
 
 ## See also

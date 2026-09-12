@@ -142,7 +142,7 @@ npx claudeos-core health
 |---|---|---|---|
 | 1 | `manifest-generator` (前提) | — | これが失敗すると `sync-checker` がスキップされます。 |
 | 2 | `plan-validator` | fail | Exit 1。 |
-| 3 | `sync-checker` | fail | Exit 1 (manifest が成功した場合)。 |
+| 3 | `sync-checker` | fail | orphaned ファイルがあれば Exit 1 — ただし v2.1.0 以降は休止のため、実際には検査せず pass します。 |
 | 4 | `content-validator` | advisory | 表示されますがブロックしません。 |
 | 5 | `pass-json-validator` | warn | 表示されますがブロックしません。 |
 

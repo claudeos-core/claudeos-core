@@ -344,7 +344,7 @@ ClaudeOS-Core は、よくある Claude Code のワークフローの順序を�
 - `content-validator` — 10 種類のコンテンツチェック。パス参照の存在確認 (`STALE_PATH` が捏造の `src/...` 参照を捕捉) や MANIFEST drift の検知も含まれます。
 - `pass-json-validator` — Pass 1/2/3/4 の JSON well-formedness と stack-aware なセクション数チェック。
 - `plan-validator` — plan ↔ disk の整合性 (legacy。v2.1.0 以降はほぼ no-op)。
-- `sync-checker` — 追跡対象 7 ディレクトリにおける disk ↔ `sync-map.json` の登録整合性。
+- `sync-checker` — 追跡対象 7 ディレクトリにおける disk ↔ `sync-map.json` の登録整合性。**v2.1.0 以降は休止状態:** master plan の集約が削除され `sync-map.json` は空のマッピングで書き出されるため、このチェッカーは何も検査せずに `pass` を返します。後方互換のために残しているだけなので、その結果は「該当なし」と読み、根拠として扱わないでください。例外は 1 つ、v2.1.0 より前からアップグレードして `claudeos-core/plan/` ディレクトリが残っているプロジェクトです。`init` はそのディレクトリに触れないため、マッピングが埋まり検査が実際に走ります。
 
 severity は 3 段階 (`fail` / `warn` / `advisory`) に分かれており、ユーザが手で直せる程度の LLM hallucination で warning が CI を止めてしまうことはありません。
 
@@ -415,7 +415,7 @@ Claude がドキュメントを書き終えたら、今度はコードがそれ�
 | `content-validator` | パス参照が実際に存在するか、manifest が整合しているか | `health` (advisory) |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 の出力が well-formed JSON か | `health` (warn) |
 | `plan-validator` | 保存された plan がディスクの内容と一致するか | `health` (fail-on-error) |
-| `sync-checker` | `sync-map.json` の登録項目とディスク上のファイルが一致するか (orphaned/unregistered の検出) | `health` (fail-on-error) |
+| `sync-checker` | `sync-map.json` の登録項目とディスク上のファイルが一致するか (orphaned/unregistered の検出) — **v2.1.0 より前の `claudeos-core/plan/` が残っていない限り休止** | `health` (fail-on-error) |
 
 `health-checker` がランタイム validator 4 つを 3 段階の severity (fail / warn / advisory) でまとめて実行し、CI に適した終了コードで締めくくります。`claude-md-validator` だけは `lint` コマンドで個別に走らせる構成にしてあります。構造のズレは「軽い警告」ではなく「再 init すべきシグナル」だからです。いつでも実行できます。
 

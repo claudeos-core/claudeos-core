@@ -344,7 +344,7 @@ ClaudeOS-Core 把常见的 Claude Code 流程倒过来跑:
 - `content-validator` —— 10 项内容检查,涵盖路径引用核验 (`STALE_PATH` 会抓出虚构的 `src/...` 引用) 和 MANIFEST 漂移检测。
 - `pass-json-validator` —— 检查 Pass 1/2/3/4 输出的 JSON 是否合规,以及各栈预期的 section 数量。
 - `plan-validator` —— 校验 plan ↔ 磁盘的一致性 (legacy,自 v2.1.0 起基本是 no-op)。
-- `sync-checker` —— 在 7 个被追踪的目录里核对磁盘文件 ↔ `sync-map.json` 注册关系。
+- `sync-checker` —— 在 7 个被追踪的目录里核对磁盘文件 ↔ `sync-map.json` 注册关系。**自 v2.1.0 起处于休眠:** master plan 聚合已移除,`sync-map.json` 以空映射写出,该检查器不做任何检查就返回 `pass`。保留它只为向后兼容,请把它的结论读作「不适用」,不要当作证据。只有一个例外:从 v2.1.0 之前升级上来、仍留着 `claudeos-core/plan/` 目录的项目 —— `init` 不会动那个目录,所以映射会被填充,检查会真正执行。
 
 severity 分三档 (`fail` / `warn` / `advisory`),这样用户能手动修掉的 LLM 幻觉就不会因为一个 warning 把 CI 卡死。
 
@@ -415,7 +415,7 @@ Claude 写完文档,接下来轮到代码来核对结果。5 个独立的 valida
 | `content-validator` | path claim 是否真实存在;manifest 一致性 | `health` (advisory) |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 输出是否为合规 JSON | `health` (warn) |
 | `plan-validator` | 保存的 plan 是否与磁盘对得上 | `health` (fail-on-error) |
-| `sync-checker` | 磁盘文件是否与 `sync-map.json` 注册一致 (检测 orphaned/unregistered) | `health` (fail-on-error) |
+| `sync-checker` | 磁盘文件是否与 `sync-map.json` 注册一致 (检测 orphaned/unregistered) —— **除非项目里还留着 v2.1.0 之前的 `claudeos-core/plan/`,否则处于休眠** | `health` (fail-on-error) |
 
 `health-checker` 会把这 4 个运行时 validator 按三档 severity (fail / warn / advisory) 串起来跑,并以适合 CI 的 exit code 收尾。`claude-md-validator` 单独通过 `lint` 命令运行,因为结构层面的偏离不算软警告,而是该重新 init 的信号。随时都能跑:
 

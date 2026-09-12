@@ -34,7 +34,12 @@ Generated at: <ISO timestamp>
 - Framework version: ...
 - Build tool: ...
 - Package manager: ...
-- Database: ...
+- Database: ... — when `pass3-context.json` carries a `stack.databases` array,
+  list **every** engine in it and copy the `stack.databasePrimary` sentence
+  verbatim. That field exists because `stack.database` is the first engine
+  matched in source-file order, not a primary; a project running several
+  engines has none, and later passes must not treat the singular value as one.
+  Also record which engine each domain actually uses, when the analysis says so.
 - ORM: ...
 - Frontend: ...
 - Default port: ...
@@ -170,9 +175,29 @@ fall back to pass2-merged.json verification per file)` instead.
 
 1. **Read each input file AT MOST ONCE.** After reading, all fact extraction
    must be from your in-context memory of the file.
-2. **Be terse.** This document will be loaded into every subsequent Pass 3
-   step's context. Keep the non-allowlist portions under 10 KB. The
-   `## Allowed Source Paths` section is exempt from the 10 KB budget
+2. **Be terse — but never at the cost of a verbatim value.** This document is
+   loaded into every subsequent Pass 3 step's context, so size matters: aim for
+   **under 32 KB** in the non-allowlist portions.
+
+   That is a target, not a gate, and rule 3 outranks it. The entire purpose of
+   this file is that 3b / 3c / 3d never have to reopen `pass2-merged.json`;
+   deleting an exact signature to hit a byte count defeats it. The former
+   10 KB budget could not coexist with the verbatim data this same document
+   demands — a project with a handful of domains, a response-utility class and
+   a per-domain method inventory does not fit, and trying to make it fit means
+   throwing away exactly the facts later passes need.
+
+   If you are over budget, cut in this order, and state in your summary what
+   you cut:
+   1. anti-pattern entries below HIGH severity
+   2. any recap section that restates rules already stated above it
+   3. class-name inventories the allowlist already carries as file paths
+
+   **Never cut:** response/exception utility signatures, layer-naming facts
+   (which directory name means which layer), the XML / resource path
+   convention, per-domain method names, or the unresolved-convention list.
+
+   The `## Allowed Source Paths` section is exempt from the budget entirely
    because it is the authoritative path reference that prevents Pass 3
    hallucination — its size is bounded by the MAX_PATHS (500) / MAX_DIRS
    (300) caps in plan-installer/source-paths.js.

@@ -22,7 +22,7 @@
 
 - **Читает реальный исходный код** (детерминированный Node.js-сканер, без LLM-угадывания стека).
 - **4-pass конвейер Claude** с фактами, инжектируемыми в промпты (пути и конвенции извлекаются один раз и переиспользуются).
-- **5 post-generation валидаторов**: `claude-md-validator` для структуры, `content-validator` для path-claim и контента, `pass-json-validator` для промежуточного JSON, `plan-validator` для legacy plan-файлов, `sync-checker` для консистентности disk ↔ sync-map.
+- **5 post-generation валидаторов**: `claude-md-validator` для структуры, `content-validator` для path-claim и контента, `pass-json-validator` для промежуточного JSON, `plan-validator` для legacy plan-файлов, `sync-checker` для консистентности disk ↔ sync-map (не работает с v2.1.0).
 - **10 выходных языков** с language-invariant валидацией.
 - **Per-project вывод**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer. Всё выведено из вашего кода, а не из preset-bundle.
 

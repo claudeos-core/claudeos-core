@@ -142,7 +142,7 @@ Orchestre **4 validators** (claude-md-validator s'exécute séparément via `lin
 |---|---|---|---|
 | 1 | `manifest-generator` (prerequisite) | — | En cas d'échec, `sync-checker` est sauté. |
 | 2 | `plan-validator` | fail | Exit 1. |
-| 3 | `sync-checker` | fail | Exit 1 (si manifest a réussi). |
+| 3 | `sync-checker` | fail | Exit 1 en cas de fichiers orphelins — mais dormant depuis la v2.1.0, donc en pratique il passe sans vérifier. |
 | 4 | `content-validator` | advisory | Apparaît mais ne bloque pas. |
 | 5 | `pass-json-validator` | warn | Apparaît mais ne bloque pas. |
 

@@ -22,7 +22,7 @@ Traits distinctifs de ClaudeOS-Core :
 
 - **Lit le vrai code source** (scanner Node.js déterministe, pas de LLM qui devine le stack).
 - **Pipeline Claude 4-pass** avec prompts à injection de faits (paths/conventions extraits une fois et réutilisés).
-- **5 validators post-génération** (`claude-md-validator` pour la structure, `content-validator` pour les path-claims et le contenu, `pass-json-validator` pour le JSON intermédiaire, `plan-validator` pour les fichiers plan legacy, `sync-checker` pour la cohérence disque ↔ sync-map).
+- **5 validators post-génération** (`claude-md-validator` pour la structure, `content-validator` pour les path-claims et le contenu, `pass-json-validator` pour le JSON intermédiaire, `plan-validator` pour les fichiers plan legacy, `sync-checker` pour la cohérence disque ↔ sync-map — dormant depuis la v2.1.0).
 - **10 langues de sortie** avec validation language-invariant.
 - **Sortie par projet** : CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer, tout dérivé du code, pas d'un bundle preset.
 

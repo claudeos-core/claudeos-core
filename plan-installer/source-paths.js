@@ -32,8 +32,10 @@
  *    incompatible output shapes).
  *
  * 2. Budget-bounded: even a moderately large project can have 3000+ source
- *    files, which would balloon pass3a-facts.md past its 10 KB target and
- *    re-introduce the context-overflow failure mode. We cap at MAX_PATHS
+ *    files, which would balloon pass3a-facts.md and re-introduce the
+ *    context-overflow failure mode. The allowlist is exempt from the
+ *    document's own size target (32 KB since v2.5.4, on the non-allowlist
+ *    portions) precisely because these caps bound it instead. We cap at MAX_PATHS
  *    (500) and use a directory-rollup strategy for projects above that
  *    threshold — preserving the "unique top-level paths" the LLM actually
  *    needs for reference without enumerating every leaf file.
@@ -94,9 +96,10 @@ const EXCLUDED_DIRS = [
 ];
 
 // Hard cap on enumerated paths. Chosen to keep the injected section of
-// pass3a-facts.md under ~10 KB (500 paths × ~40 chars avg ≈ 20 KB of raw
-// text, but fits within the markdown list format budget after header +
-// directory rollup).
+// pass3a-facts.md bounded (500 paths × ~40 chars avg ≈ 20 KB of raw text,
+// reduced further by the header + directory rollup). This cap — not the
+// document's 32 KB target, which excludes the allowlist — is what keeps the
+// injected section from growing without limit.
 const MAX_PATHS = 500;
 
 // When the project has more paths than MAX_PATHS, we fall back to a

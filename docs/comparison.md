@@ -20,7 +20,7 @@ ClaudeOS-Core's defining traits:
 
 - **Reads your actual source code** (deterministic Node.js scanner — no LLM guessing the stack).
 - **4-pass Claude pipeline** with fact-injected prompts (paths/conventions are extracted once and re-used).
-- **5 post-generation validators** (`claude-md-validator` for structure, `content-validator` for path-claim and content, `pass-json-validator` for intermediate JSON, `plan-validator` for legacy plan files, `sync-checker` for disk ↔ sync-map consistency).
+- **5 post-generation validators** (`claude-md-validator` for structure, `content-validator` for path-claim and content, `pass-json-validator` for intermediate JSON, `plan-validator` for legacy plan files, `sync-checker` for disk ↔ sync-map consistency — dormant since v2.1.0).
 - **10 output languages** with language-invariant validation.
 - **Per-project output**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer — all derived from your code, not from a preset bundle.
 

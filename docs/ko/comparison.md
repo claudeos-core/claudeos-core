@@ -22,7 +22,7 @@ ClaudeOS-Core를 정의하는 특성은 다음과 같습니다.
 
 - **실제 소스 코드를 읽음** (Node.js scanner가 동작하므로 결과가 일관됩니다. LLM이 스택을 추측하지 않습니다).
 - **사실 주입 prompt가 있는 4-pass Claude 파이프라인** (경로와 컨벤션을 한 번 추출해서 재사용).
-- **5개 post-generation validator** (`claude-md-validator`는 구조 검사, `content-validator`는 경로 주장과 콘텐츠 검사, `pass-json-validator`는 중간 JSON 검사, `plan-validator`는 legacy plan 파일 검사, `sync-checker`는 disk와 sync-map 일관성 검사).
+- **5개 post-generation validator** (`claude-md-validator`는 구조 검사, `content-validator`는 경로 주장과 콘텐츠 검사, `pass-json-validator`는 중간 JSON 검사, `plan-validator`는 legacy plan 파일 검사, `sync-checker`는 disk와 sync-map 일관성 검사 — v2.1.0 이후 휴면).
 - **10개 출력 언어 지원** + language-invariant 검증.
 - **프로젝트별 출력**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer가 모두 코드에서 파생됩니다. preset bundle이 아닙니다.
 

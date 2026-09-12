@@ -4,6 +4,7 @@
 
 Quick navigation to recent releases:
 
+- [`2.5.4`](#254--2026-09-13) — Honesty patch: `sync-checker` is documented as dormant since v2.1.0 instead of as a working check; a multi-dialect project no longer presents a fabricated primary database to Pass 3; the Pass 3a size budget stops contradicting the verbatim data the same file demands; `.env`-only scope of credential masking stated in `docs/safety.md` × 10 languages
 - [`2.5.3`](#253--2026-09-12) — Oracle JDBC DSN credential masking, unmaskable shapes dropped whole; Pattern F (package-by-feature Java layout, previously zero domains); controller files counted exactly once; a package named `constructor` no longer aborts `init`; "no domains" warning keyed on what Phase 1 detected and never silent on a zero total; `.env` secrets section in `docs/safety.md` × 10 languages
 - [`2.5.2`](#252--2026-09-09) — Safety patch: URL passwords the masking rule cannot reach are dropped whole (raw `/` `?` `#` space, digit-leading, `@` in a query string), `host`/`apiTarget` never carry the sentinel, `init` names the dropped keys. Scanner byte-identical to 2.5.1.
 - [`2.5.1`](#251--2026-09-08) — Legacy JVM detection (non-Boot Spring 1.x–6.x, Ant / Ivy, Eclipse / IntelliJ / NetBeans metadata, `WEB-INF/lib` jars, `web.xml`, Maven multi-module and sibling projects, eGovFrame), `.env` key-name redaction gaps closed, `.env.example` DB detection, LF line endings
@@ -29,6 +30,33 @@ Quick navigation to recent releases:
 For older entries scroll past v1.5.0 or use the GitHub blame view.
 
 ---
+
+## [2.5.4] — 2026-09-13
+
+Honesty patch. Nothing here fixes a crash or a wrong file — every item is a place where the tool told the user something that was not true, or told the model something that was not true. Three came out of running the full `init` pipeline end to end on a real backend for the first time; the fourth is the documentation half of the masking work in v2.5.0–2.5.3. One file carries a behavior change (`plan-installer/pass3-context-builder.js`), one carries a prompt-spec change (`pass-prompts/templates/common/pass3a-facts.md`), and the rest is documentation across ten languages.
+
+### Fixed — honesty
+
+- **`sync-checker` is documented as dormant, not as a working check.** Master-plan aggregation was removed in v2.1.0, so `manifest-generator` writes `sync-map.json` with an empty mapping list and `sync-checker` returns `pass` from an early exit — before either of its two steps runs. The README nevertheless listed it among five validators as *"disk ↔ `sync-map.json` registration consistency across 7 tracked dirs"*, with a table row promising orphaned/unregistered detection at `fail-on-error`, and `docs/verification.md` gave it a full section describing a bidirectional walk. A green `sync-checker` line in `health` output therefore read as evidence when it means *"nothing to validate"*. Every place that describes it now says so plainly, in all ten languages — the two README statements, the `verification.md` section, the `architecture.md` validator table, the `commands.md` severity table (which promised `Exit 1` at the `fail` tier), and the `comparison.md` feature bullet — including the one case where it is **not** dormant: a project upgraded from before v2.1.0 that still carries a `claudeos-core/plan/` directory, which `init` deliberately leaves untouched, so the map is populated from it and the check really runs. **No code change** — the checker keeps its backward-compatible behavior; only the claims about it changed.
+
+- **A multi-dialect project no longer presents a fabricated primary database to Pass 3.** `stack.database` is the first engine matched in source-file order (build file → app config → pom) — deterministic, but arbitrary when a project declares several, and `pass3-context.json` passed it alone. Later passes read it as *the* database, found the tree disagreed, and reported the mismatch back as a discrepancy in their own analysis. The context now also carries `databases` (the full list, only when it holds more than one) and `databasePrimary`, which states in words that the singular field is first-match order and not a primary. `stack.database` keeps its value and legacy meaning, so `project-analysis.json` and every existing consumer are unchanged; single-engine and no-engine projects emit exactly what they did before (both new fields are `null`).
+
+- **The Pass 3a size budget no longer contradicts the file's own content rules.** `pass3a-facts.md` asked for the non-allowlist portion to stay under 10 KB while separately requiring verbatim signatures, per-domain method names and layer-naming facts — data that does not fit in 10 KB for a project of any size, and whose whole purpose is to stop 3b/3c/3d from re-opening `pass2-merged.json`. The budget is now 32 KB, stated as a target that the verbatim rule outranks, with an explicit cut order (sub-HIGH anti-patterns → recap sections → class inventories the allowlist already carries as paths) and an explicit never-cut list.
+
+### Docs
+
+- **`docs/safety.md` states that credential masking covers `.env*` only**, in all ten languages. Key-name redaction, in-string masking and the whole-value drop apply to the one `.env*` file `init` reads. A credential committed to a framework config file — `application.yml`, `application.properties`, `appsettings.json`, a Spring profile, a Django `settings.py` — is not masked, because the scanner takes only facts such as the server port from those files and never copies their values into `project-analysis.json`. Pass 1–3 read the source tree directly, though, so such a password is visible to the model and can be quoted into a generated document. The page now says this — and says explicitly that its own **How to check** step will not catch them, because they never reach `project-analysis.json` at all. It points the reader at the generated *documents* instead (`CLAUDE.md`, `claudeos-core/**/*.md`, `.claude/rules/**/*.md`), which is where such a value could actually surface. Verified against a fixture: an `application.yml` carrying a username and password produces a `project-analysis.json` containing neither — only the port and the DB type.
+
+### Not changed
+
+- `sync-checker` itself. Reviving it means repopulating `sync-map.json` from the Pass 3 outputs, which is a feature, not a correctness patch.
+- `stack.database`'s value or semantics — only what Pass 3 is told about it. The `pass3a-facts.md` Stack section now asks 3a to carry the full engine list and the `databasePrimary` sentence into the fact sheet, since 3b/3c/3d read that file rather than `pass3-context.json`.
+- `docs/diagrams.md`: its `sync-checker` node depicts orchestration order, which is accurate — health-checker does call it — so the flow chart is left alone.
+- The `~10 KB` figure in `plan-installer/source-paths.js` was a stale reference to the old budget; its two comments now state that the allowlist is exempt from the document target and that `MAX_PATHS` is what bounds the injected section.
+
+### Migration
+
+None. `pass3-context.json` gains two optional fields that are `null` for every single-engine project. No scanner behavior, domain detection, file count, or masking result changes; the v2.5.3 test suite passes unchanged.
 
 ## [2.5.3] — 2026-09-12
 

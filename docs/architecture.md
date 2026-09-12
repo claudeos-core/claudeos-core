@@ -151,7 +151,7 @@ After Claude finishes, Node.js code verifies the output across 5 validators. **N
 | `content-validator` | 10 content-level checks: required files exist, paths cited in standards/skills are real, MANIFEST is consistent. |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 JSON outputs are well-formed and contain the expected keys. |
 | `plan-validator` | (Legacy) Compares saved plan files to disk. Master plan generation was removed in v2.1.0, so this is mostly a no-op now — kept for backward compat. |
-| `sync-checker` | Disk files under tracked dirs match the `sync-map.json` registrations (orphaned vs. unregistered). |
+| `sync-checker` | Disk files under tracked dirs match the `sync-map.json` registrations (orphaned vs. unregistered). Dormant since v2.1.0: `sync-map.json` is written empty, so this passes without checking — unless a pre-v2.1.0 `claudeos-core/plan/` is still present. |
 
 These have **3 severity tiers**:
 

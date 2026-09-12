@@ -121,6 +121,8 @@ Bleibt in der Validator-Suite für alle, die Plan-Dateien zu ad-hoc-Backup-Zweck
 
 ### 5. `sync-checker` — Festplatten-↔-Master-Plan-Konsistenz
 
+> **Seit v2.1.0 stillgelegt.** Die Master-Plan-Aggregation wurde entfernt, daher schreibt `manifest-generator` `sync-map.json` mit leerer Zuordnungsliste und `sync-checker` bricht mit `pass` ab, bevor einer der beiden folgenden Schritte läuft. Beschrieben ist hier der Mechanismus, wie er implementiert ist — er wird nicht ausgeführt, sofern das Projekt nicht noch ein `claudeos-core/plan/`-Verzeichnis von vor v2.1.0 mitführt, das `init` bewusst unangetastet lässt. Ein `pass` dieses Prüfers bedeutet „nichts zu validieren“, nicht „verifiziert“.
+
 Prüft, ob die in `sync-map.json` registrierten Dateien (vom `manifest-generator` geschrieben) zu den real vorhandenen Dateien passen. Bidirektionale Prüfung über die 7 verfolgten Verzeichnisse. Liegt unter `sync-checker/`.
 
 **Zweistufige Prüfung:**

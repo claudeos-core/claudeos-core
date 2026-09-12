@@ -213,6 +213,8 @@ CI 在 Linux / macOS / Windows × Node 18 / 20 上运行。
 
 **未覆盖的部分。** 未展开的 `${VAR}` 模板原样保留 (其中没有真实密钥)。注释，以及被选中的那一个 `.env*` 之外的文件，都不会被读取。scanner 自身的 DB 类型检测只在内存中读 `.env` 原文，从不写出。如果你的项目以上述规则都不认识的形式保存凭据，请提交 issue 并附上那个*形式* (绝不要附值) — 这里列出的每一条规则都是这么来的。
 
+**这些规则只覆盖 `.env*` 文件。** 写在框架配置文件里的凭据 —— `application.yml`、`application.properties`、`appsettings.json`、Spring profile、Django 的 `settings.py` —— **不会**被遮蔽,因为扫描器只从这些文件里读取服务器 port 之类的事实,从不把它们的值复制进 `project-analysis.json`。但 Pass 1 到 Pass 3 会直接读你的源码树,所以提交在配置文件里的明文密码对模型是可见的,并且可能被引用进生成的文档。请把密钥从会提交的配置里移走。注意下面的 **如何检查** 那一步找不到它们 —— 它们根本不会进入 `project-analysis.json`。请改为 grep 生成的*文档*:`CLAUDE.md`、`claudeos-core/**/*.md` 和 `.claude/rules/**/*.md`。
+
 **如何验证。** `init` 之后，在 `claudeos-core/generated/project-analysis.json` 里 `grep -i` 你的密码。它不该在那里。遮蔽规则由 `tests/env-parser.test.js` 中的测试固定，包括曾经真的泄露过的那些形式。
 
 ## 另请参阅

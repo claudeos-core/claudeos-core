@@ -344,7 +344,7 @@ The pipeline runs in **three stages**, with code on both sides of the LLM call:
 - `content-validator` — 10 content checks including path-claim verification (`STALE_PATH` catches invented `src/...` references) and MANIFEST drift detection.
 - `pass-json-validator` — Pass 1/2/3/4 JSON well-formedness + stack-aware section count.
 - `plan-validator` — plan ↔ disk consistency (legacy, mostly no-op since v2.1.0).
-- `sync-checker` — disk ↔ `sync-map.json` registration consistency across 7 tracked dirs.
+- `sync-checker` — disk ↔ `sync-map.json` registration consistency across 7 tracked dirs. **Dormant since v2.1.0:** master-plan aggregation was removed, so `sync-map.json` is written with an empty mapping list and this checker reports `pass` without examining anything. It is kept for backward compatibility — read its verdict as “not applicable”, not as evidence. The one exception is a project upgraded from before v2.1.0 that still carries a `claudeos-core/plan/` directory: `init` leaves that directory alone, so the map is populated from it and the check really runs.
 
 Three severity tiers (`fail` / `warn` / `advisory`) so warnings never deadlock CI on LLM hallucinations the user can fix manually.
 
@@ -415,7 +415,7 @@ After Claude writes the docs, code verifies them. Five separate validators:
 | `content-validator` | Path claims actually exist; manifest consistency | `health` (advisory) |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 outputs are well-formed JSON | `health` (warn) |
 | `plan-validator` | Saved plan matches what's on disk | `health` (fail-on-error) |
-| `sync-checker` | Disk files match `sync-map.json` registrations (orphaned/unregistered detection) | `health` (fail-on-error) |
+| `sync-checker` | Disk files match `sync-map.json` registrations (orphaned/unregistered detection) — **dormant unless the project still has a pre-v2.1.0 `claudeos-core/plan/`** | `health` (fail-on-error) |
 
 A `health-checker` orchestrates the four runtime validators with three-tier severity (fail / warn / advisory) and exits with the appropriate code for CI. `claude-md-validator` runs separately via the `lint` command since structural drift is a re-init signal, not a soft warning. Run anytime:
 

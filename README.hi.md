@@ -344,7 +344,7 @@ Pipeline **तीन stages** में चलती है, और LLM call क
 - `content-validator` — 10 content checks, जिनमें path-claim verification (`STALE_PATH` invented `src/...` references पकड़ता है) और MANIFEST drift detection शामिल हैं।
 - `pass-json-validator` — Pass 1/2/3/4 की JSON well-formedness और stack-aware section count check।
 - `plan-validator` — plan ↔ disk consistency (legacy, v2.1.0 के बाद से ज़्यादातर no-op)।
-- `sync-checker` — 7 tracked dirs पर disk ↔ `sync-map.json` registration consistency।
+- `sync-checker` — 7 tracked dirs पर disk ↔ `sync-map.json` registration consistency। **v2.1.0 से निष्क्रिय:** master plan aggregation हटा दिया गया, इसलिए `sync-map.json` खाली mapping list के साथ लिखी जाती है और यह checker कुछ भी जाँचे बिना `pass` लौटाता है। इसे सिर्फ़ backward compatibility के लिए रखा गया है; इसके नतीजे को “लागू नहीं” पढ़ें, सबूत न मानें। एक ही अपवाद है — v2.1.0 से पहले से upgrade हुआ ऐसा project जिसमें `claudeos-core/plan/` directory अब भी बची है: `init` उस directory को छूता नहीं, इसलिए map भर जाता है और जाँच सचमुच चलती है।
 
 तीन severity tiers (`fail` / `warn` / `advisory`) रखे गए हैं, ताकि जिन LLM hallucinations को user खुद ठीक कर सकता है, उनकी वजह से CI deadlock न हो जाए।
 
@@ -415,7 +415,7 @@ Claude docs लिख चुकने के बाद उन्हें code v
 | `content-validator` | Path claims सच में मौजूद हैं या नहीं; manifest consistency | `health` (advisory) |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 outputs well-formed JSON हैं या नहीं | `health` (warn) |
 | `plan-validator` | Saved plan disk से match करता है या नहीं | `health` (fail-on-error) |
-| `sync-checker` | Disk files `sync-map.json` registrations से match करते हैं (orphaned/unregistered detection) | `health` (fail-on-error) |
+| `sync-checker` | Disk files `sync-map.json` registrations से match करते हैं (orphaned/unregistered detection) — **निष्क्रिय, जब तक project में v2.1.0 से पुराना `claudeos-core/plan/` बचा न हो** | `health` (fail-on-error) |
 
 `health-checker` इन चारों runtime validators को three-tier severity (fail / warn / advisory) के साथ orchestrate करता है और CI के लिए सही exit code लौटाता है। `claude-md-validator` अलग से `lint` command से चलता है, क्योंकि structural drift सिर्फ soft warning नहीं, re-init का signal है। जब मन हो, चला लीजिए।
 

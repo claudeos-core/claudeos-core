@@ -121,6 +121,8 @@ pass2 检查是 **stack-aware** 的:读取 `project-analysis.json` 判定 backen
 
 ### 5. `sync-checker` — Disk ↔ Master Plan 一致性
 
+> **自 v2.1.0 起处于休眠。** master plan 聚合已移除,`manifest-generator` 以空映射写出 `sync-map.json`,`sync-checker` 在执行下面两个步骤之前就以 `pass` 提前退出。这里描述的是已实现的机制本身,但除非项目里还留着 v2.1.0 之前的 `claudeos-core/plan/` 目录 (init 会刻意不动它),否则并不会执行。该检查器的 `pass` 表示「无可校验对象」,而非「已校验」。
+
 验证 `sync-map.json`(由 `manifest-generator` 写出)里注册的文件与 disk 上实际文件一致。在 7 个受跟踪目录上做双向检查。位于 `sync-checker/`。
 
 **两步检查:**

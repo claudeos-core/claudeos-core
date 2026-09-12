@@ -213,6 +213,8 @@ Zwei aus `.env` abgeleitete Skalarfelder — `envInfo.host` und `envInfo.apiTarg
 
 **Was nicht abgedeckt ist.** Ein nicht expandiertes `${VAR}`-Template bleibt unangetastet (es enthält kein echtes Secret). Kommentare und andere Dateien als die eine ausgewählte `.env*` werden nicht gelesen. Die DB-Typ-Erkennung des Scanners liest den rohen `.env`-Text im Speicher und schreibt ihn nie. Wenn Ihr Projekt Zugangsdaten in einer Form hält, die keine der Regeln erkennt, öffnen Sie bitte ein Issue mit der *Form* (niemals dem Wert) — jede hier gelistete Regel ist genau so entstanden.
 
+**Diese Regeln gelten ausschließlich für `.env*`-Dateien.** Zugangsdaten, die in einer Framework-Konfigurationsdatei stehen — `application.yml`, `application.properties`, `appsettings.json`, ein Spring-Profil, eine Django-`settings.py` —, werden **nicht** maskiert: Der Scanner liest solche Dateien nur für Fakten wie den Server-Port und kopiert ihre Werte nie nach `project-analysis.json`. Pass 1 bis Pass 3 lesen Ihren Quellbaum jedoch direkt, sodass ein im Klartext eingechecktes Passwort für das Modell sichtbar ist und in einem generierten Dokument zitiert werden kann. Halten Sie Geheimnisse aus eingechecktem Konfigurationscode heraus. Beachten Sie: Der Schritt **Wie Sie es prüfen** weiter unten findet sie nicht — sie gelangen gar nicht erst in `project-analysis.json`. Grepen Sie stattdessen die generierten *Dokumente*: `CLAUDE.md`, `claudeos-core/**/*.md` und `.claude/rules/**/*.md`.
+
 **Wie Sie es prüfen.** Nach `init`: `grep -i` Ihr Passwort in `claudeos-core/generated/project-analysis.json`. Es darf nicht da sein. Die Maskierungsregeln sind durch Tests in `tests/env-parser.test.js` fixiert, inklusive der Formen, die einmal geleakt sind.
 
 ## Siehe auch

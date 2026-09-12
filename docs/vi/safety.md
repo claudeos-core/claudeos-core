@@ -213,6 +213,8 @@ Hai field vô hướng dẫn xuất từ `.env` — `envInfo.host` và `envInfo.
 
 **Cái không được bao phủ.** Template `${VAR}` chưa expand được để nguyên (nó không chứa secret sống). Comment và các file khác ngoài một `.env*` đã chọn thì không đọc. Việc phát hiện loại DB của scanner đọc text thô của `.env` trong bộ nhớ và không bao giờ ghi ra. Nếu dự án của bạn giữ credential ở dạng mà không quy tắc nào ở trên nhận ra, hãy mở issue kèm *dạng* đó (tuyệt đối không kèm giá trị) — mọi quy tắc liệt kê ở đây đều ra đời như vậy.
 
+**Các quy tắc này chỉ áp dụng cho file `.env*`.** Credential viết trong file cấu hình của framework — `application.yml`, `application.properties`, `appsettings.json`, một Spring profile, `settings.py` của Django — **không** được che, vì scanner chỉ đọc những file đó để lấy các dữ kiện như port của server và không bao giờ chép giá trị của chúng vào `project-analysis.json`. Nhưng Pass 1 đến Pass 3 đọc thẳng cây mã nguồn, nên mật khẩu dạng thô đã commit trong file cấu hình là thứ model nhìn thấy được và có thể bị trích vào tài liệu sinh ra. Hãy giữ bí mật ra khỏi cấu hình được commit. Lưu ý bước **Cách kiểm tra** bên dưới sẽ không tìm ra chúng: chúng không bao giờ vào `project-analysis.json`. Thay vào đó hãy grep các *tài liệu* được sinh ra: `CLAUDE.md`, `claudeos-core/**/*.md` và `.claude/rules/**/*.md`.
+
 **Cách kiểm tra.** Sau `init`, `grep -i` mật khẩu của bạn trong `claudeos-core/generated/project-analysis.json`. Nó không được có ở đó. Các quy tắc che được ghim bằng test trong `tests/env-parser.test.js`, gồm cả những dạng từng rò rỉ.
 
 ## Xem thêm

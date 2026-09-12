@@ -153,7 +153,7 @@ Split существует потому, что context window у Claude огр�
 | `content-validator` | 10 content-уровневых проверок: нужные файлы существуют, пути, упомянутые в standards/skills, реальны, MANIFEST согласован. |
 | `pass-json-validator` | JSON-выходы Pass 1 / 2 / 3 / 4 well-formed и содержат ожидаемые ключи. |
 | `plan-validator` | (Legacy) Сравнивает сохранённые plan-файлы с диском. Генерацию master plan убрали в v2.1.0, так что сейчас это по большей части no-op, оставлено для обратной совместимости. |
-| `sync-checker` | Файлы на диске в отслеживаемых каталогах совпадают с регистрациями `sync-map.json` (orphaned vs unregistered). |
+| `sync-checker` | Файлы на диске в отслеживаемых каталогах совпадают с регистрациями `sync-map.json` (orphaned vs unregistered). Не работает с v2.1.0: `sync-map.json` пишется пустым, поэтому проверка проходит, ничего не проверив, — кроме случая, когда сохранился `claudeos-core/plan/` времён до v2.1.0. |
 
 У валидаторов **3 уровня severity**:
 

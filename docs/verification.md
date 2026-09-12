@@ -119,6 +119,8 @@ It's kept in the validator suite for users who hand-maintain plan files for ad-h
 
 ### 5. `sync-checker` — Disk ↔ `sync-map.json` consistency
 
+> **Dormant since v2.1.0.** Master-plan aggregation was removed, so `manifest-generator` writes `sync-map.json` with an empty mapping list and `sync-checker` exits early with `pass` before either step below runs. Everything described here is the mechanism as built; it does not execute unless the project still carries a `claudeos-core/plan/` directory from before v2.1.0, which `init` deliberately leaves untouched. A `pass` from this checker means “nothing to validate”, not “verified”.
+
 Verifies that the files registered in `sync-map.json` (written by `manifest-generator`) match the files actually on disk. Bidirectional check across the 7 tracked directories. Lives in `sync-checker/`.
 
 **Two-step check:**

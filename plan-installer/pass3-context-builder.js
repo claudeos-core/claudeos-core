@@ -156,6 +156,20 @@ function buildPass3Context(generatedDir) {
       buildTool: stack.buildTool || null,
       packageManager: stack.packageManager || null,
       database: stack.database || null,
+      // v2.5.4 — `database` is the FIRST engine matched in source-file order
+      // (build file → app config → pom), which is deterministic but arbitrary
+      // when a project declares several. Passing it alone told later passes
+      // there was a primary engine where none exists, and they reported the
+      // mismatch back as a discrepancy. The full list is surfaced whenever it
+      // holds more than one, and `databasePrimary` says plainly that the
+      // singular field is not authoritative. `stack.database` keeps its legacy
+      // meaning and value, so nothing downstream changes shape.
+      databases: Array.isArray(stack.databases) && stack.databases.length > 1
+        ? [...stack.databases]
+        : null,
+      databasePrimary: Array.isArray(stack.databases) && stack.databases.length > 1
+        ? "none — multi-dialect project; `database` is first-match order only, not a primary"
+        : null,
       orm: stack.orm || null,
       frontend: stack.frontend || null,
       frontendVersion: stack.frontendVersion || null,

@@ -344,7 +344,7 @@ Le pipeline se déroule en **trois étapes**, avec du code de part et d'autre de
 - `content-validator` : 10 vérifications de contenu, dont la vérification des chemins cités (`STALE_PATH` repère les références `src/...` absentes du code) et la détection de drift dans le MANIFEST.
 - `pass-json-validator` : bonne forme JSON pour les passes 1/2/3/4 et comptage des sections en fonction du stack.
 - `plan-validator` : cohérence plan ↔ disque (legacy, principalement no-op depuis la v2.1.0).
-- `sync-checker` : cohérence d'enregistrement disque ↔ `sync-map.json` sur 7 répertoires suivis.
+- `sync-checker` : cohérence d'enregistrement disque ↔ `sync-map.json` sur 7 répertoires suivis. **Dormant depuis la v2.1.0 :** l'agrégation du master plan a été retirée, `sync-map.json` est donc écrit avec une liste de correspondances vide et ce vérificateur renvoie `pass` sans rien examiner. Il est conservé pour compatibilité ; lisez son verdict comme « sans objet », pas comme une preuve. La seule exception est un projet mis à niveau depuis une version antérieure à la v2.1.0 qui conserve encore un répertoire `claudeos-core/plan/` : `init` n'y touche pas, la carte est donc remplie à partir de lui et le contrôle s'exécute réellement.
 
 Trois niveaux de sévérité (`fail`, `warn`, `advisory`) cohabitent : ainsi, les warnings ne bloquent jamais la CI pour une hallucination LLM que l'on peut corriger à la main.
 
@@ -415,7 +415,7 @@ Une fois la documentation rédigée par Claude, le code prend le relais pour la 
 | `content-validator` | Existence réelle des chemins cités, cohérence du manifest | `health` (advisory) |
 | `pass-json-validator` | Bonne forme JSON des sorties Pass 1 / 2 / 3 / 4 | `health` (warn) |
 | `plan-validator` | Correspondance entre le plan sauvegardé et le disque | `health` (fail-on-error) |
-| `sync-checker` | Correspondance entre les fichiers sur disque et les entrées de `sync-map.json` (détection orphaned/unregistered) | `health` (fail-on-error) |
+| `sync-checker` | Correspondance entre les fichiers sur disque et les entrées de `sync-map.json` (détection orphaned/unregistered) — **dormant, sauf si le projet conserve un `claudeos-core/plan/` antérieur à la v2.1.0** | `health` (fail-on-error) |
 
 Un `health-checker` orchestre les quatre validateurs runtime selon les trois niveaux de sévérité (fail / warn / advisory) et sort avec le code adapté à la CI. `claude-md-validator`, en revanche, se lance séparément via la commande `lint` : un drift structurel n'est pas un simple warning, c'est le signal qu'il faut relancer `init`. Exécution possible à tout moment :
 

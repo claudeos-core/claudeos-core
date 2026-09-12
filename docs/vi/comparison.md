@@ -22,7 +22,7 @@ Cần thứ khác (bundle preset rộng, workflow planning, điều phối agent
 
 - **Đọc mã nguồn thực tế** (scanner Node.js deterministic, không để LLM đoán stack).
 - **Pipeline Claude 4-pass** kèm prompt tiêm sự kiện (đường dẫn/quy ước trích một lần rồi tái sử dụng).
-- **5 validator sau khi sinh**: `claude-md-validator` lo cấu trúc, `content-validator` lo path-claim và nội dung, `pass-json-validator` lo JSON trung gian, `plan-validator` lo tệp plan legacy, `sync-checker` lo nhất quán đĩa ↔ sync-map.
+- **5 validator sau khi sinh**: `claude-md-validator` lo cấu trúc, `content-validator` lo path-claim và nội dung, `pass-json-validator` lo JSON trung gian, `plan-validator` lo tệp plan legacy, `sync-checker` lo nhất quán đĩa ↔ sync-map (ngưng hoạt động từ v2.1.0).
 - **10 ngôn ngữ output** với validation language-invariant.
 - **Output theo dự án**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer, tất cả đều dẫn xuất từ code, không phải từ bundle preset.
 

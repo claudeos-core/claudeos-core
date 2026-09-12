@@ -344,7 +344,7 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 거꾸로 뒤집습니
 - `content-validator` — 10개의 콘텐츠 검사. 경로 인용 검증 (`STALE_PATH`가 가짜 `src/...` 참조를 잡아냄)과 MANIFEST drift 감지가 들어 있습니다.
 - `pass-json-validator` — Pass 1/2/3/4의 JSON well-formedness와 stack-aware section 개수.
 - `plan-validator` — plan ↔ disk 일관성 (legacy. v2.1.0부터는 대부분 no-op).
-- `sync-checker` — 추적 대상 7개 디렉토리에서 disk ↔ `sync-map.json` 등록 일관성.
+- `sync-checker` — 추적 대상 7개 디렉토리에서 disk ↔ `sync-map.json` 등록 일관성. **v2.1.0 이후 휴면 상태:** master plan 집계가 제거되면서 `sync-map.json`이 빈 매핑 목록으로 기록되고, 이 검증기는 아무것도 검사하지 않은 채 `pass`를 반환합니다. 하위 호환을 위해 남겨둔 것이니 그 결과는 “해당 없음”으로 읽고 근거로 삼지 마세요. 예외는 하나입니다 — v2.1.0 이전에서 업그레이드해 `claudeos-core/plan/` 디렉토리가 아직 남아 있는 프로젝트는 `init`이 그 디렉토리를 건드리지 않으므로, 매핑이 채워지고 검사가 실제로 수행됩니다.
 
 3단계 severity (`fail` / `warn` / `advisory`)로 나뉘어 있어서, 사용자가 직접 고칠 수 있는 LLM hallucination 때문에 warning이 CI를 막아 세우지 않습니다.
 
@@ -415,7 +415,7 @@ Claude가 문서를 작성하고 나면, 이번에는 코드가 그 결과를 �
 | `content-validator` | path claim의 실제 존재; manifest 일관성 | `health` (advisory) |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 출력이 well-formed JSON인지 | `health` (warn) |
 | `plan-validator` | 저장된 plan이 디스크와 일치하는지 | `health` (fail-on-error) |
-| `sync-checker` | `sync-map.json` 등록 항목이 디스크 파일과 일치하는지 (orphaned/unregistered 감지) | `health` (fail-on-error) |
+| `sync-checker` | `sync-map.json` 등록 항목이 디스크 파일과 일치하는지 (orphaned/unregistered 감지) — **v2.1.0 이전의 `claudeos-core/plan/`이 남아 있지 않는 한 휴면** | `health` (fail-on-error) |
 
 `health-checker`가 4개의 런타임 validator를 3단계 severity (fail / warn / advisory)로 묶어서 실행하고, CI에 적합한 종료 코드로 마무리합니다. `claude-md-validator`는 `lint` 명령어로 따로 실행하는데, 구조적인 어긋남은 단순한 경고가 아니라 re-init이 필요하다는 신호이기 때문입니다. 언제든 돌릴 수 있습니다:
 

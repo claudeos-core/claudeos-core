@@ -22,7 +22,7 @@ ClaudeOS-Core 的定义性特征:
 
 - **读取你的实际源代码**(deterministic Node.js scanner,没有 LLM 猜栈)。
 - **4-pass Claude 流水线**,带事实注入 prompt(路径/约定一次提取后反复使用)。
-- **5 个 post-generation validator**:`claude-md-validator` 看结构,`content-validator` 看路径声明与内容,`pass-json-validator` 看中间 JSON,`plan-validator` 看 legacy plan 文件,`sync-checker` 看 disk ↔ sync-map 一致性。
+- **5 个 post-generation validator**:`claude-md-validator` 看结构,`content-validator` 看路径声明与内容,`pass-json-validator` 看中间 JSON,`plan-validator` 看 legacy plan 文件,`sync-checker` 看 disk ↔ sync-map 一致性 (自 v2.1.0 起休眠)。
 - **10 种输出语言**,带 language-invariant 验证。
 - **按项目输出**:CLAUDE.md、`.claude/rules/`、standards、skills、guides、memory layer 全部从代码派生,不来自预设包。
 

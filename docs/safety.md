@@ -211,6 +211,8 @@ Two scalar fields derived from `.env` — `envInfo.host` and `envInfo.apiTarget`
 
 **What is not covered.** An unexpanded `${VAR}` template is left alone (it holds no live secret). Comments and files other than the one selected `.env*` are not read. The scanner's DB-type detection reads the raw `.env` text in memory and never writes it. If your project keeps a credential in a shape none of the rules above recognize, please open an issue with the *shape* (never the value) — every rule listed here came from one.
 
+**These rules cover `.env*` files only.** A credential written into a framework config file — `application.yml`, `application.properties`, `appsettings.json`, a Spring profile, a Django `settings.py` — is **not** masked, because the scanner reads those files for facts such as the server port and never copies their values into `project-analysis.json`. But Pass 1 to Pass 3 read your source tree directly, so a plaintext password committed in a config file is visible to the model and can end up quoted in a generated document. Keep secrets out of committed config. Note that the **How to check** step below will not find these: they never reach `project-analysis.json` in the first place. Grep the generated *documents* instead — `CLAUDE.md`, `claudeos-core/**/*.md` and `.claude/rules/**/*.md`.
+
 **How to check.** After `init`, `grep -i` your password in `claudeos-core/generated/project-analysis.json`. It must not be there. The masking rules are pinned by tests in `tests/env-parser.test.js`, including the exact shapes that once leaked.
 
 ## See also

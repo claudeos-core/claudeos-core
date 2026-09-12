@@ -213,6 +213,8 @@ Deux champs scalaires dérivés du `.env` — `envInfo.host` et `envInfo.apiTarg
 
 **Ce qui n'est pas couvert.** Un template `${VAR}` non développé est laissé tel quel (il ne contient aucun secret vivant). Les commentaires et les fichiers autres que l'unique `.env*` retenu ne sont pas lus. La détection du type de base par le scanner lit le texte brut du `.env` en mémoire et ne l'écrit jamais. Si ton projet garde un identifiant sous une forme qu'aucune règle ci-dessus ne reconnaît, ouvre une issue avec la *forme* (jamais la valeur) — chaque règle listée ici vient de là.
 
+**Ces règles ne couvrent que les fichiers `.env*`.** Un identifiant écrit dans un fichier de configuration du framework — `application.yml`, `application.properties`, `appsettings.json`, un profil Spring, un `settings.py` Django — n'est **pas** masqué, car le scanner lit ces fichiers pour en tirer des faits comme le port du serveur et ne recopie jamais leurs valeurs dans `project-analysis.json`. Mais les Pass 1 à 3 lisent votre arbre de sources directement : un mot de passe en clair commité dans un fichier de configuration est donc visible par le modèle et peut finir cité dans un document généré. Gardez les secrets hors de la configuration commitée. Notez que l'étape **Comment vérifier** ci-dessous ne les trouvera pas : ils n'arrivent jamais dans `project-analysis.json`. Grepez plutôt les *documents* générés : `CLAUDE.md`, `claudeos-core/**/*.md` et `.claude/rules/**/*.md`.
+
 **Comment vérifier.** Après `init`, fais un `grep -i` de ton mot de passe dans `claudeos-core/generated/project-analysis.json`. Il ne doit pas y être. Les règles de masquage sont figées par des tests dans `tests/env-parser.test.js`, y compris les formes exactes qui ont fui autrefois.
 
 ## Voir aussi

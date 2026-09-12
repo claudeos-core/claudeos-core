@@ -344,7 +344,7 @@ La pipeline avanza en **tres etapas**, con código tanto antes como después de 
 - `content-validator`: 10 comprobaciones de contenido, entre ellas la verificación de las rutas citadas (`STALE_PATH` caza referencias inventadas a `src/...`) y la detección de drift en MANIFEST.
 - `pass-json-validator`: que los JSON de Pass 1/2/3/4 estén bien formados y tengan el número de secciones esperado según el stack.
 - `plan-validator`: consistencia entre plan y disco (legacy, prácticamente no-op desde la v2.1.0).
-- `sync-checker`: consistencia entre los 7 directorios rastreados en disco y `sync-map.json`.
+- `sync-checker`: consistencia entre los 7 directorios rastreados en disco y `sync-map.json`. **Inactivo desde v2.1.0:** se eliminó la agregación del master plan, así que `sync-map.json` se escribe con una lista de mapeos vacía y este verificador devuelve `pass` sin examinar nada. Se mantiene por compatibilidad; lee su veredicto como «no aplica», no como evidencia. La única excepción es un proyecto actualizado desde antes de v2.1.0 que aún conserve el directorio `claudeos-core/plan/`: `init` no lo toca, así que el mapa se rellena a partir de él y la comprobación sí se ejecuta.
 
 Existen tres niveles de severidad (`fail` / `warn` / `advisory`), de modo que las alucinaciones del LLM que el usuario puede arreglar a mano nunca bloquean la CI con simples warnings.
 
@@ -415,7 +415,7 @@ Cuando Claude termina de escribir, le toca al código revisarlo. Cinco validator
 | `content-validator` | Que las rutas citadas existen y que el manifest es consistente | `health` (advisory) |
 | `pass-json-validator` | Que los JSON de Pass 1 / 2 / 3 / 4 están bien formados | `health` (warn) |
 | `plan-validator` | Que el plan guardado coincide con lo que hay en disco | `health` (fail-on-error) |
-| `sync-checker` | Que los archivos en disco cuadran con `sync-map.json` (detecta huérfanos y no registrados) | `health` (fail-on-error) |
+| `sync-checker` | Que los archivos en disco cuadran con `sync-map.json` (detecta huérfanos y no registrados) — **inactivo salvo que el proyecto conserve un `claudeos-core/plan/` anterior a v2.1.0** | `health` (fail-on-error) |
 
 El `health-checker` orquesta los cuatro validators de runtime con las tres severidades (fail / warn / advisory) y termina con el código de salida adecuado para CI. `claude-md-validator`, por su parte, corre por separado a través del comando `lint`, porque cualquier drift estructural es señal de que toca volver a hacer init, no un simple aviso. Se puede lanzar cuando convenga:
 

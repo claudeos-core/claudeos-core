@@ -153,7 +153,7 @@ Claude खत्म होने के बाद Node.js code output को 5 v
 | `content-validator` | 10 content-level checks: ज़रूरी files मौजूद हैं, standards/skills में cite किए paths real हैं, MANIFEST consistent है। |
 | `pass-json-validator` | Pass 1 / 2 / 3 / 4 JSON outputs well-formed हैं और expected keys हैं। |
 | `plan-validator` | (Legacy) Saved plan files को disk से compare करता है। Master plan generation v2.1.0 में हटा दिया गया था, इसलिए अब mostly no-op है, backward compat के लिए रखा है। |
-| `sync-checker` | Tracked dirs में disk files `sync-map.json` registrations से match होती हैं (orphaned vs. unregistered). |
+| `sync-checker` | Tracked dirs में disk files `sync-map.json` registrations से match होती हैं (orphaned vs. unregistered). v2.1.0 से निष्क्रिय: `sync-map.json` खाली लिखी जाती है, इसलिए बिना कुछ जाँचे pass हो जाता है — सिवाय तब जब v2.1.0 से पुरानी `claudeos-core/plan/` अब भी मौजूद हो. |
 
 इनके **3 severity tiers** हैं:
 

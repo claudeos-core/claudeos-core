@@ -142,7 +142,7 @@ Orquesta **4 validators** (claude-md-validator corre aparte con `lint`):
 |---|---|---|---|
 | 1 | `manifest-generator` (prerequisito) | — | Si esto falla, `sync-checker` se salta. |
 | 2 | `plan-validator` | fail | Exit 1. |
-| 3 | `sync-checker` | fail | Exit 1 (si manifest tuvo éxito). |
+| 3 | `sync-checker` | fail | Exit 1 con archivos huérfanos, pero inactivo desde v2.1.0: en la práctica pasa sin comprobar. |
 | 4 | `content-validator` | advisory | Aparece pero no bloquea. |
 | 5 | `pass-json-validator` | warn | Aparece pero no bloquea. |
 

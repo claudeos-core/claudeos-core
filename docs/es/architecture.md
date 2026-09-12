@@ -153,7 +153,7 @@ Cuando Claude termina, código Node.js verifica la salida con 5 validators. **Ni
 | `content-validator` | 10 checks a nivel de contenido: existen los archivos requeridos, las rutas citadas en standards/skills son reales, el MANIFEST es consistente. |
 | `pass-json-validator` | Las salidas JSON de Pass 1 / 2 / 3 / 4 están bien formadas y contienen las claves esperadas. |
 | `plan-validator` | (Legacy) Compara archivos de plan guardados con disco. La generación de master plan se eliminó en v2.1.0, así que ahora es casi un no-op; se mantiene por back-compat. |
-| `sync-checker` | Los archivos en disco bajo directorios rastreados coinciden con los registros de `sync-map.json` (huérfanos vs. no registrados). |
+| `sync-checker` | Los archivos en disco bajo directorios rastreados coinciden con los registros de `sync-map.json` (huérfanos vs. no registrados). Inactivo desde v2.1.0: `sync-map.json` se escribe vacío, así que pasa sin comprobar nada, salvo que siga presente un `claudeos-core/plan/` anterior a v2.1.0. |
 
 Estos tienen **3 niveles de severidad**:
 

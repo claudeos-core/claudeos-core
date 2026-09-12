@@ -140,7 +140,7 @@ Orchestrates **4 validators** (claude-md-validator runs separately via `lint`):
 |---|---|---|---|
 | 1 | `manifest-generator` (prerequisite) | — | If this fails, `sync-checker` is skipped. |
 | 2 | `plan-validator` | fail | Exit 1. |
-| 3 | `sync-checker` | fail | Exit 1 (if manifest succeeded). |
+| 3 | `sync-checker` | fail | Exit 1 on orphaned files — but dormant since v2.1.0, so in practice it passes without checking. |
 | 4 | `content-validator` | advisory | Surfaces but doesn't block. |
 | 5 | `pass-json-validator` | warn | Surfaces but doesn't block. |
 

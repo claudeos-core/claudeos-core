@@ -22,7 +22,7 @@ ClaudeOS-Core की defining qualities:
 
 - **असली source code पढ़ता है** (deterministic Node.js scanner. कोई LLM stack guess नहीं करता).
 - **Fact-injected prompts वाला 4-pass Claude pipeline** (paths/conventions एक बार निकलते हैं, फिर reuse होते हैं).
-- **5 post-generation validators**: structure के लिए `claude-md-validator`, path-claim और content के लिए `content-validator`, intermediate JSON के लिए `pass-json-validator`, legacy plan files के लिए `plan-validator`, disk ↔ sync-map consistency के लिए `sync-checker`.
+- **5 post-generation validators**: structure के लिए `claude-md-validator`, path-claim और content के लिए `content-validator`, intermediate JSON के लिए `pass-json-validator`, legacy plan files के लिए `plan-validator`, disk ↔ sync-map consistency के लिए `sync-checker` (v2.1.0 से निष्क्रिय).
 - **10 output languages, language-invariant validation के साथ.**
 - **Per-project output**: CLAUDE.md, `.claude/rules/`, standards, skills, guides, memory layer. सब आपके code से derived, किसी preset bundle से नहीं.
 

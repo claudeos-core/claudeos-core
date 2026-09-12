@@ -344,7 +344,7 @@ Die Pipeline läuft in **drei Phasen**; vor und nach dem LLM-Aufruf übernimmt j
 - `content-validator` deckt 10 inhaltliche Checks ab. Dazu zählen die Pfad-Verifikation (`STALE_PATH` fängt erfundene `src/...`-Referenzen ab) und die Erkennung von MANIFEST-Drift.
 - `pass-json-validator` prüft die JSON-Wohlgeformtheit der Pässe 1, 2, 3 und 4 sowie die stack-abhängige Section-Anzahl.
 - `plan-validator` deckt die Konsistenz zwischen Plan und Disk ab. Der Validator ist Legacy und ist seit v2.1.0 weitgehend ein No-op.
-- `sync-checker` prüft über sieben getrackte Verzeichnisse hinweg, ob Disk und `sync-map.json` übereinstimmen.
+- `sync-checker` prüft über sieben getrackte Verzeichnisse hinweg, ob Disk und `sync-map.json` übereinstimmen. **Seit v2.1.0 stillgelegt:** die Master-Plan-Aggregation wurde entfernt, `sync-map.json` wird daher mit leerer Zuordnungsliste geschrieben, und dieser Prüfer meldet `pass`, ohne irgendetwas zu untersuchen. Er bleibt nur aus Kompatibilitätsgründen erhalten; lesen Sie sein Urteil als „nicht zutreffend“, nicht als Beleg. Die einzige Ausnahme ist ein Projekt, das von vor v2.1.0 aktualisiert wurde und noch ein `claudeos-core/plan/`-Verzeichnis mitführt: `init` rührt dieses Verzeichnis nicht an, die Zuordnung wird daraus befüllt und die Prüfung läuft tatsächlich.
 
 Die drei Severity-Stufen `fail`, `warn` und `advisory` sorgen dafür, dass Warnings die CI nicht wegen LLM-Halluzinationen blockieren, die du selbst beheben kannst.
 
@@ -415,7 +415,7 @@ Sobald Claude die Docs geschrieben hat, übernimmt wieder der Code und prüft si
 | `content-validator` | Pfadangaben existieren tatsächlich; Konsistenz des Manifests | `health` (advisory) |
 | `pass-json-validator` | Ausgaben aus Pass 1 / 2 / 3 / 4 sind wohlgeformtes JSON | `health` (warn) |
 | `plan-validator` | gespeicherter Plan stimmt mit dem Stand auf der Disk überein | `health` (fail-on-error) |
-| `sync-checker` | Dateien auf der Disk passen zu den Einträgen in `sync-map.json` (Erkennung von verwaisten oder unregistrierten Dateien) | `health` (fail-on-error) |
+| `sync-checker` | Dateien auf der Disk passen zu den Einträgen in `sync-map.json` (Erkennung von verwaisten oder unregistrierten Dateien) — **stillgelegt, sofern das Projekt kein `claudeos-core/plan/` aus der Zeit vor v2.1.0 mehr hat** | `health` (fail-on-error) |
 
 Ein `health-checker` orchestriert die vier Runtime-Validatoren in den drei Severity-Stufen fail, warn und advisory und liefert einen für die CI passenden Exit-Code zurück. Den `claude-md-validator` startest du separat über den `lint`-Befehl, denn struktureller Drift ist keine weiche Warnung, sondern ein Signal für ein Re-Init. Du kannst den Check jederzeit auslösen:
 

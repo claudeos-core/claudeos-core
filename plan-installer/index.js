@@ -47,7 +47,7 @@ async function main() {
   // code. Singular `Database:` line preserved for byte-for-byte parity in
   // single-DB projects (the dominant case).
   if (Array.isArray(stack.databases) && stack.databases.length > 1) {
-    console.log(`    Database:    ${stack.database} (primary)`);
+    console.log(`    Database:    ${stack.database} (first match, not a primary)`);
     console.log(`    Databases:   ${stack.databases.join(", ")} (multi-dialect)`);
   } else {
     console.log(`    Database:    ${stack.database || "none"}`);

@@ -318,3 +318,50 @@ test("buildPass3Context — projects frontendPort / frontendEnvInfo for a sub-di
     assert.deepStrictEqual(ctx.stack.frontendEnvInfo, { source: "frontend/.env.example", port: 3000, apiTarget: "http://localhost:8080" });
   } finally { rm(tmp); }
 });
+
+// ─── v2.5.4: multi-dialect projects get `databases` + `databasePrimary` ──
+// `stack.database` is the FIRST engine matched in source-file order, not a
+// primary. The context surfaces the full list and a plain-words sentence only
+// when the project declares more than one engine; single-engine and no-engine
+// projects emit exactly what they did before (both fields null).
+
+function writeStackAnalysis(tmp, stack) {
+  fs.writeFileSync(path.join(tmp, "project-analysis.json"), JSON.stringify({
+    stack, backendDomains: [], frontendDomains: [], summary: {}, activeDomains: {},
+  }));
+}
+
+test("buildPass3Context — multi-dialect project surfaces databases + databasePrimary, database unchanged (v2.5.4)", () => {
+  const tmp = makeTmp();
+  try {
+    writeStackAnalysis(tmp, { language: "java", framework: "spring-boot", database: "oracle", databases: ["oracle", "tibero", "h2"] });
+    const ctx = buildPass3Context(tmp);
+    assert.strictEqual(ctx.stack.database, "oracle", "legacy singular field keeps its first-match value");
+    assert.deepStrictEqual(ctx.stack.databases, ["oracle", "tibero", "h2"]);
+    assert.strictEqual(typeof ctx.stack.databasePrimary, "string");
+    assert.match(ctx.stack.databasePrimary, /not a primary/);
+    assert.match(ctx.stack.databasePrimary, /first-match/);
+  } finally { rm(tmp); }
+});
+
+test("buildPass3Context — single-engine project emits null for databases and databasePrimary (v2.5.4)", () => {
+  const tmp = makeTmp();
+  try {
+    writeStackAnalysis(tmp, { language: "java", framework: "spring-boot", database: "postgresql", databases: ["postgresql"] });
+    const ctx = buildPass3Context(tmp);
+    assert.strictEqual(ctx.stack.database, "postgresql");
+    assert.strictEqual(ctx.stack.databases, null);
+    assert.strictEqual(ctx.stack.databasePrimary, null);
+  } finally { rm(tmp); }
+});
+
+test("buildPass3Context — no-engine project emits null for database, databases and databasePrimary (v2.5.4)", () => {
+  const tmp = makeTmp();
+  try {
+    writeStackAnalysis(tmp, { language: "node", framework: "express" });
+    const ctx = buildPass3Context(tmp);
+    assert.strictEqual(ctx.stack.database, null);
+    assert.strictEqual(ctx.stack.databases, null);
+    assert.strictEqual(ctx.stack.databasePrimary, null);
+  } finally { rm(tmp); }
+});

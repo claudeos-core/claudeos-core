@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-1016%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-1028%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -331,7 +331,7 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 거꾸로 뒤집습니
 
 파이프라인은 **3단계**로 동작합니다. LLM 호출 앞뒤 모두에 코드가 자리잡고 있습니다:
 
-**1. Step A — Scanner (일관된 동작, LLM 없음).** Node.js scanner가 프로젝트 루트를 순회하면서 `package.json`, `build.gradle`, `build.gradle.kts`, `pom.xml`, `pyproject.toml`을 읽고, `.env*` 파일을 파싱합니다 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 같은 민감 변수는 자동으로 가립니다). 그런 다음 아키텍처 패턴을 분류하고 (Java 5개 패턴 A/B/C/D/E, Kotlin CQRS / 멀티모듈, Next.js App vs Pages Router, FSD, components 패턴), 도메인을 찾고, 존재하는 모든 소스 파일 경로의 명시적 allowlist를 만듭니다. 결과는 `project-analysis.json` 한 파일에 모이고, 이후 모든 단계는 이걸 단일 source of truth로 삼습니다.
+**1. Step A — Scanner (일관된 동작, LLM 없음).** Node.js scanner가 프로젝트 루트를 순회하면서 `package.json`, `build.gradle`, `build.gradle.kts`, `pom.xml`, `pyproject.toml`을 읽고, `.env*` 파일을 파싱합니다 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 같은 민감 키는 `***REDACTED***`로 바뀌고, 연결 문자열 **안에** 들어 있는 자격증명은 `***:***`로 가리되 scheme·host·port·경로는 읽을 수 있게 남깁니다 — URL userinfo, `?password=` 파라미터, Go/MySQL DSN, Oracle JDBC DSN 모두. 자격증명 경계가 모호한 값은 절반만 가린 채 내보내지 않고 통째로 버린 뒤 해당 키 이름을 알려줍니다). 그런 다음 아키텍처 패턴을 분류하고 (Java 6개 패턴 A–F — 레이어 디렉토리가 없는 package-by-feature 레이아웃 포함, Kotlin CQRS / 멀티모듈, Next.js App vs Pages Router, FSD, components 패턴), 도메인을 찾고, 존재하는 모든 소스 파일 경로의 명시적 allowlist를 만듭니다. 결과는 `project-analysis.json` 한 파일에 모이고, 이후 모든 단계는 이걸 단일 source of truth로 삼습니다.
 
 **2. Step B — 4-Pass Claude 파이프라인 (Step A의 사실을 기반으로 동작).**
 - **Pass 1**은 도메인 그룹별로 대표 파일을 읽고 도메인당 50–100개 정도의 컨벤션을 뽑아냅니다 (response wrapper, 로깅 라이브러리, 에러 처리, 네이밍 규칙, 테스트 패턴 등). 도메인 그룹마다 한 번씩 실행하기 때문에 (`max 4 domains, 40 files per group`) context가 절대 넘치지 않습니다.
@@ -365,6 +365,8 @@ ClaudeOS-Core는 일반적인 Claude Code 워크플로를 거꾸로 뒤집습니
 멀티 스택 프로젝트 (예: Spring Boot 백엔드 + Next.js 프론트엔드)도 그대로 동작합니다.
 
 **레거시 Java도 1급 대상입니다 (v2.5.1).** Boot 없는 Spring 1.x–6.x를 탐지합니다. Gradle (`apply plugin:` 시절, 순서 무관한 `group:/name:/version:` 표기, `gradle.properties` / `apply from:` / buildSrc를 통한 변수 해석, 버전 카탈로그, `settings.gradle`만 있는 루트), Maven (Maven 2 POM, `${spring.version}` 프로퍼티, `spring-framework-bom`, 멀티 모듈 루트, 루트 POM 없는 형제 프로젝트), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans 메타데이터** (커밋되지 않은 JAR 참조를 포함한 `.classpath`, `.settings`의 compliance 레벨, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD 스키마 버전, 그리고 **eGovFrame (전자정부 표준프레임워크)** 까지 — 프레임워크, Spring Framework 버전, Java 레벨, `war`/`ear` 패키징, JDBC 드라이버, ORM을 뽑아냅니다. `src/`를 루트로 하는 소스 트리도 `src/main/java`와 동일한 도메인 패턴으로 스캔합니다. 보고되는 모든 버전은 빌드 파일, JAR 이름, 또는 프로젝트 안에 정의된 프로퍼티에서 읽은 값이며 프레임워크 기본값으로 추정하지 않습니다. Spring을 전혀 쓰지 않는 JVM 프로젝트 (`java-library`, `application`, 서블릿만 쓰는 `war`)는 `framework: null`인 Java로 보고되며 Spring으로 잡히지 않습니다.
+
+**package-by-feature Java도 감지합니다 (v2.5.3).** Spring 공식 *Structuring Your Code* 가이드가 권장하는 레이아웃 — `com/acme/order/{OrderController,OrderService,OrderRepository}.java`, 레이어 디렉토리 없음 — 은 이전까지 **백엔드 도메인이 0개**로 나왔습니다. 레이아웃이 섞인 트리에서는 `controller/` 디렉토리를 가진 도메인 하나만 살아남고 레이어 없는 나머지는 조용히 사라졌습니다. 이제 Pattern F가 각 feature 패키지를 도메인으로 등록하고 클래스명 접미사로 파일을 분류합니다. 레이어 우선(`controller/{domain}/`)과 도메인 우선(`{domain}/controller/`)이 섞인 트리도 **양쪽 모두** 유지되며, 파일 수가 0인 도메인은 더 이상 나오지 않습니다.
 
 감지 규칙과 각 scanner가 추출하는 내용은 [docs/ko/stacks.md](docs/ko/stacks.md) 참고.
 

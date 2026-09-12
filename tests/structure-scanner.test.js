@@ -678,3 +678,46 @@ describe("review follow-up 4 — Node layer-first stems and Java 5-segment base 
     assert.ok(!backendDomains.some(d => d.name === "app"), "module/package tail must not become a domain");
   });
 });
+
+// ─── v2.5.3: the domain order must be a function of the tree, not of glob() ──
+//
+// `glob()` does not promise a stable enumeration order — measured at 5 to 8
+// different orderings for the same pattern over 20 calls. Sorting on
+// `totalFiles` alone is not a total order, and Array#sort is stable, so domains
+// with an equal file count kept whatever order the filesystem walk produced.
+// That order feeds `splitDomainGroups`, so two `init` runs on an unchanged
+// codebase could put different domains in different Pass 1 batches. (Resume was
+// never affected: it reads the persisted `domain-groups.json`.)
+
+describe("scanStructure — deterministic domain order (v2.5.3)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+  const stack = () => ({ language: "java", buildTool: "gradle" });
+
+  it("domains with an equal file count come back in the same order every run", async () => {
+    for (const d of ["order", "member", "billing", "stat", "notice", "pay"]) {
+      const C = d[0].toUpperCase() + d.slice(1);
+      touch(path.join(tmp, `src/main/java/com/acme/${d}/controller/${C}Controller.java`));
+      touch(path.join(tmp, `src/main/java/com/acme/${d}/service/${C}Service.java`));
+    }
+    const orders = new Set();
+    for (let i = 0; i < 20; i++) {
+      const r = await scanStructure(stack(), tmp);
+      orders.add(r.domains.map(x => x.name).join(">"));
+    }
+    assert.equal(orders.size, 1, `expected one ordering, got ${[...orders].join(" | ")}`);
+    assert.equal([...orders][0], "billing>member>notice>order>pay>stat", "ties break on the name, ascending");
+  });
+
+  it("a larger domain still sorts ahead of a smaller one — the tie-break only breaks ties", async () => {
+    // `zeta` has 3 files, `alpha` has 1. Name order would put `alpha` first;
+    // file count must win.
+    touch(path.join(tmp, "src/main/java/com/acme/alpha/controller/AlphaController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/zeta/controller/ZetaController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/zeta/service/ZetaService.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/zeta/dto/ZetaDto.java"));
+    const r = await scanStructure(stack(), tmp);
+    assert.deepEqual(r.domains.map(x => `${x.name}:${x.totalFiles}`), ["zeta:3", "alpha:1"]);
+  });
+});

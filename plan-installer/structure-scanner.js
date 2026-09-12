@@ -65,9 +65,25 @@ async function scanStructure(stack, ROOT) {
   const frontend = await countFrontendStats(stack, FE_ROOT);
 
   // ── Aggregate ──
+  //
+  // v2.5.3 — `totalFiles` alone is not a total order, and `glob()` does not
+  // promise a stable enumeration order (measured: 5 different orderings for
+  // the same pattern over 20 calls). Domains with an EQUAL file count therefore
+  // kept whatever order the filesystem walk happened to produce, and since
+  // Array#sort is stable that order survived into `domains` — which feeds
+  // `splitDomainGroups`, so two `init` runs on an unchanged codebase could put
+  // different domains in different Pass 1 batches and generate different docs.
+  // (Resume was never affected: it reads the persisted `domain-groups.json`.)
+  //
+  // Breaking the tie on the name makes the result a function of the tree alone.
+  // A plain comparison rather than `localeCompare` keeps it locale-independent.
+  // Domains with differing file counts are unaffected — they were already
+  // deterministic.
+  const byFilesThenName = (a, b) =>
+    (b.totalFiles - a.totalFiles) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   const allDomains = [
-    ...backendDomains.sort((a, b) => b.totalFiles - a.totalFiles),
-    ...frontendDomains.sort((a, b) => b.totalFiles - a.totalFiles),
+    ...backendDomains.sort(byFilesThenName),
+    ...frontendDomains.sort(byFilesThenName),
   ];
 
   return { domains: allDomains, backendDomains, frontendDomains, rootPackage, frontend };

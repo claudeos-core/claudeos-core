@@ -755,3 +755,81 @@ test("v2.5.3: a dropped Oracle value is named in credentialWarnings, not silentl
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ─── v2.5.3: the two residues the masking rules left behind ──────────────────
+//
+// Found by a 6,000-value differential fuzz against v2.5.2. The parameter rule
+// stops its capture at `&`, `;` or whitespace, so a password containing one
+// was half-masked; and the userinfo rule can match the WRONG `@` when the
+// username holds one, leaving the password's tail where the host should be.
+
+test("v2.5.3: a password containing a parameter separator is dropped, not half-masked", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  for (const v of [
+    "jdbc:postgresql://db/app?user=app&password=a&b",          // `&` in the password
+    "jdbc:sqlserver://h:1433;user=sa;password=Y{;`",            // `;` in the password
+    "jdbc:postgresql://db/app?user=u&password=) Y",             // space in the password
+  ]) {
+    assert.strictEqual(M(v), "***REDACTED***", `must be dropped whole: ${v}`);
+  }
+});
+
+test("v2.5.3: a real next parameter is not mistaken for password residue", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  assert.strictEqual(
+    M("jdbc:postgresql://db/app?user=app&password=s3cret&sslmode=require"),
+    "jdbc:postgresql://db/app?user=app&password=***&sslmode=require",
+  );
+  assert.strictEqual(
+    M("jdbc:sqlserver://h:1433;databaseName=app;user=sa;password=s3cret;encrypt=true"),
+    "jdbc:sqlserver://h:1433;databaseName=app;user=sa;password=***;encrypt=true",
+  );
+});
+
+test("v2.5.3: a userinfo match whose host is not a host means the boundary was guessed wrong", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  // Username holds `@` AND password holds `/`: the rule stops at the username's
+  // `@` and `tenancy:ab` becomes the "host", leaving `cd` in clear.
+  assert.strictEqual(M("postgres://usr@tenancy:ab/cd@db:5432/app"), "***REDACTED***");
+  assert.strictEqual(M("mongodb+srv://usr@tenancy:pa/ss@c0.x.mongodb.net/db"), "***REDACTED***");
+});
+
+test("v2.5.3: legitimate hosts — ports, IPv6, and an @ in the path — still mask normally", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  assert.strictEqual(M("postgres://u:p@host/path/@x"), "postgres://***:***@host/path/@x");
+  assert.strictEqual(M("postgres://u:p@db:5432/app"), "postgres://***:***@db:5432/app");
+  assert.strictEqual(M("redis://:pw@[::1]:6379/0"), "redis://***:***@[::1]:6379/0");
+  assert.strictEqual(M("mongodb+srv://u:p@c0.x.mongodb.net/db"), "mongodb+srv://***:***@c0.x.mongodb.net/db");
+  assert.strictEqual(M("amqp://guest:guest@rabbit:5672/%2f"), "amqp://***:***@rabbit:5672/%2f");
+});
+
+test("v2.5.3: a Go/MySQL DSN the scheme-less rule cannot parse is dropped, not passed through", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  assert.strictEqual(M("usr@tenancy:s3cret@tcp(127.0.0.1:3306)/db"), "***REDACTED***");
+  assert.strictEqual(M("usr@tenancy:s3cret@unix(/var/run/mysqld.sock)/db"), "***REDACTED***");
+  // The parsable shape is still masked, not dropped.
+  assert.strictEqual(M("app:s3cret@tcp(127.0.0.1:3306)/db"), "***:***@tcp(127.0.0.1:3306)/db");
+  // A value with no DSN marker is untouched.
+  assert.strictEqual(M("0:30@daily"), "0:30@daily");
+});
+
+// A multi-host authority is grammar, not a typo. The host check rejected the
+// comma outright, so a MongoDB replica set and a Kafka broker list — both
+// ordinary production shapes — were dropped whole where v2.5.2 masked them
+// correctly. Caught by running real connection strings, not fuzz: the fuzzer
+// only ever generated single-host URIs.
+test("v2.5.3: a comma-separated host list is a host, not an ambiguous authority", () => {
+  const { maskUrlCredentials: M } = require("../lib/env-parser");
+  assert.strictEqual(
+    M("mongodb://u:s3cret@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0"),
+    "mongodb://***:***@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0",
+  );
+  assert.strictEqual(M("mongodb://u:s3cret@h1,h2,h3/db"), "mongodb://***:***@h1,h2,h3/db");
+  assert.strictEqual(M("kafka://user:s3cret@broker1:9092,broker2:9092"), "kafka://***:***@broker1:9092,broker2:9092");
+  assert.strictEqual(
+    M("postgres://app:s3cret@pg1:5432,pg2:5432/app?target_session_attrs=read-write"),
+    "postgres://***:***@pg1:5432,pg2:5432/app?target_session_attrs=read-write",
+  );
+  // One bad member still condemns the whole authority.
+  assert.strictEqual(M("postgres://usr@tenancy:ab/cd@h1:5432,h2:5432/app"), "***REDACTED***");
+});

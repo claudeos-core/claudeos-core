@@ -983,3 +983,71 @@ describe("scanJavaDomains — Pattern F nesting and base-package rule (v2.5.3 fi
     assert.deepEqual(r2.backendDomains.map(d => d.name).sort(), ["order", "toString"]);
   });
 });
+
+// ─── v2.5.3: mixed-layout recovery ───────────────────────────────────────────
+//
+// Two defects that hid each other. A single `controller/{domain}/` directory
+// claimed the whole tree for Pattern A and the `if (!detectedPattern)` gate
+// then stopped the domain-first pass from ever running, so every `{d}/controller/`
+// domain beside it was dropped. The supplementary scan could still find such a
+// domain through its `service/` directory — but registered it with the tree's
+// `detectedPattern` (A), whose globs do not fit a domain-first layout, so it
+// came out with `totalFiles: 0`.
+
+describe("scanJavaDomains — mixed A + B layouts (v2.5.3)", () => {
+  let tmp;
+  beforeEach(() => { tmp = makeTmpDir(); });
+  afterEach(() => cleanup(tmp));
+  const stack = () => ({ language: "java", buildTool: "gradle" });
+  const byName = (r) => Object.fromEntries(r.backendDomains.map(d => [d.name, d]));
+
+  it("a domain-first domain survives beside a layer-first one", async () => {
+    // Pre-v2.5.3 this returned exactly ["cart"]; `billing` was dropped.
+    touch(path.join(tmp, "src/main/java/com/acme/controller/cart/CartController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/service/cart/CartService.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/billing/controller/BillingController.java"));
+    const d = byName(await scanJavaDomains(stack(), tmp));
+    assert.deepEqual(Object.keys(d).sort(), ["billing", "cart"]);
+    assert.equal(d.cart.pattern, "A", "the layer-first domain keeps its pattern");
+    assert.equal(d.cart.controllers, 1);
+    assert.equal(d.cart.services, 1);
+    assert.equal(d.billing.pattern, "B", "the domain-first one is counted with domain-first globs");
+    assert.equal(d.billing.controllers, 1);
+  });
+
+  it("the supplementary scan registers domain-first domains as B, never as the tree's pattern", async () => {
+    // `shop` has no controller the A pass can see; it is found through
+    // `shop/service/`. Registered as "A" it reported totalFiles: 0.
+    touch(path.join(tmp, "src/main/java/com/acme/controller/notice/NoticeController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/shop/controller/ShopController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/shop/service/ShopService.java"));
+    const d = byName(await scanJavaDomains(stack(), tmp));
+    assert.equal(d.shop.pattern, "B");
+    assert.equal(d.shop.totalFiles, 2, "no more zero-file domains");
+    assert.ok(d.shop.totalFiles > 0);
+    assert.equal(d.notice.pattern, "A");
+  });
+
+  it("a pure Pattern A tree is untouched — no B domains invented, pattern and counts stand", async () => {
+    touch(path.join(tmp, "src/main/java/com/acme/controller/order/OrderController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/service/order/OrderService.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/dto/order/OrderDto.java"));
+    const r = await scanJavaDomains(stack(), tmp);
+    assert.deepEqual(r.backendDomains.map(x => `${x.name}[${x.pattern}]${x.controllers}/${x.services}/${x.dtos}`), ["order[A]1/1/1"]);
+  });
+
+  it("the supplementary pass does not re-vote the tree's detected pattern", async () => {
+    // Three domain-first domains beside one layer-first domain: a majority vote
+    // would flip the tree to B and put `cart` on the wrong counting globs.
+    touch(path.join(tmp, "src/main/java/com/acme/controller/cart/CartController.java"));
+    touch(path.join(tmp, "src/main/java/com/acme/service/cart/CartService.java"));
+    for (const n of ["billing", "notice", "stat"]) {
+      const C = n[0].toUpperCase() + n.slice(1);
+      touch(path.join(tmp, `src/main/java/com/acme/${n}/controller/${C}Controller.java`));
+    }
+    const d = byName(await scanJavaDomains(stack(), tmp));
+    assert.equal(d.cart.pattern, "A", "still A despite being outnumbered 3:1");
+    assert.equal(d.cart.services, 1, "A globs still find service/cart/");
+    assert.equal(Object.keys(d).length, 4);
+  });
+});

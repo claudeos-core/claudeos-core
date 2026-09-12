@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-1016%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-1028%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -331,7 +331,7 @@ This:     Code reads your stack → Code passes confirmed facts to Claude → Cl
 
 The pipeline runs in **three stages**, with code on both sides of the LLM call:
 
-**1. Step A — Scanner (deterministic, no LLM).** A Node.js scanner walks your project root, reads `package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml`, parses `.env*` files (with sensitive-variable redaction for `PASSWORD/SECRET/TOKEN/JWT_SECRET/...`), classifies your architecture pattern (Java's 5 patterns A/B/C/D/E, Kotlin CQRS / multi-module, Next.js App vs. Pages Router, FSD, components-pattern), discovers domains, and builds an explicit allowlist of every source file path that exists. Output: `project-analysis.json` — the single source of truth for what follows.
+**1. Step A — Scanner (deterministic, no LLM).** A Node.js scanner walks your project root, reads `package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml`, parses `.env*` files (sensitive keys become `***REDACTED***`; credentials **inside** connection strings are masked to `***:***` while scheme, host, port and path stay readable — URL userinfo, `?password=` parameters, Go/MySQL DSNs and Oracle JDBC DSNs alike; and a value whose credential boundary is ambiguous is dropped whole and its key reported, never published half-masked), classifies your architecture pattern (Java's 6 patterns A–F, including the package-by-feature layout with no layer directories, Kotlin CQRS / multi-module, Next.js App vs. Pages Router, FSD, components-pattern), discovers domains, and builds an explicit allowlist of every source file path that exists. Output: `project-analysis.json` — the single source of truth for what follows.
 
 **2. Step B — 4-Pass Claude pipeline (constrained by Step A's facts).**
 - **Pass 1** reads representative files per domain group and extracts ~50–100 conventions per domain — response wrappers, logging libraries, error handling, naming conventions, test patterns. Runs once per domain group (`max 4 domains, 40 files per group`) so context never overflows.
@@ -365,6 +365,8 @@ For per-pass details, marker-based resume, the staged-rules workaround for Claud
 Multi-stack projects (e.g., Spring Boot backend + Next.js frontend) work out of the box.
 
 **Legacy Java is a first-class target (v2.5.1).** Pre-Boot Spring 1.x–6.x on Gradle (`apply plugin:` era, `group:/name:/version:` notation in any order, `gradle.properties` / `apply from:` / buildSrc indirection, version catalogs, settings-only roots), Maven (Maven-2 poms, `${spring.version}` properties, `spring-framework-bom`, multi-module roots, sibling projects with no root pom), **Ant + Ivy**, **Eclipse / IntelliJ / NetBeans metadata** (`.classpath` incl. uncommitted jar references, `.settings` compliance level, `.idea/misc.xml`, `nbproject`), `WebContent/WEB-INF/lib/**/*.jar`, `WEB-INF/web.xml`, Spring XSD schema versions and **eGovFrame** are detected — framework, Spring Framework version, Java level, `war`/`ear` packaging, JDBC driver and ORM — and `src/`-rooted source trees are scanned with the same domain patterns as `src/main/java`. Every version reported is read from a build file, a jar name or a property defined in the project; nothing is assumed from a framework default. JVM projects with no Spring at all (`java-library`, `application`, servlet-only `war`) are reported as Java with `framework: null`, never as Spring.
+
+**Package-by-feature Java is detected (v2.5.3).** The layout Spring's own *Structuring Your Code* guide recommends — `com/acme/order/{OrderController,OrderService,OrderRepository}.java`, no layer directories — used to produce **zero backend domains**, and in a mixed tree the one domain that did have a `controller/` directory survived while the layer-less ones silently vanished. Pattern F now registers each feature package and classifies its files by class-name suffix. A tree that mixes layer-first (`controller/{domain}/`) with domain-first (`{domain}/controller/`) keeps **both** kinds of domain instead of dropping one, and no domain is emitted with a file count of zero.
 
 For detection rules and what each scanner extracts, see [docs/stacks.md](docs/stacks.md).
 

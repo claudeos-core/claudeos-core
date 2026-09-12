@@ -287,7 +287,20 @@ async function scanJavaDomains(stack, ROOT) {
 
   // Pattern B/D: {domain}/controller/*.java (domain-first — controller under domain)
   // D extends B: {module}/{domain}/controller/ — auto-upgrade to module/domain on name conflict
-  if (!detectedPattern) {
+  //
+  // v2.5.3 — runs for EVERY tree, not only when nothing has been detected yet.
+  // The `if (!detectedPattern)` gate meant a single layer-first directory
+  // anywhere (`controller/{d}/`) claimed the whole project for Pattern A and
+  // this pass never ran, so every domain-first domain beside it was dropped —
+  // not misattributed, dropped. A mixed `controller/admin/` + `order/controller/`
+  // tree reported only `admin`. When an earlier pattern already claimed the
+  // tree this behaves exactly like the Pattern F pass below: it registers only
+  // domains no earlier pattern claimed, attaches its controllers through the
+  // ledger so nothing is counted twice, and — critically — does NOT re-run the
+  // B-vs-D majority vote, which would otherwise flip an A tree's
+  // `detectedPattern` and switch every A domain onto the wrong counting globs.
+  {
+    const patternAlreadyDetected = !!detectedPattern;
     const controllersB = (await gj("src/main/java/**/*/controller/*.java"));
     const domainPaths = Object.create(null);
     for (const f of controllersB) {
@@ -317,7 +330,9 @@ async function scanJavaDomains(stack, ROOT) {
         for (const entry of entries) addController(d, entry.file);
       }
     }
-    if (Object.keys(domainMap).length > 0) {
+    // Only when this pass is the one that claimed the tree. In a supplementary
+    // run `detectedPattern` is already set and must stay set.
+    if (!patternAlreadyDetected && Object.keys(domainMap).length > 0) {
       // Determine pattern by majority vote (B vs D)
       const patternCounts = {};
       for (const v of Object.values(domainMap)) patternCounts[v.pattern] = (patternCounts[v.pattern] || 0) + 1;
@@ -475,10 +490,23 @@ async function scanJavaDomains(stack, ROOT) {
       if (m) {
         const d = m[1];
         if (!domainMap[d] && !skipDomains.includes(d) && !/^v\d+$/.test(d)) {
-          // A domain found here HAS a layer directory, so it is counted with
-          // the layer-dir globs even when Pattern F owns the tree.
-          const suppPattern = detectedPattern && detectedPattern !== "F" ? detectedPattern : "B";
-          domainMap[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: suppPattern };
+          // v2.5.3 — ALWAYS "B", never the tree's `detectedPattern`.
+          //
+          // Every glob in this scan is `**/{domain}/{layer}/*.java`: the layer
+          // directory is the file's parent and the domain its grandparent, so
+          // a match here PROVES the domain is domain-first. A layer-first
+          // (`service/{domain}/X.java`) path cannot match — its parent is the
+          // domain, not a layer name.
+          //
+          // Inheriting `detectedPattern` therefore mislabelled every
+          // domain-first domain found inside a Pattern A tree. The counting
+          // loop then ran the A globs (`**/service/{d}/*.java`) against a
+          // B-shaped layout, matched nothing, and emitted the domain with
+          // `totalFiles: 0` — a domain in the generated docs with no files
+          // behind it. "B" also works for a D tree (the glob's leading `**`
+          // absorbs the module prefix) and for E/F trees, where the domain
+          // found here genuinely does have a layer directory.
+          domainMap[d] = { controllers: 0, services: 0, mappers: 0, dtos: 0, xmlMappers: 0, pattern: "B" };
         }
       }
     }

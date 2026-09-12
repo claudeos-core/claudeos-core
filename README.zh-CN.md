@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-1016%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-1028%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -331,7 +331,7 @@ ClaudeOS-Core 把常见的 Claude Code 流程倒过来跑:
 
 整条流水线分**三个阶段**,LLM 调用的两端都有代码把关。
 
-**1. Step A — Scanner (确定性,不调用 LLM)。** Node.js scanner 遍历项目根目录,读取 `package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml`,解析 `.env*` 文件 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 这类敏感变量自动脱敏)。接着归类架构模式 (Java 的 5 种 A/B/C/D/E、Kotlin 的 CQRS / 多模块、Next.js 的 App vs Pages Router、FSD、components-pattern),识别业务域,再为每一个真实存在的源文件路径生成一份明确的白名单。结果汇总到 `project-analysis.json`,后续所有步骤都以它为唯一事实来源。
+**1. Step A — Scanner (确定性,不调用 LLM)。** Node.js scanner 遍历项目根目录,读取 `package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml`,解析 `.env*` 文件 (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` 这类敏感键会变成 `***REDACTED***`;连接串**内部**的凭据被遮蔽为 `***:***`,而 scheme、host、port 和路径保持可读 — URL userinfo、`?password=` 参数、Go/MySQL DSN 和 Oracle JDBC DSN 都涵盖在内;凭据边界无法确定的值会整个丢弃并报出键名,绝不半遮蔽地写出去)。接着归类架构模式 (Java 的 6 种 A–F (含没有分层目录的 package-by-feature 布局)、Kotlin 的 CQRS / 多模块、Next.js 的 App vs Pages Router、FSD、components-pattern),识别业务域,再为每一个真实存在的源文件路径生成一份明确的白名单。结果汇总到 `project-analysis.json`,后续所有步骤都以它为唯一事实来源。
 
 **2. Step B — 4-Pass Claude 流水线 (受 Step A 的事实约束)。**
 - **Pass 1** 按域分组读取代表性文件,从每个域里提炼大约 50–100 条规范:响应包装器、日志库、错误处理、命名约定、测试模式等。每个域分组只跑一次 (`max 4 domains, 40 files per group`),所以 context 不会爆。
@@ -365,6 +365,8 @@ severity 分三档 (`fail` / `warn` / `advisory`),这样用户能手动修掉的
 多栈项目 (例如 Spring Boot 后端 + Next.js 前端) 也能直接跑。
 
 **遗留 Java 是一等目标 (v2.5.1)。** 可识别不使用 Boot 的 Spring 1.x–6.x：Gradle (`apply plugin:` 时代、顺序任意的 `group:/name:/version:` 写法、通过 `gradle.properties` / `apply from:` / buildSrc 解析变量、版本目录、只有 `settings.gradle` 的根目录)、Maven (Maven 2 时代的 POM、`${spring.version}` 属性、`spring-framework-bom`、多模块根、没有根 POM 的同级项目)、**Ant + Ivy**、**Eclipse / IntelliJ / NetBeans 元数据** (`.classpath`，包括指向未提交 JAR 的引用、`.settings` 中的 compliance 级别、`.idea/misc.xml`、`nbproject`)、`WebContent/WEB-INF/lib/**/*.jar`、`WEB-INF/web.xml`、Spring XSD 架构版本，以及 **eGovFrame** — 连同框架、Spring Framework 版本、Java 级别、`war`/`ear` 打包方式、JDBC 驱动和 ORM 一并给出。以 `src/` 为根的源码树也会用与 `src/main/java` 相同的 domain 模式扫描。报告的每个版本都来自构建文件、JAR 文件名或项目内定义的属性；不会依据框架默认值推测。完全不用 Spring 的 JVM 项目 (`java-library`、`application`、仅有 servlet 的 `war`) 会被报告为 `framework: null` 的 Java，绝不会当成 Spring。
+
+**package-by-feature 的 Java 也能识别 (v2.5.3)。** Spring 官方 *Structuring Your Code* 指南推荐的布局 — `com/acme/order/{OrderController,OrderService,OrderRepository}.java`,没有分层目录 — 此前会得到**零个后端域**;在混合布局的项目里,只有带 `controller/` 目录的那个域存活,没有分层目录的其余部分被悄悄丢弃。现在 Pattern F 会把每个 feature 包登记为一个域,并按类名后缀归类文件。分层优先 (`controller/{domain}/`) 与域优先 (`{domain}/controller/`) 混合的项目会**同时保留两类域**,也不会再出现文件数为 0 的域。
 
 具体的识别规则、每个 scanner 抽取了什么内容,详见 [docs/zh-CN/stacks.md](docs/zh-CN/stacks.md)。
 

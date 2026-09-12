@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/claudeos-core.svg?logo=npm&label=npm)](https://www.npmjs.com/package/claudeos-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/claudeos-core/claudeos-core/test.yml?branch=master&logo=github&label=CI)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
-[![tests](https://img.shields.io/badge/tests-1016%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
+[![tests](https://img.shields.io/badge/tests-1028%20passing-brightgreen?logo=node.js&logoColor=white)](https://github.com/claudeos-core/claudeos-core/actions/workflows/test.yml)
 [![node](https://img.shields.io/node/v/claudeos-core.svg?logo=node.js&logoColor=white&label=node)](https://nodejs.org/)
 [![license](https://img.shields.io/npm/l/claudeos-core.svg?color=blue)](LICENSE)
 [![downloads](https://img.shields.io/npm/dm/claudeos-core.svg?logo=npm&color=blue&label=downloads)](https://www.npmjs.com/package/claudeos-core)
@@ -331,7 +331,7 @@ ClaudeOS-Core は、よくある Claude Code のワークフローの順序を�
 
 パイプラインは **3 段階**で動きます。LLM を呼ぶ前にも後にも、コードが間に挟まる構成です。
 
-**1. Step A — スキャナ (LLM なしの決定論的処理)。** Node.js のスキャナがプロジェクトルートを巡回し、`package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml` を読み、`.env*` ファイルをパースします (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` などの機密変数は自動でマスクします)。続いてアーキテクチャパターンを分類し (Java の 5 パターン A/B/C/D/E、Kotlin の CQRS / マルチモジュール、Next.js の App Router と Pages Router、FSD、components パターン)、ドメインを抽出し、存在するすべてのソースファイルパスを明示的な allowlist にまとめます。結果は `project-analysis.json` 1 ファイルに集約され、以降の工程はこれを single source of truth として扱います。
+**1. Step A — スキャナ (LLM なしの決定論的処理)。** Node.js のスキャナがプロジェクトルートを巡回し、`package.json` / `build.gradle` / `build.gradle.kts` / `pom.xml` / `pyproject.toml` を読み、`.env*` ファイルをパースします (`PASSWORD/SECRET/TOKEN/JWT_SECRET/...` などの機密キーは `***REDACTED***` になり、接続文字列の**内部**にある認証情報は `***:***` にマスクされます — scheme・host・port・パスは読める形で残ります。URL userinfo、`?password=` パラメータ、Go/MySQL DSN、Oracle JDBC DSN のいずれも対象です。認証情報の境界が曖昧な値は中途半端にマスクせず値ごと破棄し、そのキー名を報告します)。続いてアーキテクチャパターンを分類し (Java の 6 パターン A–F (レイヤーディレクトリを持たない package-by-feature レイアウトを含む)、Kotlin の CQRS / マルチモジュール、Next.js の App Router と Pages Router、FSD、components パターン)、ドメインを抽出し、存在するすべてのソースファイルパスを明示的な allowlist にまとめます。結果は `project-analysis.json` 1 ファイルに集約され、以降の工程はこれを single source of truth として扱います。
 
 **2. Step B — 4-pass の Claude パイプライン (Step A の事実を制約として動作)。**
 - **Pass 1** はドメイングループごとに代表ファイルを読み、ドメインあたり 50 〜 100 個のコンベンション (レスポンスラッパー、ロギングライブラリ、エラー処理、命名規則、テストパターンなど) を抽出します。ドメイングループごとに 1 回ずつ実行する設計 (`max 4 domains, 40 files per group`) なので、context があふれることはありません。
@@ -365,6 +365,8 @@ severity は 3 段階 (`fail` / `warn` / `advisory`) に分かれており、ユ
 マルチスタックのプロジェクト (例: Spring Boot バックエンド + Next.js フロントエンド) もそのまま動きます。
 
 **レガシー Java は第一級の対象です (v2.5.1)。** Boot なしの Spring 1.x–6.x を検出します。Gradle (`apply plugin:` 時代、順序を問わない `group:/name:/version:` 記法、`gradle.properties` / `apply from:` / buildSrc による解決、バージョンカタログ、`settings.gradle` だけのルート)、Maven (Maven 2 の POM、`${spring.version}` プロパティ、`spring-framework-bom`、マルチモジュールのルート、ルート POM のない兄弟プロジェクト)、**Ant + Ivy**、**Eclipse / IntelliJ / NetBeans のメタデータ** (コミットされていない JAR への参照を含む `.classpath`、`.settings` のコンプライアンスレベル、`.idea/misc.xml`、`nbproject`)、`WebContent/WEB-INF/lib/**/*.jar`、`WEB-INF/web.xml`、Spring XSD のスキーマバージョン、そして **eGovFrame** — フレームワーク、Spring Framework のバージョン、Java レベル、`war`/`ear` パッケージング、JDBC ドライバ、ORM まで取得します。`src/` をルートとするソースツリーも `src/main/java` と同じドメインパターンでスキャンされます。報告されるバージョンはすべてビルドファイル・JAR 名・プロジェクト内で定義されたプロパティから読み取ったもので、フレームワークのデフォルトから推測することはありません。Spring をまったく使わない JVM プロジェクト (`java-library`、`application`、サーブレットのみの `war`) は `framework: null` の Java として報告され、Spring とされることはありません。
+
+**package-by-feature の Java も検出します (v2.5.3)。** Spring 公式の *Structuring Your Code* ガイドが推奨するレイアウト — `com/acme/order/{OrderController,OrderService,OrderRepository}.java`、レイヤーディレクトリなし — はこれまで**バックエンドドメインが 0 件**になっていました。レイアウトが混在するツリーでは `controller/` ディレクトリを持つドメインだけが残り、レイヤーのないものは黙って消えていました。Pattern F が各 feature パッケージをドメインとして登録し、クラス名の接尾辞でファイルを分類します。レイヤー優先 (`controller/{domain}/`) とドメイン優先 (`{domain}/controller/`) が混在するツリーでも**両方**が保持され、ファイル数 0 のドメインが出ることもなくなりました。
 
 検出ルールと各スキャナが取り出す情報については [docs/ja/stacks.md](docs/ja/stacks.md) を参照してください。
 
